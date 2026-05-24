@@ -1,0 +1,9 @@
+{
+  "app": "node dist/bin/album.js",
+  "context": {
+    "albumDomain": "album.joe-cui.com",
+    "hostedZoneDomain": "joe-cui.com",
+    "ownerEmail": "configure-me@example.com"
+  }
+}
+
