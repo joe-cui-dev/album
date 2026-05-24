@@ -6,5 +6,5 @@ coverage/
 .env.*
 !.env.example
 cdk.out/
+cdk.context.json
 .DS_Store
-
