@@ -24,6 +24,7 @@ export interface PhotoMetadata {
 
 export interface Photo {
   photoId: string;
+  userId: string;
   uploadBatchId: string;
   originalObjectKey: string;
   displayObjectKey?: string;
@@ -40,8 +41,40 @@ export interface Photo {
 
 export interface UploadBatch {
   uploadBatchId: string;
+  userId: string;
   createdAt: string;
   photoIds: string[];
+}
+
+export interface SessionUser {
+  userId: string;
+  email: string;
+}
+
+export interface GetSessionResponse {
+  signedIn: boolean;
+  user?: SessionUser;
+}
+
+export interface RequestSignInCodeRequest {
+  email: string;
+}
+
+export interface RequestSignInCodeResponse {
+  accepted: true;
+  codeId?: string;
+  devCode?: string;
+}
+
+export interface VerifySignInCodeRequest {
+  email: string;
+  codeId: string;
+  code: string;
+}
+
+export interface VerifySignInCodeResponse {
+  signedIn: true;
+  user: SessionUser;
 }
 
 export interface CreateUploadBatchRequest {
@@ -63,4 +96,3 @@ export interface CreateUploadBatchResponse {
     duplicate: boolean;
   }>;
 }
-

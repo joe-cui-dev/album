@@ -27,6 +27,7 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import {
@@ -50,7 +51,11 @@ export class AlbumStack extends Stack {
   constructor(scope: Construct, id: string, props: AlbumStackProps) {
     super(scope, id, props);
 
-    const ownerEmail = requiredConfig(this, "ownerEmail", "OWNER_EMAIL");
+    const userAllowlist = requiredConfig(
+      this,
+      "userAllowlist",
+      "USER_ALLOWLIST",
+    );
     const albumDomain = requiredConfig(this, "albumDomain", "ALBUM_DOMAIN");
     const hostedZoneId = requiredConfig(this, "hostedZoneId", "HOSTED_ZONE_ID");
     const hostedZoneDomain = requiredConfig(
@@ -58,12 +63,21 @@ export class AlbumStack extends Stack {
       "hostedZoneDomain",
       "HOSTED_ZONE_DOMAIN",
     );
+    const sessionSigningSecret = requiredConfig(
+      this,
+      "sessionSigningSecret",
+      "SESSION_SIGNING_SECRET",
+    );
+    const sesFromEmail = optionalConfig(this, "sesFromEmail", "SES_FROM_EMAIL");
+    const allowDevAuthCodes =
+      optionalConfig(this, "allowDevAuthCodes", "ALLOW_DEV_AUTH_CODES") ??
+      "false";
     const monthlyBudgetUsd = Number(
       this.node.tryGetContext("monthlyBudgetUsd") ?? "10",
     );
     const budgetAlertEmail =
       optionalConfig(this, "budgetAlertEmail", "BUDGET_ALERT_EMAIL") ??
-      ownerEmail;
+      firstAllowlistedEmail(userAllowlist);
     const webOrigins = [`https://${albumDomain}`, "http://localhost:5173"];
 
     const hostedZone = HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
@@ -139,6 +153,7 @@ export class AlbumStack extends Stack {
       pointInTimeRecoverySpecification: {
         pointInTimeRecoveryEnabled: true,
       },
+      timeToLiveAttribute: "expiresAt",
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
@@ -157,13 +172,16 @@ export class AlbumStack extends Stack {
     photosBucket.addEventNotification(
       EventType.OBJECT_CREATED,
       new SqsDestination(processingQueue),
-      { prefix: "originals/" },
+      { prefix: "users/" },
     );
 
     const commonEnvironment = {
-      OWNER_EMAIL: ownerEmail,
+      USER_ALLOWLIST: userAllowlist,
       PHOTOS_BUCKET_NAME: photosBucket.bucketName,
       METADATA_TABLE_NAME: metadataTable.tableName,
+      SESSION_SIGNING_SECRET: sessionSigningSecret,
+      ALLOW_DEV_AUTH_CODES: allowDevAuthCodes,
+      ...(sesFromEmail ? { SES_FROM_EMAIL: sesFromEmail } : {}),
     };
 
     const createUploadBatch = new NodejsFunction(
@@ -220,8 +238,15 @@ export class AlbumStack extends Stack {
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
     metadataTable.grantReadWriteData(createUploadBatch);
+    metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
+    session.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: ["*"],
+      }),
+    );
 
     const alarmTopic = new Topic(this, "AlarmTopic");
     alarmTopic.addSubscription(new EmailSubscription(budgetAlertEmail));
@@ -312,15 +337,34 @@ export class AlbumStack extends Stack {
       corsPreflight: {
         allowCredentials: true,
         allowHeaders: ["content-type"],
-        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST],
+        allowMethods: [
+          CorsHttpMethod.DELETE,
+          CorsHttpMethod.GET,
+          CorsHttpMethod.POST,
+        ],
         allowOrigins: webOrigins,
       },
     });
 
     api.addRoutes({
       path: "/session",
-      methods: [HttpMethod.GET],
+      methods: [HttpMethod.GET, HttpMethod.DELETE],
       integration: new HttpLambdaIntegration("SessionIntegration", session),
+    });
+
+    api.addRoutes({
+      path: "/session/sign-in-code",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration("SessionCodeIntegration", session),
+    });
+
+    api.addRoutes({
+      path: "/session/verify",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "SessionVerifyIntegration",
+        session,
+      ),
     });
 
     api.addRoutes({
@@ -358,4 +402,15 @@ const optionalConfig = (
     (stack.node.tryGetContext(contextName) as string | undefined) ??
     process.env[envName]
   );
+};
+
+const firstAllowlistedEmail = (userAllowlist: string): string => {
+  const firstEntry = userAllowlist.split(",")[0];
+  const email = firstEntry?.split(":")[1];
+  if (!email) {
+    throw new Error(
+      "USER_ALLOWLIST must include at least one userId:email entry.",
+    );
+  }
+  return email;
 };
