@@ -179,6 +179,7 @@ export class AlbumStack extends Stack {
       USER_ALLOWLIST: userAllowlist,
       PHOTOS_BUCKET_NAME: photosBucket.bucketName,
       METADATA_TABLE_NAME: metadataTable.tableName,
+      PROCESSING_QUEUE_URL: processingQueue.queueUrl,
       SESSION_SIGNING_SECRET: sessionSigningSecret,
       ALLOW_DEV_AUTH_CODES: allowDevAuthCodes,
       ...(sesFromEmail ? { SES_FROM_EMAIL: sesFromEmail } : {}),
@@ -228,6 +229,28 @@ export class AlbumStack extends Stack {
       },
     );
 
+    const retryProcessing = new NodejsFunction(
+      this,
+      "RetryProcessingHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "retry-processing.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "RetryProcessingLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
     const session = new NodejsFunction(this, "SessionHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "session.ts"),
@@ -244,6 +267,9 @@ export class AlbumStack extends Stack {
       entry: join("..", "apps", "api", "src", "handlers", "process-photo.ts"),
       handler: "handler",
       environment: commonEnvironment,
+      bundling: {
+        nodeModules: ["sharp"],
+      },
       reservedConcurrentExecutions: 2,
       timeout: Duration.minutes(2),
       logGroup: new LogGroup(this, "ProcessPhotoLogGroup", {
@@ -261,9 +287,11 @@ export class AlbumStack extends Stack {
     photosBucket.grantReadWrite(processPhoto);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
+    metadataTable.grantReadData(retryProcessing);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
+    processingQueue.grantSendMessages(retryProcessing);
     session.addToRolePolicy(
       new PolicyStatement({
         actions: ["ses:SendEmail"],
@@ -331,6 +359,7 @@ export class AlbumStack extends Stack {
     for (const lambda of [
       createUploadBatch,
       uploadBatchStatus,
+      retryProcessing,
       session,
       processPhoto,
     ]) {
@@ -410,6 +439,15 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "UploadBatchStatusIntegration",
         uploadBatchStatus,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/retry-processing",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "RetryProcessingIntegration",
+        retryProcessing,
       ),
     });
   }

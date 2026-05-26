@@ -41,15 +41,15 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - Add a deployable web asset bucket or static asset deployment path for the Vite build.
 - Output or configure the HTTP API default invoke URL for frontend build/runtime configuration.
 - [x] Change S3 object-created notification prefix from `users/` to `originals/`.
-- Give the Retry API handler permission to send messages to the processing queue.
-- Configure processor Lambda bundling for Linux-compatible `sharp`, with the Lambda architecture and installed sharp platform kept in sync.
+- [x] Give the Retry API handler permission to send messages to the processing queue.
+- [x] Configure processor Lambda bundling for Linux-compatible `sharp`, with the Lambda architecture and installed sharp platform kept in sync.
 - Keep processor reserved concurrency and DLQ alarms in place.
 - Ensure API CORS allows credentials only from configured SPA origins and local dev origin.
 
 ## Shared Types
 
 - [x] Add request/response types for Upload Batch status.
-- Add request/response types for Retry Processing.
+- [x] Add request/response types for Retry Processing.
 - [x] Expand `Photo` or related shared types with `failureCode`, user-facing failure message, display dimensions, `displayObjectKey`, and authoritative `sha256`.
 - Add constants or helpers for Supported Photo Format, max file size, max batch size, Display Size, and object key parsing if useful.
 
@@ -77,32 +77,32 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 
 ## Processor Lambda
 
-- Support S3 object-created messages for Original Photos.
-- Support custom retry messages from the Retry API.
-- Parse and validate Original Photo keys in the `originals/{userId}/{uploadBatchId}/{photoId}` shape.
-- Load S3 object metadata and cross-check `userId`, `uploadBatchId`, and `photoId`.
-- If mismatch identifies an existing Photo, mark it `processingFailed`; otherwise log and acknowledge.
-- Transition existing Photo from `uploadRequested` or `processingFailed` retry into `processing`.
-- Stream/read S3 object and compute authoritative SHA-256.
-- Detect Exact Duplicate within the same User's Personal Album using authoritative SHA-256.
-- Mark duplicates as `exactDuplicate` without deleting the uploaded Original Photo.
+- [x] Support S3 object-created messages for Original Photos.
+- [x] Support custom retry messages from the Retry API.
+- [x] Parse and validate Original Photo keys in the `originals/{userId}/{uploadBatchId}/{photoId}` shape.
+- [x] Load S3 object metadata and cross-check `userId`, `uploadBatchId`, and `photoId`.
+- [x] If mismatch identifies an existing Photo, mark it `processingFailed`; otherwise log and acknowledge.
+- [x] Transition existing Photo from `uploadRequested` or `processingFailed` retry into `processing`.
+- [x] Stream/read S3 object and compute authoritative SHA-256.
+- [x] Detect Exact Duplicate within the same User's Personal Album using authoritative SHA-256.
+- [x] Mark duplicates as `exactDuplicate` without deleting the uploaded Original Photo.
 - Extract Captured At using EXIF, then client file modified time, then upload time.
 - Extract display dimensions after orientation, camera metadata, lens metadata, and Location when present.
-- Generate one JPEG Display Photo with longest edge 2048 pixels and no enlargement.
-- Store Display Photo at `display/{userId}/{photoId}.jpg`.
-- Write canonical Photo update with `ready`, authoritative hash, display object key, Captured At, Captured At Source, metadata, and display dimensions.
-- Write lightweight Timeline item under the same User partition after Captured At is known.
-- For business decode/metadata/image failures, mark `processingFailed` with `failureCode` and user-facing message, then acknowledge.
+- [x] Generate one JPEG Display Photo with longest edge 2048 pixels and no enlargement.
+- [x] Store Display Photo at `display/{userId}/{photoId}.jpg`.
+- [x] Write canonical Photo update with `ready`, authoritative hash, display object key, Captured At, Captured At Source, metadata, and display dimensions.
+- [x] Write lightweight Timeline item under the same User partition after Captured At is known.
+- [x] For business decode/metadata/image failures, mark `processingFailed` with `failureCode` and user-facing message, then acknowledge.
 - For transient S3/DynamoDB failures, let SQS retry and eventually DLQ.
 
 ## Retry Processing API
 
-- Add `POST /photos/{photoId}/retry-processing`.
-- Derive User ID from session.
-- Load canonical Photo item from `USER#{userId}` and `PHOTO#{photoId}`.
-- Allow retry only when Processing State is `processingFailed`.
-- Send a custom retry message to the processing queue with `userId`, `photoId`, and `originalObjectKey`.
-- Return the updated or accepted lightweight Photo status.
+- [x] Add `POST /photos/{photoId}/retry-processing`.
+- [x] Derive User ID from session.
+- [x] Load canonical Photo item from `USER#{userId}` and `PHOTO#{photoId}`.
+- [x] Allow retry only when Processing State is `processingFailed`.
+- [x] Send a custom retry message to the processing queue with `userId`, `photoId`, and `originalObjectKey`.
+- [x] Return the updated or accepted lightweight Photo status.
 
 ## Frontend
 

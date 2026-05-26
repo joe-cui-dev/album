@@ -118,3 +118,5 @@ export interface GetUploadBatchStatusResponse {
   counts: Record<ProcessingState, number>;
   photos: UploadBatchPhotoStatus[];
 }
+
+export type RetryProcessingResponse = UploadBatchPhotoStatus;
