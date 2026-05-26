@@ -172,7 +172,7 @@ export class AlbumStack extends Stack {
     photosBucket.addEventNotification(
       EventType.OBJECT_CREATED,
       new SqsDestination(processingQueue),
-      { prefix: "users/" },
+      { prefix: "originals/" },
     );
 
     const commonEnvironment = {
@@ -201,6 +201,28 @@ export class AlbumStack extends Stack {
         environment: commonEnvironment,
         reservedConcurrentExecutions: 5,
         logGroup: new LogGroup(this, "CreateUploadBatchLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const uploadBatchStatus = new NodejsFunction(
+      this,
+      "UploadBatchStatusHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "upload-batch-status.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "UploadBatchStatusLogGroup", {
           retention: RetentionDays.ONE_WEEK,
         }),
       },
@@ -238,6 +260,7 @@ export class AlbumStack extends Stack {
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
     metadataTable.grantReadWriteData(createUploadBatch);
+    metadataTable.grantReadData(uploadBatchStatus);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
@@ -305,7 +328,12 @@ export class AlbumStack extends Stack {
     });
     processingQueueAgeAlarm.addAlarmAction(new SnsAction(alarmTopic));
 
-    for (const lambda of [createUploadBatch, session, processPhoto]) {
+    for (const lambda of [
+      createUploadBatch,
+      uploadBatchStatus,
+      session,
+      processPhoto,
+    ]) {
       const errorsAlarm = new Alarm(this, `${lambda.node.id}ErrorsAlarm`, {
         metric: lambda.metricErrors({
           period: Duration.minutes(5),
@@ -373,6 +401,15 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "CreateUploadBatchIntegration",
         createUploadBatch,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/upload-batches/{uploadBatchId}",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "UploadBatchStatusIntegration",
+        uploadBatchStatus,
       ),
     });
   }

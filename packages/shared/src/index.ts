@@ -32,11 +32,18 @@ export interface Photo {
   format: PhotoFormat;
   fileSizeBytes: number;
   sha256?: string;
+  clientSha256?: string;
   capturedAt?: string;
   capturedAtSource?: CapturedAtSource;
   processingState: ProcessingState;
+  failureCode?: string;
+  failureMessage?: string;
   archived: boolean;
   metadata?: PhotoMetadata;
+  displayDimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 export interface UploadBatch {
@@ -95,4 +102,19 @@ export interface CreateUploadBatchResponse {
     uploadUrl: string;
     duplicate: boolean;
   }>;
+}
+
+export interface UploadBatchPhotoStatus {
+  photoId: string;
+  fileName: string;
+  processingState: ProcessingState;
+  exactDuplicate: boolean;
+  failureCode?: string;
+  failureMessage?: string;
+}
+
+export interface GetUploadBatchStatusResponse {
+  uploadBatchId: string;
+  counts: Record<ProcessingState, number>;
+  photos: UploadBatchPhotoStatus[];
 }

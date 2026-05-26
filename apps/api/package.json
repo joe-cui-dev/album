@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
+    "test": "USER_ALLOWLIST=user-1:user@example.com PHOTOS_BUCKET_NAME=test-bucket METADATA_TABLE_NAME=test-table SESSION_SIGNING_SECRET=test-secret jest --config ./jest.config.cjs",
     "build": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +18,9 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.146",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.7.0"
   }
 }

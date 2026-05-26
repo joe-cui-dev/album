@@ -1,4 +1,7 @@
-import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import type {
+  APIGatewayProxyHandlerV2,
+  APIGatewayProxyStructuredResultV2,
+} from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
@@ -6,76 +9,159 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   CreateUploadBatchRequest,
   CreateUploadBatchResponse,
+  PhotoFormat,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
+import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, ok, unauthorized } from "../http.js";
 
 const s3 = new S3Client({});
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const maxFilesPerUploadBatch = 100;
+const maxOriginalPhotoBytes = 50 * 1024 * 1024;
+
+interface UploadFile {
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  clientSha256?: string;
+  fileModifiedAt?: string;
+}
+
+interface CreateUploadUrlInput {
+  objectKey: string;
+  contentType: string;
+  metadata: Record<string, string>;
+}
+
+interface CreateUploadBatchDeps {
+  now: () => Date;
+  newId: () => string;
+  putItem: (item: Record<string, unknown>) => Promise<void>;
+  createUploadUrl: (input: CreateUploadUrlInput) => Promise<string>;
+}
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  const user = getAuthenticatedUser(event);
+  return handleCreateUploadBatch({
+    user: getAuthenticatedUser(event),
+    body: event.body,
+    deps: {
+      now: () => new Date(),
+      newId: randomUUID,
+      putItem: async (item) => {
+        await dynamodb.send(
+          new PutCommand({
+            TableName: config.metadataTableName,
+            Item: item,
+          }),
+        );
+      },
+      createUploadUrl: async ({ objectKey, contentType, metadata }) => {
+        const command = new PutObjectCommand({
+          Bucket: config.photosBucketName,
+          Key: objectKey,
+          ContentType: contentType,
+          Metadata: metadata,
+        });
+
+        return getSignedUrl(s3, command, {
+          expiresIn: config.uploadUrlExpiresInSeconds,
+        });
+      },
+    },
+  });
+};
+
+export const handleCreateUploadBatch = async ({
+  user,
+  body,
+  deps,
+}: {
+  user: AuthenticatedUser | undefined;
+  body: string | undefined;
+  deps: CreateUploadBatchDeps;
+}): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!user) {
     return unauthorized();
   }
 
-  if (!event.body) {
+  if (!body) {
     return badRequest("Missing request body");
   }
 
-  const request = parseJson<CreateUploadBatchRequest>(event.body);
+  const request = parseJson<CreateUploadBatchRequest>(body);
   if (!Array.isArray(request.files) || request.files.length === 0) {
     return badRequest("At least one file is required");
   }
+  if (request.files.length > maxFilesPerUploadBatch) {
+    return badRequest("Upload batches can contain at most 100 files");
+  }
+  if (request.files.some((file) => file.fileSizeBytes > maxOriginalPhotoBytes)) {
+    return badRequest("Each file must be 50 MB or smaller");
+  }
+  if (request.files.some((file) => !formatForFile(file))) {
+    return badRequest("Files must be JPEG, PNG, or HEIC photos");
+  }
 
-  const uploadBatchId = randomUUID();
+  const uploadBatchId = deps.newId();
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
-  const createdAt = new Date().toISOString();
+  const createdAt = deps.now().toISOString();
 
   for (const file of request.files) {
-    const photoId = randomUUID();
-    const objectKey = `users/${user.userId}/originals/${uploadBatchId}/${photoId}`;
-    const command = new PutObjectCommand({
-      Bucket: config.photosBucketName,
-      Key: objectKey,
-      ContentType: file.contentType,
-      Metadata: {
-        "user-id": user.userId,
-        "upload-batch-id": uploadBatchId,
-        "photo-id": photoId,
-        "original-file-name": file.fileName,
-        "client-sha256": file.clientSha256 ?? "",
-        "file-modified-at": file.fileModifiedAt ?? "",
-      },
+    const photoId = deps.newId();
+    const objectKey = `originals/${user.userId}/${uploadBatchId}/${photoId}`;
+    const fileModifiedAt = validIsoDate(file.fileModifiedAt);
+    const metadata = removeEmptyMetadata({
+      "user-id": user.userId,
+      "upload-batch-id": uploadBatchId,
+      "photo-id": photoId,
+      "original-file-name": file.fileName,
+      "client-sha256": file.clientSha256,
+      "file-modified-at": fileModifiedAt,
+    });
+
+    await deps.putItem({
+      pk: `USER#${user.userId}`,
+      sk: `PHOTO#${photoId}`,
+      photoId,
+      userId: user.userId,
+      uploadBatchId,
+      originalObjectKey: objectKey,
+      fileName: file.fileName,
+      format: formatForFile(file) ?? "jpeg",
+      contentType: file.contentType,
+      fileSizeBytes: file.fileSizeBytes,
+      ...(file.clientSha256 ? { clientSha256: file.clientSha256 } : {}),
+      uploadRequestedAt: createdAt,
+      ...(fileModifiedAt ? { fileModifiedAt } : {}),
+      processingState: "uploadRequested",
+      archived: false,
     });
 
     uploads.push({
       photoId,
       objectKey,
-      uploadUrl: await getSignedUrl(s3, command, {
-        expiresIn: config.uploadUrlExpiresInSeconds,
+      uploadUrl: await deps.createUploadUrl({
+        objectKey,
+        contentType: file.contentType,
+        metadata,
       }),
       duplicate: false,
     });
     photoIds.push(photoId);
   }
 
-  await dynamodb.send(
-    new PutCommand({
-      TableName: config.metadataTableName,
-      Item: {
-        pk: `USER#${user.userId}`,
-        sk: `UPLOAD_BATCH#${createdAt}#${uploadBatchId}`,
-        uploadBatchId,
-        userId: user.userId,
-        createdAt,
-        photoIds,
-      },
-    }),
-  );
+  await deps.putItem({
+    pk: `USER#${user.userId}`,
+    sk: `UPLOAD_BATCH#${uploadBatchId}`,
+    uploadBatchId,
+    userId: user.userId,
+    createdAt,
+    photoIds,
+  });
 
   return ok({ uploadBatchId, uploads } satisfies CreateUploadBatchResponse);
 };
@@ -86,4 +172,42 @@ const parseJson = <T>(body: string): T => {
   } catch {
     return { files: [] } as T;
   }
+};
+
+const formatForFile = (file: UploadFile): PhotoFormat | undefined => {
+  const extension = file.fileName.split(".").pop()?.toLowerCase();
+  if (
+    file.contentType === "image/jpeg" &&
+    (extension === "jpg" || extension === "jpeg")
+  ) {
+    return "jpeg";
+  }
+  if (file.contentType === "image/png" && extension === "png") {
+    return "png";
+  }
+  if (
+    (file.contentType === "image/heic" || file.contentType === "image/heif") &&
+    (extension === "heic" || extension === "heif")
+  ) {
+    return "heic";
+  }
+  return undefined;
+};
+
+const removeEmptyMetadata = (
+  metadata: Record<string, string | undefined>,
+): Record<string, string> => {
+  return Object.fromEntries(
+    Object.entries(metadata).filter((entry): entry is [string, string] =>
+      Boolean(entry[1]),
+    ),
+  );
+};
+
+const validIsoDate = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 };

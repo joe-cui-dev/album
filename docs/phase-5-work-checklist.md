@@ -40,7 +40,7 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - Replace the display-photo CloudFront distribution on `album.joe-cui.com` with SPA hosting through S3 and CloudFront.
 - Add a deployable web asset bucket or static asset deployment path for the Vite build.
 - Output or configure the HTTP API default invoke URL for frontend build/runtime configuration.
-- Change S3 object-created notification prefix from `users/` to `originals/`.
+- [x] Change S3 object-created notification prefix from `users/` to `originals/`.
 - Give the Retry API handler permission to send messages to the processing queue.
 - Configure processor Lambda bundling for Linux-compatible `sharp`, with the Lambda architecture and installed sharp platform kept in sync.
 - Keep processor reserved concurrency and DLQ alarms in place.
@@ -48,32 +48,32 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 
 ## Shared Types
 
-- Add request/response types for Upload Batch status.
+- [x] Add request/response types for Upload Batch status.
 - Add request/response types for Retry Processing.
-- Expand `Photo` or related shared types with `failureCode`, user-facing failure message, display dimensions, `displayObjectKey`, and authoritative `sha256`.
+- [x] Expand `Photo` or related shared types with `failureCode`, user-facing failure message, display dimensions, `displayObjectKey`, and authoritative `sha256`.
 - Add constants or helpers for Supported Photo Format, max file size, max batch size, Display Size, and object key parsing if useful.
 
 ## Create Upload Batch API
 
-- Validate authenticated session.
-- Validate max 100 files per batch.
-- Validate each file is <= 50 MB.
-- Validate MIME type and file extension for JPEG, PNG, and HEIC.
-- Create one canonical Photo item per file under `pk = USER#{userId}`, `sk = PHOTO#{photoId}`.
-- Set initial state to `uploadRequested`.
-- Store file name, format, file size, client SHA-256 hint if present, upload time, and valid `fileModifiedAt` if supplied.
-- Generate Original Photo keys as `originals/{userId}/{uploadBatchId}/{photoId}`.
-- Put `user-id`, `upload-batch-id`, `photo-id`, original file name, client SHA-256, and file modified time in S3 object metadata for the presigned PUT.
-- Keep Upload Batch item with photo ids and created time.
-- Return upload URLs and lightweight upload descriptors without exposing unnecessary storage internals beyond what the direct PUT needs.
+- [x] Validate authenticated session.
+- [x] Validate max 100 files per batch.
+- [x] Validate each file is <= 50 MB.
+- [x] Validate MIME type and file extension for JPEG, PNG, and HEIC.
+- [x] Create one canonical Photo item per file under `pk = USER#{userId}`, `sk = PHOTO#{photoId}`.
+- [x] Set initial state to `uploadRequested`.
+- [x] Store file name, format, file size, client SHA-256 hint if present, upload time, and valid `fileModifiedAt` if supplied.
+- [x] Generate Original Photo keys as `originals/{userId}/{uploadBatchId}/{photoId}`.
+- [x] Put `user-id`, `upload-batch-id`, `photo-id`, original file name, client SHA-256, and file modified time in S3 object metadata for the presigned PUT.
+- [x] Keep Upload Batch item with photo ids and created time.
+- [x] Return upload URLs and lightweight upload descriptors without exposing unnecessary storage internals beyond what the direct PUT needs.
 
 ## Upload Batch Status API
 
-- Add `GET /upload-batches/{uploadBatchId}`.
-- Derive User ID from session and query only that User's partition.
-- Return batch-level counts by Processing State.
-- Return per-photo lightweight status: `photoId`, `fileName`, `processingState`, duplicate indicator when applicable, `failureCode`, and user-facing failure message.
-- Do not return S3 object keys, Display Access URLs, Original Download URLs, or presigned upload URLs.
+- [x] Add `GET /upload-batches/{uploadBatchId}`.
+- [x] Derive User ID from session and query only that User's partition.
+- [x] Return batch-level counts by Processing State.
+- [x] Return per-photo lightweight status: `photoId`, `fileName`, `processingState`, duplicate indicator when applicable, `failureCode`, and user-facing failure message.
+- [x] Do not return S3 object keys, Display Access URLs, Original Download URLs, or presigned upload URLs.
 
 ## Processor Lambda
 
@@ -123,9 +123,9 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 ## Verification
 
 - Add small non-private JPEG, PNG, and real HEIC fixtures.
-- Verify `npm run check --workspaces --if-present`.
-- Verify `npm run cdk:synth`.
-- Verify Create Upload Batch creates Photo records before S3 upload.
+- [x] Verify `npm run check --workspaces --if-present`.
+- [x] Verify `npm run cdk:synth`.
+- [x] Verify Create Upload Batch creates Photo records before S3 upload.
 - Verify successful JPEG, PNG, and HEIC uploads become `ready`.
 - Verify Display Photos are JPEG, oriented correctly, and constrained to 2048 px longest edge.
 - Verify Captured At fallback uses EXIF, then client file modified time, then upload time.
