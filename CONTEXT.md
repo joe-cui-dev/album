@@ -45,7 +45,7 @@ A User action that grants temporary access for a signed-in User to download one 
 _Avoid_: export, bulk download
 
 **Display Photo**:
-A smaller photo derived from an Original Photo for browsing in the web app.
+A smaller photo derived from an Original Photo for browsing in the web app. A Display Photo is oriented for normal viewing even when the Original Photo stores its orientation as metadata.
 _Avoid_: thumbnail, preview image
 
 **Display Access**:
@@ -53,7 +53,7 @@ A temporary grant for a signed-in User to view one of their own Display Photos. 
 _Avoid_: public image URL, static public photo, shared photo link
 
 **Display Size**:
-The target sizing rule used when creating a Display Photo from an Original Photo, such as limiting the longest edge while preserving the image's aspect ratio.
+The target sizing rule used when creating a Display Photo from an Original Photo. The first version limits the longest edge to 2048 pixels while preserving the image's aspect ratio and does not enlarge smaller photos.
 _Avoid_: thumbnail size, preview size
 
 **Captured At**:
@@ -101,15 +101,15 @@ A Processing State where the Original Photo was uploaded but the Display Photo o
 _Avoid_: broken upload, invalid photo
 
 **Retry Processing**:
-A User action that tries to process a Processing Failed photo again while preserving the Original Photo.
+A User action that tries to process a Processing Failed photo again while preserving the Original Photo. Retry Processing is only available for photos in the Processing Failed state.
 _Avoid_: re-upload, repair
 
 **Photo Metadata**:
-Descriptive information read from an Original Photo, such as captured time, dimensions, camera details, and location data.
+Descriptive information read from an Original Photo, such as captured time, display dimensions, camera details, and location data.
 _Avoid_: file attributes, image info
 
 **Location**:
-The place where a photo was captured, usually represented by coordinates in Photo Metadata. Location may be preserved even when the app does not provide a map view.
+The place where a photo was captured, usually represented by coordinates in Photo Metadata. Location should be preserved when present in the Original Photo even when the app does not provide a map view.
 _Avoid_: map, place page
 
 **Archived Photo**:
@@ -121,7 +121,7 @@ Retention intended to recover from accidental deletion or accidental metadata ch
 _Avoid_: backup, archive storage, disaster recovery
 
 **Cost Guardrail**:
-A limit, cleanup rule, or alert intended to reduce the risk of unexpected cloud costs for the whole app. In the first version, Cost Guardrails are not per-User quotas.
+A limit, cleanup rule, or alert intended to reduce the risk of unexpected cloud costs for the whole app. In the first version, Cost Guardrails include a 50 MB maximum per Original Photo and 100 photos per Upload Batch; they are not per-User quotas.
 _Avoid_: cost optimization, billing improvement, user quota
 
 **Manual Upload**:
@@ -133,7 +133,7 @@ A User's Original Photo whose file contents match an Original Photo already in t
 _Avoid_: similar photo, near duplicate, duplicate-looking photo
 
 **Supported Photo Format**:
-A photo format the app accepts and can process into a Display Photo. The first version supports JPEG, PNG, and HEIC; it does not support RAW files, videos, or Live Photos.
+A photo format the app accepts and can process into a Display Photo. The first version supports JPEG, PNG, and HEIC; it does not support RAW files, videos, or Live Photos. The frontend and API use MIME type and file extension as early validation, while processing success depends on whether the uploaded Original Photo can actually be decoded.
 _Avoid_: media type, asset format
 
 ## Example Dialogue

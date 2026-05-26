@@ -132,6 +132,8 @@ The API must not proxy Original Photo bytes or Display Photo bytes. API handlers
 - Write Processing State to DynamoDB.
 - Mark failures as Processing Failed without deleting the Original Photo.
 - Support Retry Processing.
+- Build the upload processing status UI for batch progress, per-photo Processing State, Processing Failed visibility, Exact Duplicate visibility, and Retry Processing. Full Timeline browsing, photo detail, Display Access, and Original Download remain Phase 6 scope.
+- Verify processing with small JPEG, PNG, and real HEIC fixtures.
 
 ### Phase 6: Timeline and Photo Detail
 
