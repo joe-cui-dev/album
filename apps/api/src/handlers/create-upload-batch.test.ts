@@ -1,5 +1,3 @@
-import { describe, it } from "@jest/globals";
-import assert from "node:assert/strict";
 import type { CreateUploadBatchRequest } from "@album/shared";
 import { handleCreateUploadBatch } from "./create-upload-batch.js";
 
@@ -37,25 +35,26 @@ describe("handleCreateUploadBatch", () => {
       },
     });
 
-    assert.equal(response.statusCode, 200);
+    expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body ?? "{}") as {
       uploadBatchId: string;
       uploads: Array<{ photoId: string; objectKey: string; uploadUrl: string }>;
     };
-    assert.equal(body.uploadBatchId, "batch-1");
-    assert.deepEqual(
+    expect(body.uploadBatchId).toBe("batch-1");
+    expect(
       body.uploads.map((upload) => upload.objectKey),
-      ["originals/user-1/batch-1/photo-1", "originals/user-1/batch-1/photo-2"],
-    );
-    assert.deepEqual(
+    ).toEqual([
+      "originals/user-1/batch-1/photo-1",
+      "originals/user-1/batch-1/photo-2",
+    ]);
+    expect(
       body.uploads.map((upload) => upload.uploadUrl),
-      [
-        "https://upload/originals/user-1/batch-1/photo-1",
-        "https://upload/originals/user-1/batch-1/photo-2",
-      ],
-    );
-    assert.equal(writes.length, 3);
-    assert.deepEqual(writes[0], {
+    ).toEqual([
+      "https://upload/originals/user-1/batch-1/photo-1",
+      "https://upload/originals/user-1/batch-1/photo-2",
+    ]);
+    expect(writes.length).toBe(3);
+    expect(writes[0]).toEqual({
       pk: "USER#user-1",
       sk: "PHOTO#photo-1",
       photoId: "photo-1",
@@ -72,7 +71,7 @@ describe("handleCreateUploadBatch", () => {
       processingState: "uploadRequested",
       archived: false,
     });
-    assert.deepEqual(writes[1], {
+    expect(writes[1]).toEqual({
       pk: "USER#user-1",
       sk: "PHOTO#photo-2",
       photoId: "photo-2",
@@ -87,7 +86,7 @@ describe("handleCreateUploadBatch", () => {
       processingState: "uploadRequested",
       archived: false,
     });
-    assert.deepEqual(writes[2], {
+    expect(writes[2]).toEqual({
       pk: "USER#user-1",
       sk: "UPLOAD_BATCH#batch-1",
       uploadBatchId: "batch-1",
@@ -119,8 +118,8 @@ describe("handleCreateUploadBatch", () => {
       },
     });
 
-    assert.equal(response.statusCode, 400);
-    assert.deepEqual(JSON.parse(response.body ?? "{}"), {
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({
       message: "Upload batches can contain at most 100 files",
     });
   });
@@ -149,8 +148,8 @@ describe("handleCreateUploadBatch", () => {
       },
     });
 
-    assert.equal(response.statusCode, 400);
-    assert.deepEqual(JSON.parse(response.body ?? "{}"), {
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({
       message: "Each file must be 50 MB or smaller",
     });
   });
@@ -179,8 +178,8 @@ describe("handleCreateUploadBatch", () => {
       },
     });
 
-    assert.equal(response.statusCode, 400);
-    assert.deepEqual(JSON.parse(response.body ?? "{}"), {
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({
       message: "Files must be JPEG, PNG, or HEIC photos",
     });
   });
@@ -214,9 +213,11 @@ describe("handleCreateUploadBatch", () => {
       },
     });
 
-    assert.equal(response.statusCode, 200);
-    assert.equal("fileModifiedAt" in (writes[0] as Record<string, unknown>), false);
-    assert.deepEqual(uploadUrlInputs[0], {
+    expect(response.statusCode).toBe(200);
+    expect("fileModifiedAt" in (writes[0] as Record<string, unknown>)).toBe(
+      false,
+    );
+    expect(uploadUrlInputs[0]).toEqual({
       objectKey: "originals/user-1/batch-1/photo-1",
       contentType: "image/jpeg",
       metadata: {

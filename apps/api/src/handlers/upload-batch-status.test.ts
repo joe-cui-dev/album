@@ -1,5 +1,3 @@
-import { describe, it } from "@jest/globals";
-import assert from "node:assert/strict";
 import { handleGetUploadBatchStatus } from "./upload-batch-status.js";
 
 describe("handleGetUploadBatchStatus", () => {
@@ -48,9 +46,9 @@ describe("handleGetUploadBatchStatus", () => {
       },
     });
 
-    assert.equal(response.statusCode, 200);
+    expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body ?? "{}");
-    assert.deepEqual(body, {
+    expect(body).toEqual({
       uploadBatchId: "batch-1",
       counts: {
         uploadRequested: 0,
@@ -83,7 +81,7 @@ describe("handleGetUploadBatchStatus", () => {
         },
       ],
     });
-    assert.equal(JSON.stringify(body).includes("originalObjectKey"), false);
-    assert.equal(JSON.stringify(body).includes("displayObjectKey"), false);
+    expect(JSON.stringify(body).includes("originalObjectKey")).toBe(false);
+    expect(JSON.stringify(body).includes("displayObjectKey")).toBe(false);
   });
 });

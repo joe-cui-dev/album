@@ -5,6 +5,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!apps/api/.env.test
 cdk.out/
 cdk.context.json
 .DS_Store

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "USER_ALLOWLIST=user-1:user@example.com PHOTOS_BUCKET_NAME=test-bucket METADATA_TABLE_NAME=test-table SESSION_SIGNING_SECRET=test-secret jest --config ./jest.config.cjs",
+    "test": "set -a; . ./.env.test; set +a; jest --config ./jest.config.cjs",
     "build": "tsc --noEmit"
   },
   "dependencies": {
