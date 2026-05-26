@@ -1,6 +1,6 @@
 # Personal Album
 
-A private, single-owner photo album built with TypeScript, Node.js, and low-idle-cost AWS serverless services.
+A private family allowlist photo album built with TypeScript, Node.js, and low-idle-cost AWS serverless services. Each User has one independent Personal Album.
 
 ## Workspace
 
@@ -24,7 +24,7 @@ The target production region is `ap-southeast-2`.
 Set local deployment values in `.env` instead of committing them:
 
 ```sh
-OWNER_EMAIL=you@example.com
+USER_ALLOWLIST=joe:joe@example.com,mum:mum@example.com
 BUDGET_ALERT_EMAIL=you@example.com
 ALBUM_DOMAIN=album.example.com
 CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/example
@@ -33,4 +33,4 @@ HOSTED_ZONE_ID=Z00000000000000000000
 ```
 
 You can still override local values for one command with CDK context, for example
-`npm run cdk -- deploy -c ownerEmail=you@example.com -c albumDomain=album.example.com`.
+`npm run cdk -- deploy -c userAllowlist=joe:joe@example.com,mum:mum@example.com -c albumDomain=album.example.com`.
