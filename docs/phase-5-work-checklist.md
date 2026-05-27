@@ -106,19 +106,26 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 
 ## Frontend
 
-- Replace the static scaffold with real session loading, sign-in code request, verification, and sign-out.
-- Configure API base URL from Vite environment.
-- Use `credentials: "include"` for API calls.
-- Build file picker for JPEG, PNG, and HEIC with max 100 files.
-- Validate 50 MB per file before calling the API.
-- Compute SHA-256 in the browser when possible, but allow upload if hashing fails.
-- Send Create Upload Batch with file name, MIME type, size, client hash hint, and file modified time.
-- Upload each file directly to S3 with progress UI.
-- Poll Upload Batch status after upload starts.
-- Show per-photo states including `uploadRequested`, `processing`, `ready`, `processingFailed`, and `exactDuplicate`.
-- Show user-facing failure messages without internal stack traces or object keys.
-- Show Retry Processing action only for `processingFailed`.
-- Keep Timeline browsing, photo detail, Display Access, and Original Download out of Phase 5 UI.
+- [x] Replace the static scaffold with real session loading, sign-in code request, verification, and sign-out.
+- [x] Configure API base URL from Vite environment.
+- [x] Use `credentials: "include"` for API calls.
+- [x] Build a plain multi-file picker for JPEG, PNG, and HEIC.
+- Add frontend validation for max 100 files per Upload Batch before calling the API.
+- [x] Keep invalid selected files visible with a reason and exclude them from Create Upload Batch.
+- [x] Allow removing individual selected files before creating the Upload Batch.
+- [x] Validate 50 MB per file before calling the API.
+- [x] Compute SHA-256 in the browser when possible, but allow upload if hashing fails.
+- [x] Send Create Upload Batch with file name, MIME type, size, client hash hint, and file modified time.
+- [x] Upload each file directly to S3 with progress UI.
+- [x] Poll Upload Batch status every 2 seconds after upload starts.
+- [x] Stop Upload Batch polling when every photo is terminal: `ready`, `processingFailed`, or `exactDuplicate`.
+- [x] Keep the most recent Upload Batch visible without adding historical batch browsing.
+- [x] Show per-photo states including `uploadRequested`, `uploaded`, `processing`, `ready`, `processingFailed`, and `exactDuplicate`.
+- [x] Show Exact Duplicate visibility without Display Photo previews.
+- [x] Show user-facing failure messages without internal stack traces or object keys.
+- [x] Show Retry Processing action only for `processingFailed`.
+- [x] Resume polling after Retry Processing succeeds without optimistically changing the Processing State.
+- [x] Keep Timeline browsing, photo detail, Display Access, and Original Download out of Phase 5 UI.
 
 ## Verification
 
