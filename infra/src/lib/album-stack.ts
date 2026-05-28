@@ -1,4 +1,10 @@
-import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import {
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  Stack,
+  type StackProps,
+} from "aws-cdk-lib";
 import {
   CorsHttpMethod,
   HttpApi,
@@ -78,7 +84,10 @@ export class AlbumStack extends Stack {
     const budgetAlertEmail =
       optionalConfig(this, "budgetAlertEmail", "BUDGET_ALERT_EMAIL") ??
       firstAllowlistedEmail(userAllowlist);
-    const webOrigins = [`https://${albumDomain}`, "http://localhost:5173"];
+    const webOrigins = [
+      `https://${albumDomain}`,
+      ...csvConfig(this, "additionalWebOrigins", "ADDITIONAL_WEB_ORIGINS"),
+    ];
 
     const hostedZone = HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
       hostedZoneId,
@@ -110,21 +119,44 @@ export class AlbumStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const displayPhotosDistribution = new Distribution(
+    const webBucket = new Bucket(this, "WebAssetsBucket", {
+      blockPublicAccess: {
+        blockPublicAcls: true,
+        blockPublicPolicy: true,
+        ignorePublicAcls: true,
+        restrictPublicBuckets: true,
+      },
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const webDistribution = new Distribution(
       this,
-      "DisplayPhotosDistribution",
+      "WebDistribution",
       {
         certificate: props.certificate,
         domainNames: [albumDomain],
+        defaultRootObject: "index.html",
+        errorResponses: [
+          {
+            httpStatus: 403,
+            responseHttpStatus: 200,
+            responsePagePath: "/index.html",
+            ttl: Duration.minutes(5),
+          },
+          {
+            httpStatus: 404,
+            responseHttpStatus: 200,
+            responsePagePath: "/index.html",
+            ttl: Duration.minutes(5),
+          },
+        ],
         priceClass: PriceClass.PRICE_CLASS_100,
         defaultBehavior: {
           origin: S3BucketOrigin.withOriginAccessControl(
-            photosBucket as unknown as IBucket,
-            {
-              originPath: "/display",
-            },
+            webBucket as unknown as IBucket,
           ),
-          allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+          allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: CachePolicy.CACHING_OPTIMIZED,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
@@ -135,9 +167,7 @@ export class AlbumStack extends Stack {
     new ARecord(this, "AlbumAliasRecord", {
       zone: hostedZone,
       recordName: albumDomain,
-      target: RecordTarget.fromAlias(
-        new CloudFrontTarget(displayPhotosDistribution),
-      ),
+      target: RecordTarget.fromAlias(new CloudFrontTarget(webDistribution)),
     });
 
     const metadataTable = new Table(this, "MetadataTable", {
@@ -450,6 +480,22 @@ export class AlbumStack extends Stack {
         retryProcessing,
       ),
     });
+
+    new CfnOutput(this, "HttpApiUrl", {
+      value: api.apiEndpoint,
+    });
+
+    new CfnOutput(this, "WebAssetsBucketName", {
+      value: webBucket.bucketName,
+    });
+
+    new CfnOutput(this, "WebDistributionId", {
+      value: webDistribution.distributionId,
+    });
+
+    new CfnOutput(this, "WebDistributionDomainName", {
+      value: webDistribution.distributionDomainName,
+    });
   }
 }
 
@@ -477,6 +523,22 @@ const optionalConfig = (
     (stack.node.tryGetContext(contextName) as string | undefined) ??
     process.env[envName]
   );
+};
+
+const csvConfig = (
+  stack: Stack,
+  contextName: string,
+  envName: string,
+): string[] => {
+  const value = optionalConfig(stack, contextName, envName);
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 };
 
 const firstAllowlistedEmail = (userAllowlist: string): string => {

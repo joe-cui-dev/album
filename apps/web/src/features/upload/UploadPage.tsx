@@ -6,7 +6,10 @@ import type {
   UploadBatchPhotoStatus,
 } from "@album/shared";
 import { apiClient } from "../../lib/apiClient.js";
-import { validatePhotoFile } from "./fileValidation.js";
+import {
+  validatePhotoFile,
+  validateUploadBatchFiles,
+} from "./fileValidation.js";
 import { hashFile } from "./hashFile.js";
 import { isTerminalProcessingState } from "./uploadState.js";
 import { uploadToS3 } from "./uploadToS3.js";
@@ -37,6 +40,13 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
     () => selectedFiles.filter((selectedFile) => selectedFile.valid),
     [selectedFiles],
   );
+  const batchValidation = useMemo(
+    () =>
+      validateUploadBatchFiles(
+        validFiles.map((selectedFile) => selectedFile.file),
+      ),
+    [validFiles],
+  );
 
   useEffect(() => {
     if (!uploadBatchId || !batchStatus) {
@@ -66,6 +76,10 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
         reason: validation.reason,
       };
     });
+    const nextValidFiles = files
+      .filter((selectedFile) => selectedFile.valid)
+      .map((selectedFile) => selectedFile.file);
+    const nextBatchValidation = validateUploadBatchFiles(nextValidFiles);
 
     setSelectedFiles(files);
     setUploadBatchId(undefined);
@@ -73,7 +87,9 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
     setRetryPolling(false);
     setUploadProgress({});
     setError(undefined);
-    setWarning(undefined);
+    setWarning(
+      nextBatchValidation.valid ? undefined : nextBatchValidation.reason,
+    );
   };
 
   const removeFile = (id: string) => {
@@ -91,6 +107,14 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
     setWarning(undefined);
 
     try {
+      const validation = validateUploadBatchFiles(
+        validFiles.map((selectedFile) => selectedFile.file),
+      );
+      if (!validation.valid) {
+        setWarning(validation.reason);
+        return;
+      }
+
       const files = await Promise.all(
         validFiles.map(async ({ file }) => {
           let clientSha256: string | undefined;
@@ -232,7 +256,7 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
         <aside className="space-y-4">
           <button
             className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-emerald-800 px-4 font-bold text-white disabled:cursor-not-allowed disabled:bg-stone-400"
-            disabled={uploading || validFiles.length === 0}
+            disabled={uploading || validFiles.length === 0 || !batchValidation.valid}
             onClick={createUploadBatch}
             type="button"
           >

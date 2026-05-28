@@ -15,6 +15,9 @@ vi.mock("./features/upload/uploadToS3.js", () => ({
   }),
 }));
 
+const apiBaseUrl =
+  "https://replace-with-http-api-id.execute-api.ap-southeast-2.amazonaws.com";
+
 describe("App", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -68,12 +71,15 @@ describe("App", () => {
 
     expect(await screen.findByLabelText("Sign-in code")).toBeInTheDocument();
     expect(screen.getByText(/Development code:/)).toHaveTextContent("123456");
-    expect(fetch).toHaveBeenLastCalledWith("/session/sign-in-code", {
-      method: "POST",
-      body: JSON.stringify({ email: "joe@example.com" }),
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    });
+    expect(fetch).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/session/sign-in-code`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email: "joe@example.com" }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   });
 
   it("signs out and returns to the email sign-in form", async () => {
@@ -92,7 +98,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByLabelText("Email address")).toBeInTheDocument();
-    expect(fetch).toHaveBeenLastCalledWith("/session", {
+    expect(fetch).toHaveBeenLastCalledWith(`${apiBaseUrl}/session`, {
       method: "DELETE",
       credentials: "include",
       headers: {},
@@ -156,7 +162,7 @@ describe("App", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Upload 1 photo" }));
 
-    expect(fetch).toHaveBeenNthCalledWith(2, "/upload-batches", {
+    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/upload-batches`, {
       method: "POST",
       body: JSON.stringify({
         files: [
@@ -172,6 +178,29 @@ describe("App", () => {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
     });
+  });
+
+  it("blocks upload batches with more than 100 valid files before calling the API", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        signedIn: true,
+        user: { userId: "user-1", email: "joe@example.com" },
+      }),
+    );
+
+    renderApp(<App />);
+
+    const input = await screen.findByLabelText("Choose photos");
+    const files = Array.from(
+      { length: 101 },
+      (_, index) =>
+        new File(["valid"], `valid-${index}.jpg`, { type: "image/jpeg" }),
+    );
+    fireEvent.change(input, { target: { files } });
+
+    expect(await screen.findByText("Choose 100 photos or fewer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload 101 photos" })).toBeDisabled();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("warns when browser hashing fails but still creates the upload batch without clientSha256", async () => {
@@ -229,7 +258,7 @@ describe("App", () => {
     expect(
       await screen.findByText("Could not calculate SHA-256 for one or more files."),
     ).toBeInTheDocument();
-    expect(fetch).toHaveBeenNthCalledWith(2, "/upload-batches", {
+    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/upload-batches`, {
       method: "POST",
       body: JSON.stringify({
         files: [
@@ -442,11 +471,15 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry failed.jpg" }));
     expect(screen.getByText("Processing state: Processing failed")).toBeInTheDocument();
-    expect(fetch).toHaveBeenNthCalledWith(4, "/photos/photo-1/retry-processing", {
-      method: "POST",
-      credentials: "include",
-      headers: {},
-    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      `${apiBaseUrl}/photos/photo-1/retry-processing`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {},
+      },
+    );
 
     await vi.advanceTimersByTimeAsync(2000);
     expect(await screen.findByText("Processing state: Processing")).toBeInTheDocument();

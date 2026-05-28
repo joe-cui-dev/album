@@ -22,7 +22,7 @@ export const createSessionCookie = (user: AuthenticatedUser): string => {
     "Path=/",
     "HttpOnly",
     "Secure",
-    "SameSite=Lax",
+    "SameSite=None",
     `Max-Age=${config.sessionTtlSeconds}`,
   ].join("; ");
 };
@@ -33,7 +33,7 @@ export const clearSessionCookie = (): string => {
     "Path=/",
     "HttpOnly",
     "Secure",
-    "SameSite=Lax",
+    "SameSite=None",
     "Max-Age=0",
   ].join("; ");
 };

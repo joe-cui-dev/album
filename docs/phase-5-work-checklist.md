@@ -37,14 +37,14 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 
 ## Infrastructure
 
-- Replace the display-photo CloudFront distribution on `album.joe-cui.com` with SPA hosting through S3 and CloudFront.
-- Add a deployable web asset bucket or static asset deployment path for the Vite build.
-- Output or configure the HTTP API default invoke URL for frontend build/runtime configuration.
+- [x] Replace the display-photo CloudFront distribution on `album.joe-cui.com` with SPA hosting through S3 and CloudFront.
+- [x] Add a deployable web asset bucket or static asset deployment path for the Vite build.
+- [x] Output or configure the HTTP API default invoke URL for frontend build/runtime configuration.
 - [x] Change S3 object-created notification prefix from `users/` to `originals/`.
 - [x] Give the Retry API handler permission to send messages to the processing queue.
 - [x] Configure processor Lambda bundling for Linux-compatible `sharp`, with the Lambda architecture and installed sharp platform kept in sync.
 - Keep processor reserved concurrency and DLQ alarms in place.
-- Ensure API CORS allows credentials only from configured SPA origins and local dev origin.
+- [x] Ensure API CORS allows credentials only from configured SPA origins, with local dev origin added only by explicit config.
 
 ## Shared Types
 
@@ -110,7 +110,7 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - [x] Configure API base URL from Vite environment.
 - [x] Use `credentials: "include"` for API calls.
 - [x] Build a plain multi-file picker for JPEG, PNG, and HEIC.
-- Add frontend validation for max 100 files per Upload Batch before calling the API.
+- [x] Add frontend validation for max 100 files per Upload Batch before calling the API.
 - [x] Keep invalid selected files visible with a reason and exclude them from Create Upload Batch.
 - [x] Allow removing individual selected files before creating the Upload Batch.
 - [x] Validate 50 MB per file before calling the API.
@@ -141,3 +141,5 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - Verify malformed metadata mismatch becomes `processingFailed` only when a matching Photo exists.
 - Verify Retry Processing uses SQS and only accepts `processingFailed`.
 - Verify cross-site session works from hosted SPA to default API invoke URL with credentials.
+- [x] Add a deployment runbook.
+- [x] Add a manually triggered deployment script.

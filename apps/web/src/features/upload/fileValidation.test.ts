@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validatePhotoFile } from "./fileValidation.js";
+import { validatePhotoFile, validateUploadBatchFiles } from "./fileValidation.js";
 
 const photo = (name: string, type: string, size = 1024) => {
   const file = new File(["x"], name, {
@@ -32,6 +32,17 @@ describe("validatePhotoFile", () => {
     expect(validatePhotoFile(photo("large.jpg", "image/jpeg", 50 * 1024 * 1024 + 1))).toEqual({
       valid: false,
       reason: "50 MB maximum",
+    });
+  });
+
+  it("rejects upload batches with more than 100 files", () => {
+    const files = Array.from({ length: 101 }, (_, index) =>
+      photo(`photo-${index}.jpg`, "image/jpeg"),
+    );
+
+    expect(validateUploadBatchFiles(files)).toEqual({
+      valid: false,
+      reason: "Choose 100 photos or fewer",
     });
   });
 });

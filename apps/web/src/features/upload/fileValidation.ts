@@ -4,6 +4,7 @@ export interface FileValidationResult {
 }
 
 const maxOriginalPhotoBytes = 50 * 1024 * 1024;
+export const maxUploadBatchFiles = 100;
 
 export const validatePhotoFile = (file: File): FileValidationResult => {
   if (file.size > maxOriginalPhotoBytes) {
@@ -12,6 +13,19 @@ export const validatePhotoFile = (file: File): FileValidationResult => {
 
   if (!isSupportedPhoto(file)) {
     return { valid: false, reason: "JPEG, PNG, or HEIC photos only" };
+  }
+
+  return { valid: true };
+};
+
+export const validateUploadBatchFiles = (
+  files: readonly File[],
+): FileValidationResult => {
+  if (files.length > maxUploadBatchFiles) {
+    return {
+      valid: false,
+      reason: `Choose ${maxUploadBatchFiles} photos or fewer`,
+    };
   }
 
   return { valid: true };
