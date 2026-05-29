@@ -46,7 +46,17 @@ fi
 
 VITE_API_BASE_URL="${API_URL}" npm run build -w @album/web
 aws s3 sync "${ROOT_DIR}/apps/web/dist" "s3://${WEB_BUCKET}" --delete
-aws cloudfront create-invalidation --distribution-id "${WEB_DISTRIBUTION_ID}" --paths "/*"
+INVALIDATION_ID="$(
+  aws cloudfront create-invalidation \
+    --distribution-id "${WEB_DISTRIBUTION_ID}" \
+    --paths "/*" \
+    --query "Invalidation.Id" \
+    --output text
+)"
+echo "Waiting for CloudFront invalidation ${INVALIDATION_ID} to complete..."
+aws cloudfront wait invalidation-completed \
+  --distribution-id "${WEB_DISTRIBUTION_ID}" \
+  --id "${INVALIDATION_ID}"
 
 echo "Deployment complete."
 echo "SPA: https://${ALBUM_DOMAIN:-album.joe-cui.com}"
