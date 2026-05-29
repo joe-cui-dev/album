@@ -1,5 +1,55 @@
 export type PhotoFormat = "jpeg" | "png" | "heic";
 
+export const maxFilesPerUploadBatch = 100;
+export const maxOriginalPhotoBytes = 50 * 1024 * 1024;
+export const displayPhotoLongestEdgePixels = 2048;
+
+export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
+
+export interface OriginalObjectKeyParts {
+  userId: string;
+  uploadBatchId: string;
+  photoId: string;
+}
+
+export const photoFormatForFile = (input: {
+  fileName: string;
+  contentType: string;
+}): PhotoFormat | undefined => {
+  const extension = input.fileName.split(".").pop()?.toLowerCase();
+  if (
+    input.contentType === "image/jpeg" &&
+    (extension === "jpg" || extension === "jpeg")
+  ) {
+    return "jpeg";
+  }
+  if (input.contentType === "image/png" && extension === "png") {
+    return "png";
+  }
+  if (
+    (input.contentType === "image/heic" ||
+      input.contentType === "image/heif") &&
+    (extension === "heic" || extension === "heif")
+  ) {
+    return "heic";
+  }
+  return undefined;
+};
+
+export const parseOriginalObjectKey = (
+  objectKey: string,
+): OriginalObjectKeyParts | undefined => {
+  const match = /^originals\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(objectKey);
+  if (!match?.[1] || !match[2] || !match[3]) {
+    return undefined;
+  }
+  return {
+    userId: match[1],
+    uploadBatchId: match[2],
+    photoId: match[3],
+  };
+};
+
 export type CapturedAtSource = "exif" | "fileModifiedTime" | "uploadTime";
 
 export type ProcessingState =

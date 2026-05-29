@@ -18,6 +18,10 @@ import type {
   PhotoMetadata,
   ProcessingState,
 } from "@album/shared";
+import {
+  displayPhotoLongestEdgePixels,
+  parseOriginalObjectKey,
+} from "@album/shared";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { config } from "../config.js";
@@ -28,12 +32,6 @@ const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 interface ProcessRecord {
   messageId: string;
   body: string;
-}
-
-interface OriginalObjectKeyParts {
-  userId: string;
-  uploadBatchId: string;
-  photoId: string;
 }
 
 interface PhotoProcessingItem {
@@ -54,6 +52,7 @@ interface DisplayPhotoResult {
     height: number;
   };
   metadata: PhotoMetadata;
+  capturedAt?: string;
 }
 
 interface ProcessPhotoDeps {
@@ -412,7 +411,7 @@ export const handleProcessPhoto = async ({
       }
 
       const displayObjectKey = `display/${keyParts.userId}/${keyParts.photoId}.jpg`;
-      const capturedAt = resolveCapturedAt(photo);
+      const capturedAt = resolveCapturedAt(photo, displayPhoto);
       await deps.writeDisplayPhoto({
         objectKey: displayObjectKey,
         body: displayPhoto.body,
@@ -474,23 +473,9 @@ const extractS3ObjectKeys = (body: string): string[] => {
   }
 };
 
-const parseOriginalObjectKey = (
-  objectKey: string,
-): OriginalObjectKeyParts | undefined => {
-  const match = /^originals\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(objectKey);
-  if (!match?.[1] || !match[2] || !match[3]) {
-    return undefined;
-  }
-  return {
-    userId: match[1],
-    uploadBatchId: match[2],
-    photoId: match[3],
-  };
-};
-
 const metadataMatchesKey = (
   metadata: Record<string, string | undefined>,
-  keyParts: OriginalObjectKeyParts,
+  keyParts: NonNullable<ReturnType<typeof parseOriginalObjectKey>>,
 ): boolean => {
   return (
     metadata["user-id"] === keyParts.userId &&
@@ -515,15 +500,27 @@ const asPhotoProcessingItem = (
   return item as unknown as PhotoProcessingItem;
 };
 
-const createDisplayPhoto = async (
+interface ParsedExif {
+  capturedAt?: string;
+  cameraMake?: string;
+  cameraModel?: string;
+  lensModel?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+}
+
+export const createDisplayPhoto = async (
   originalBytes: Uint8Array,
 ): Promise<DisplayPhotoResult> => {
   const sourceMetadata = await sharp(originalBytes).metadata();
+  const exif = parseExif(sourceMetadata.exif);
   const rendered = await sharp(originalBytes)
     .rotate()
     .resize({
-      width: 2048,
-      height: 2048,
+      width: displayPhotoLongestEdgePixels,
+      height: displayPhotoLongestEdgePixels,
       fit: "inside",
       withoutEnlargement: true,
     })
@@ -536,16 +533,202 @@ const createDisplayPhoto = async (
       width: rendered.info.width,
       height: rendered.info.height,
     },
-    metadata: removeUndefined({
+    metadata: {
       width: sourceMetadata.width,
       height: sourceMetadata.height,
-    }),
+      ...(exif.cameraMake ? { cameraMake: exif.cameraMake } : {}),
+      ...(exif.cameraModel ? { cameraModel: exif.cameraModel } : {}),
+      ...(exif.lensModel ? { lensModel: exif.lensModel } : {}),
+      ...(exif.location ? { location: exif.location } : {}),
+    },
+    ...(exif.capturedAt ? { capturedAt: exif.capturedAt } : {}),
+  };
+};
+
+const parseExif = (exif: Buffer | undefined): ParsedExif => {
+  if (
+    !exif ||
+    exif.length < 14 ||
+    exif.toString("ascii", 0, 6) !== "Exif\0\0"
+  ) {
+    return {};
+  }
+
+  const tiffStart = 6;
+  const byteOrder = exif.toString("ascii", tiffStart, tiffStart + 2);
+  const littleEndian = byteOrder === "II";
+  if (!littleEndian && byteOrder !== "MM") {
+    return {};
+  }
+
+  const readUInt16 = (offset: number): number =>
+    littleEndian ? exif.readUInt16LE(offset) : exif.readUInt16BE(offset);
+  const readUInt32 = (offset: number): number =>
+    littleEndian ? exif.readUInt32LE(offset) : exif.readUInt32BE(offset);
+  const absoluteOffset = (relativeOffset: number): number =>
+    tiffStart + relativeOffset;
+
+  if (readUInt16(tiffStart + 2) !== 42) {
+    return {};
+  }
+
+  const readIfd = (relativeOffset: number): Map<number, ExifEntry> => {
+    const entries = new Map<number, ExifEntry>();
+    const ifdOffset = absoluteOffset(relativeOffset);
+    if (ifdOffset < 0 || ifdOffset + 2 > exif.length) {
+      return entries;
+    }
+
+    const entryCount = readUInt16(ifdOffset);
+    for (let index = 0; index < entryCount; index += 1) {
+      const entryOffset = ifdOffset + 2 + index * 12;
+      if (entryOffset + 12 > exif.length) {
+        break;
+      }
+      entries.set(readUInt16(entryOffset), {
+        type: readUInt16(entryOffset + 2),
+        count: readUInt32(entryOffset + 4),
+        valueOffset: entryOffset + 8,
+      });
+    }
+    return entries;
+  };
+
+  const readAscii = (entry: ExifEntry | undefined): string | undefined => {
+    if (!entry || entry.type !== 2 || entry.count === 0) {
+      return undefined;
+    }
+    const byteLength = entry.count;
+    const valueOffset =
+      byteLength <= 4
+        ? entry.valueOffset
+        : absoluteOffset(readUInt32(entry.valueOffset));
+    if (valueOffset < 0 || valueOffset + byteLength > exif.length) {
+      return undefined;
+    }
+    const value = exif
+      .toString("utf8", valueOffset, valueOffset + byteLength)
+      .replace(/\0+$/, "")
+      .trim();
+    return value || undefined;
+  };
+
+  const readRationals = (entry: ExifEntry | undefined): number[] => {
+    if (!entry || entry.type !== 5 || entry.count === 0) {
+      return [];
+    }
+    const valueOffset = absoluteOffset(readUInt32(entry.valueOffset));
+    const values: number[] = [];
+    for (let index = 0; index < entry.count; index += 1) {
+      const offset = valueOffset + index * 8;
+      if (offset + 8 > exif.length) {
+        break;
+      }
+      const numerator = readUInt32(offset);
+      const denominator = readUInt32(offset + 4);
+      values.push(denominator === 0 ? 0 : numerator / denominator);
+    }
+    return values;
+  };
+
+  const ifd0 = readIfd(readUInt32(tiffStart + 4));
+  const exifIfdOffset = ifd0.get(0x8769);
+  const gpsIfdOffset = ifd0.get(0x8825);
+  const exifIfd =
+    exifIfdOffset?.type === 4
+      ? readIfd(readUInt32(exifIfdOffset.valueOffset))
+      : new Map();
+  const gpsIfd =
+    gpsIfdOffset?.type === 4
+      ? readIfd(readUInt32(gpsIfdOffset.valueOffset))
+      : new Map();
+
+  const capturedAt = parseExifDate(readAscii(exifIfd.get(0x9003)));
+  const cameraMake = readAscii(ifd0.get(0x010f));
+  const cameraModel = readAscii(ifd0.get(0x0110));
+  const lensModel = readAscii(exifIfd.get(0xa434));
+  const location = parseGpsLocation({
+    latitudeRef: readAscii(gpsIfd.get(0x0001)),
+    latitude: readRationals(gpsIfd.get(0x0002)),
+    longitudeRef: readAscii(gpsIfd.get(0x0003)),
+    longitude: readRationals(gpsIfd.get(0x0004)),
+  });
+
+  return {
+    ...(capturedAt ? { capturedAt } : {}),
+    ...(cameraMake ? { cameraMake } : {}),
+    ...(cameraModel ? { cameraModel } : {}),
+    ...(lensModel ? { lensModel } : {}),
+    ...(location ? { location } : {}),
+  };
+};
+
+interface ExifEntry {
+  type: number;
+  count: number;
+  valueOffset: number;
+}
+
+const parseExifDate = (value: string | undefined): string | undefined => {
+  const match = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(
+    value ?? "",
+  );
+  if (!match) {
+    return undefined;
+  }
+  const [, year, month, day, hour, minute, second] = match;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
+};
+
+const parseGpsLocation = ({
+  latitudeRef,
+  latitude,
+  longitudeRef,
+  longitude,
+}: {
+  latitudeRef: string | undefined;
+  latitude: number[];
+  longitudeRef: string | undefined;
+  longitude: number[];
+}): ParsedExif["location"] => {
+  if (latitude.length < 3 || longitude.length < 3) {
+    return undefined;
+  }
+  const [latitudeDegrees, latitudeMinutes, latitudeSeconds] = latitude;
+  const [longitudeDegrees, longitudeMinutes, longitudeSeconds] = longitude;
+  if (
+    latitudeDegrees === undefined ||
+    latitudeMinutes === undefined ||
+    latitudeSeconds === undefined ||
+    longitudeDegrees === undefined ||
+    longitudeMinutes === undefined ||
+    longitudeSeconds === undefined
+  ) {
+    return undefined;
+  }
+
+  const latitudeSign = latitudeRef === "S" ? -1 : 1;
+  const longitudeSign = longitudeRef === "W" ? -1 : 1;
+  return {
+    latitude:
+      latitudeSign *
+      (latitudeDegrees + latitudeMinutes / 60 + latitudeSeconds / 3600),
+    longitude:
+      longitudeSign *
+      (longitudeDegrees + longitudeMinutes / 60 + longitudeSeconds / 3600),
   };
 };
 
 const resolveCapturedAt = (
   photo: PhotoProcessingItem,
+  displayPhoto: DisplayPhotoResult,
 ): { value: string; source: CapturedAtSource } => {
+  if (displayPhoto.capturedAt) {
+    return {
+      value: displayPhoto.capturedAt,
+      source: "exif",
+    };
+  }
   if (photo.fileModifiedAt) {
     return {
       value: photo.fileModifiedAt,

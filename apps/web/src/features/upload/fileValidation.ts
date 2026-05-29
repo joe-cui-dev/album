@@ -1,17 +1,22 @@
+import {
+  maxFilesPerUploadBatch,
+  maxOriginalPhotoBytes,
+  photoFormatForFile,
+} from "@album/shared";
+
 export interface FileValidationResult {
   valid: boolean;
   reason?: string;
 }
 
-const maxOriginalPhotoBytes = 50 * 1024 * 1024;
-export const maxUploadBatchFiles = 100;
+export const maxUploadBatchFiles = maxFilesPerUploadBatch;
 
 export const validatePhotoFile = (file: File): FileValidationResult => {
   if (file.size > maxOriginalPhotoBytes) {
     return { valid: false, reason: "50 MB maximum" };
   }
 
-  if (!isSupportedPhoto(file)) {
+  if (!photoFormatForFile({ fileName: file.name, contentType: file.type })) {
     return { valid: false, reason: "JPEG, PNG, or HEIC photos only" };
   }
 
@@ -29,22 +34,4 @@ export const validateUploadBatchFiles = (
   }
 
   return { valid: true };
-};
-
-const isSupportedPhoto = (file: File): boolean => {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-
-  if (file.type === "image/jpeg") {
-    return extension === "jpg" || extension === "jpeg";
-  }
-
-  if (file.type === "image/png") {
-    return extension === "png";
-  }
-
-  if (file.type === "image/heic" || file.type === "image/heif") {
-    return extension === "heic" || extension === "heif";
-  }
-
-  return false;
 };

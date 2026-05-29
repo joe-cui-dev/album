@@ -51,7 +51,7 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - [x] Add request/response types for Upload Batch status.
 - [x] Add request/response types for Retry Processing.
 - [x] Expand `Photo` or related shared types with `failureCode`, user-facing failure message, display dimensions, `displayObjectKey`, and authoritative `sha256`.
-- Add constants or helpers for Supported Photo Format, max file size, max batch size, Display Size, and object key parsing if useful.
+- [x] Add constants or helpers for Supported Photo Format, max file size, max batch size, Display Size, and object key parsing if useful.
 
 ## Create Upload Batch API
 
@@ -86,8 +86,8 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - [x] Stream/read S3 object and compute authoritative SHA-256.
 - [x] Detect Exact Duplicate within the same User's Personal Album using authoritative SHA-256.
 - [x] Mark duplicates as `exactDuplicate` without deleting the uploaded Original Photo.
-- Extract Captured At using EXIF, then client file modified time, then upload time.
-- Extract display dimensions after orientation, camera metadata, lens metadata, and Location when present.
+- [x] Extract Captured At using EXIF, then client file modified time, then upload time.
+- [x] Extract display dimensions after orientation, camera metadata, lens metadata, and Location when present.
 - [x] Generate one JPEG Display Photo with longest edge 2048 pixels and no enlargement.
 - [x] Store Display Photo at `display/{userId}/{photoId}.jpg`.
 - [x] Write canonical Photo update with `ready`, authoritative hash, display object key, Captured At, Captured At Source, metadata, and display dimensions.
@@ -134,8 +134,8 @@ This checklist completes Photo Processing for the MVP while keeping Timeline bro
 - [x] Verify `npm run cdk:synth`.
 - [x] Verify Create Upload Batch creates Photo records before S3 upload.
 - Verify successful JPEG, PNG, and HEIC uploads become `ready`.
-- Verify Display Photos are JPEG, oriented correctly, and constrained to 2048 px longest edge.
-- Verify Captured At fallback uses EXIF, then client file modified time, then upload time.
+- [x] Verify Display Photos are JPEG, oriented correctly, and constrained to 2048 px longest edge.
+- [x] Verify Captured At fallback uses EXIF, then client file modified time, then upload time.
 - Verify Exact Duplicate is decided by authoritative S3 hash.
 - Verify duplicate Original Photos are not deleted in Phase 5.
 - Verify malformed metadata mismatch becomes `processingFailed` only when a matching Photo exists.

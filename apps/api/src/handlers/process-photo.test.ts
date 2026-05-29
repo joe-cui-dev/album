@@ -1,4 +1,5 @@
-import { handleProcessPhoto } from "./process-photo.js";
+import sharp from "sharp";
+import { createDisplayPhoto, handleProcessPhoto } from "./process-photo.js";
 
 describe("handleProcessPhoto", () => {
   it("marks the matching Photo as processingFailed when S3 metadata does not match the original object key", async () => {
@@ -268,6 +269,81 @@ describe("handleProcessPhoto", () => {
     ]);
   });
 
+  it("uses EXIF captured time from decoded photo metadata before file modified time", async () => {
+    const readyWrites: unknown[] = [];
+    const timelineWrites: unknown[] = [];
+
+    await handleProcessPhoto({
+      records: [
+        {
+          messageId: "message-1",
+          body: JSON.stringify({
+            Records: [
+              {
+                s3: {
+                  object: {
+                    key: "originals/user-1/batch-1/photo-1",
+                  },
+                },
+              },
+            ],
+          }),
+        },
+      ],
+      deps: {
+        getObjectMetadata: async () => ({
+          "user-id": "user-1",
+          "upload-batch-id": "batch-1",
+          "photo-id": "photo-1",
+        }),
+        getPhoto: async () => ({
+          photoId: "photo-1",
+          userId: "user-1",
+          uploadBatchId: "batch-1",
+          originalObjectKey: "originals/user-1/batch-1/photo-1",
+          fileName: "exif.jpg",
+          processingState: "uploadRequested",
+          uploadRequestedAt: "2026-05-26T01:02:03.000Z",
+          fileModifiedAt: "2026-01-02T03:04:05.000Z",
+        }),
+        markProcessingStarted: async () => undefined,
+        readObjectBytes: async () => Buffer.from("jpeg bytes"),
+        findReadyPhotoBySha256: async () => undefined,
+        createDisplayPhoto: async () => ({
+          body: Buffer.from("display jpeg"),
+          dimensions: { width: 1200, height: 800 },
+          metadata: { width: 1200, height: 800 },
+          capturedAt: "2025-12-24T10:11:12.000Z",
+        }),
+        writeDisplayPhoto: async () => undefined,
+        markReady: async (input) => {
+          readyWrites.push(input);
+        },
+        putTimelineItem: async (input) => {
+          timelineWrites.push(input);
+        },
+        markProcessingFailed: async () => {
+          throw new Error("should not fail valid photos");
+        },
+        markExactDuplicate: async () => {
+          throw new Error("should not mark unique photos as duplicates");
+        },
+      },
+    });
+
+    expect(readyWrites).toMatchObject([
+      {
+        capturedAt: "2025-12-24T10:11:12.000Z",
+        capturedAtSource: "exif",
+      },
+    ]);
+    expect(timelineWrites).toMatchObject([
+      {
+        capturedAt: "2025-12-24T10:11:12.000Z",
+      },
+    ]);
+  });
+
   it("processes custom retry messages from the Retry Processing API", async () => {
     const started: unknown[] = [];
 
@@ -326,5 +402,98 @@ describe("handleProcessPhoto", () => {
         photoId: "photo-1",
       },
     ]);
+  });
+});
+
+describe("createDisplayPhoto", () => {
+  it("extracts captured time, camera, lens, location, and oriented display dimensions from EXIF", async () => {
+    const original = await sharp({
+      create: {
+        width: 16,
+        height: 8,
+        channels: 3,
+        background: "#6699cc",
+      },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .withExif({
+        IFD0: {
+          Make: "Fuji",
+          Model: "X100V",
+        },
+        IFD2: {
+          DateTimeOriginal: "2025:12:24 10:11:12",
+          LensModel: "23mm F2",
+        },
+        IFD3: {
+          GPSLatitudeRef: "S",
+          GPSLatitude: "27/1 28/1 0/1",
+          GPSLongitudeRef: "E",
+          GPSLongitude: "153/1 1/1 0/1",
+        },
+      })
+      .toBuffer();
+
+    const result = await createDisplayPhoto(original);
+
+    expect(result.capturedAt).toBe("2025-12-24T10:11:12.000Z");
+    expect(result.metadata).toEqual({
+      width: 16,
+      height: 8,
+      cameraMake: "Fuji",
+      cameraModel: "X100V",
+      lensModel: "23mm F2",
+      location: {
+        latitude: -27.466666666666665,
+        longitude: 153.01666666666668,
+      },
+    });
+    expect(result.dimensions).toEqual({ width: 8, height: 16 });
+    await expect(sharp(result.body).metadata()).resolves.toMatchObject({
+      format: "jpeg",
+      width: 8,
+      height: 16,
+    });
+  });
+
+  it("writes display photos as JPEG with longest edge constrained to 2048 pixels without enlarging small images", async () => {
+    const largeOriginal = await sharp({
+      create: {
+        width: 4096,
+        height: 1024,
+        channels: 3,
+        background: "#cc9966",
+      },
+    })
+      .png()
+      .toBuffer();
+    const smallOriginal = await sharp({
+      create: {
+        width: 32,
+        height: 16,
+        channels: 3,
+        background: "#99cc66",
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const largeResult = await createDisplayPhoto(largeOriginal);
+    const smallResult = await createDisplayPhoto(smallOriginal);
+
+    await expect(sharp(largeResult.body).metadata()).resolves.toMatchObject({
+      format: "jpeg",
+      width: 2048,
+      height: 512,
+    });
+    expect(largeResult.dimensions).toEqual({ width: 2048, height: 512 });
+
+    await expect(sharp(smallResult.body).metadata()).resolves.toMatchObject({
+      format: "jpeg",
+      width: 32,
+      height: 16,
+    });
+    expect(smallResult.dimensions).toEqual({ width: 32, height: 16 });
   });
 });

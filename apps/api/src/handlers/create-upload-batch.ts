@@ -9,7 +9,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   CreateUploadBatchRequest,
   CreateUploadBatchResponse,
-  PhotoFormat,
+} from "@album/shared";
+import {
+  maxFilesPerUploadBatch,
+  maxOriginalPhotoBytes,
+  photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
 import type { AuthenticatedUser } from "../auth.js";
@@ -19,9 +23,6 @@ import { badRequest, ok, unauthorized } from "../http.js";
 
 const s3 = new S3Client({});
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const maxFilesPerUploadBatch = 100;
-const maxOriginalPhotoBytes = 50 * 1024 * 1024;
-
 interface UploadFile {
   fileName: string;
   contentType: string;
@@ -101,7 +102,7 @@ export const handleCreateUploadBatch = async ({
   if (request.files.some((file) => file.fileSizeBytes > maxOriginalPhotoBytes)) {
     return badRequest("Each file must be 50 MB or smaller");
   }
-  if (request.files.some((file) => !formatForFile(file))) {
+  if (request.files.some((file) => !photoFormatForFile(file))) {
     return badRequest("Files must be JPEG, PNG, or HEIC photos");
   }
 
@@ -131,7 +132,7 @@ export const handleCreateUploadBatch = async ({
       uploadBatchId,
       originalObjectKey: objectKey,
       fileName: file.fileName,
-      format: formatForFile(file) ?? "jpeg",
+      format: photoFormatForFile(file) ?? "jpeg",
       contentType: file.contentType,
       fileSizeBytes: file.fileSizeBytes,
       ...(file.clientSha256 ? { clientSha256: file.clientSha256 } : {}),
@@ -172,26 +173,6 @@ const parseJson = <T>(body: string): T => {
   } catch {
     return { files: [] } as T;
   }
-};
-
-const formatForFile = (file: UploadFile): PhotoFormat | undefined => {
-  const extension = file.fileName.split(".").pop()?.toLowerCase();
-  if (
-    file.contentType === "image/jpeg" &&
-    (extension === "jpg" || extension === "jpeg")
-  ) {
-    return "jpeg";
-  }
-  if (file.contentType === "image/png" && extension === "png") {
-    return "png";
-  }
-  if (
-    (file.contentType === "image/heic" || file.contentType === "image/heif") &&
-    (extension === "heic" || extension === "heif")
-  ) {
-    return "heic";
-  }
-  return undefined;
 };
 
 const removeEmptyMetadata = (
