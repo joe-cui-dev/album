@@ -19,12 +19,6 @@ require_command() {
   fi
 }
 
-extract_output() {
-  local key="$1"
-  node -e "const outputs=require(process.argv[1]); console.log(outputs.PersonalAlbumStack?.[process.argv[2]] ?? '')" "${OUTPUTS_FILE}" "${key}"
-}
-
-require_command aws
 require_command node
 require_command npm
 
@@ -32,32 +26,16 @@ node -e "const major=Number(process.versions.node.split('.')[0]); if (major < 22
 
 cd "${ROOT_DIR}"
 
-npm run check --workspaces --if-present
-npm run cdk -w @album/infra -- deploy PersonalAlbumStack --outputs-file "${OUTPUTS_FILE}" --require-approval never
-
-API_URL="$(extract_output HttpApiUrl)"
-WEB_BUCKET="$(extract_output WebAssetsBucketName)"
-WEB_DISTRIBUTION_ID="$(extract_output WebDistributionId)"
-
-if [[ -z "${API_URL}" || -z "${WEB_BUCKET}" || -z "${WEB_DISTRIBUTION_ID}" ]]; then
-  echo "CDK outputs are missing HttpApiUrl, WebAssetsBucketName, or WebDistributionId." >&2
+if [[ -z "${VITE_API_BASE_URL:-}" ]]; then
+  echo "Missing required config: set VITE_API_BASE_URL in ${ENV_FILE} before deploying." >&2
   exit 1
 fi
 
-VITE_API_BASE_URL="${API_URL}" npm run build -w @album/web
-aws s3 sync "${ROOT_DIR}/apps/web/dist" "s3://${WEB_BUCKET}" --delete
-INVALIDATION_ID="$(
-  aws cloudfront create-invalidation \
-    --distribution-id "${WEB_DISTRIBUTION_ID}" \
-    --paths "/*" \
-    --query "Invalidation.Id" \
-    --output text
-)"
-echo "Waiting for CloudFront invalidation ${INVALIDATION_ID} to complete..."
-aws cloudfront wait invalidation-completed \
-  --distribution-id "${WEB_DISTRIBUTION_ID}" \
-  --id "${INVALIDATION_ID}"
+npm run check --workspaces --if-present
+npm run build -w @album/web
+npm run build -w @album/infra
+npm run cdk -w @album/infra -- deploy PersonalAlbumStack --outputs-file "${OUTPUTS_FILE}" --require-approval never
 
 echo "Deployment complete."
 echo "SPA: https://${ALBUM_DOMAIN:-album.joe-cui.com}"
-echo "API: ${API_URL}"
+echo "API: ${VITE_API_BASE_URL}"

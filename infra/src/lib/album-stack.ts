@@ -43,11 +43,15 @@ import {
   type IBucket,
 } from "aws-cdk-lib/aws-s3";
 import { SqsDestination } from "aws-cdk-lib/aws-s3-notifications";
+import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export interface AlbumStackProps extends StackProps {
   certificate: ICertificate;
@@ -168,6 +172,17 @@ export class AlbumStack extends Stack {
       zone: hostedZone,
       recordName: albumDomain,
       target: RecordTarget.fromAlias(new CloudFrontTarget(webDistribution)),
+    });
+
+    new BucketDeployment(this, "WebAssetsDeployment", {
+      sources: [
+        Source.asset(join(currentDir, "..", "..", "..", "apps", "web", "dist")),
+      ],
+      destinationBucket: webBucket as unknown as IBucket,
+      distribution: webDistribution,
+      distributionPaths: ["/*"],
+      prune: true,
+      memoryLimit: 512,
     });
 
     const metadataTable = new Table(this, "MetadataTable", {

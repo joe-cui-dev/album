@@ -32,6 +32,7 @@ SESSION_SIGNING_SECRET=replace-with-a-long-random-secret
 SES_FROM_EMAIL=album@joe-cui.com
 ALLOW_DEV_AUTH_CODES=false
 ALBUM_DOMAIN=album.joe-cui.com
+VITE_API_BASE_URL=https://example.execute-api.ap-southeast-2.amazonaws.com
 HOSTED_ZONE_DOMAIN=joe-cui.com
 HOSTED_ZONE_ID=Z00000000000000000000
 CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/example
@@ -58,13 +59,16 @@ The script:
 
 1. Loads `.env` if present.
 2. Runs workspace type checks.
-3. Deploys `PersonalAlbumStack`.
-4. Reads the CDK outputs for API URL, web bucket, and CloudFront distribution.
-5. Builds the Vite SPA with `VITE_API_BASE_URL` set to the HTTP API URL.
-6. Syncs `apps/web/dist` to the web bucket.
-7. Invalidates CloudFront.
+3. Requires `VITE_API_BASE_URL` to be set to the real HTTP API URL.
+4. Builds the Vite SPA.
+5. Builds the CDK app.
+6. Deploys `PersonalAlbumStack`.
+7. Lets CDK upload `apps/web/dist` to the web bucket through `BucketDeployment`.
+8. Lets CDK invalidate CloudFront when the frontend asset changes.
 
 The script stops on failure and does not roll back, destroy, or clean up deployed resources.
+
+`BucketDeployment` fingerprints the built frontend assets. If `apps/web/dist` has the same content as the previous deployment, CDK does not update the frontend deployment resource.
 
 ## Smoke Test
 
@@ -83,8 +87,8 @@ Keep smoke test photos in production temporarily under the chosen Allowed User's
 
 ```sh
 npm run check --workspaces --if-present
+npm run build -w @album/web
 npm run cdk:synth
-VITE_API_BASE_URL=https://example.execute-api.ap-southeast-2.amazonaws.com npm run build -w @album/web
 ```
 
 ## Backend Logs
