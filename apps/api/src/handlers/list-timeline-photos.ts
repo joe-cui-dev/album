@@ -58,12 +58,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
           ":pk": `USER#${userId}`,
         };
         let keyConditionExpression = "pk = :pk AND begins_with(sk, :timeline)";
-        expressionValues[":timeline"] = "TIMELINE#";
 
         if (fromCapturedAt && toCapturedAt) {
           keyConditionExpression = "pk = :pk AND sk BETWEEN :fromSk AND :toSk";
           expressionValues[":fromSk"] = `TIMELINE#${fromCapturedAt}`;
           expressionValues[":toSk"] = `TIMELINE#${toCapturedAt}`;
+        } else {
+          expressionValues[":timeline"] = "TIMELINE#";
         }
 
         const result = await dynamodb.send(

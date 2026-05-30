@@ -372,6 +372,7 @@ export class AlbumStack extends Stack {
       handler: "handler",
       environment: commonEnvironment,
       bundling: {
+        forceDockerBundling: true,
         nodeModules: ["sharp"],
       },
       reservedConcurrentExecutions: 2,
