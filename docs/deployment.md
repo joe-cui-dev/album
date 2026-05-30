@@ -86,3 +86,21 @@ npm run check --workspaces --if-present
 npm run cdk:synth
 VITE_API_BASE_URL=https://example.execute-api.ap-southeast-2.amazonaws.com npm run build -w @album/web
 ```
+
+## Backend Logs
+
+The repo includes a small CloudWatch Logs helper that loads `.env`, discovers
+the Lambda log groups from `PersonalAlbumStack`, and queries them from the
+terminal.
+
+```sh
+npm run logs
+npm run logs -- --since 1h --contains "AccessDenied"
+npm run logs -- --request-id abc-123
+npm run logs -- --query "fields @timestamp, @message | sort @timestamp desc | limit 20"
+npm run logs:tail
+npm run logs:groups
+```
+
+Use `--profile`, `--region`, or `--stack` when you need to override local AWS
+settings.

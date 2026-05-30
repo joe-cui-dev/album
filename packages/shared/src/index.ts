@@ -170,3 +170,48 @@ export interface GetUploadBatchStatusResponse {
 }
 
 export type RetryProcessingResponse = UploadBatchPhotoStatus;
+
+export interface TimelinePhoto {
+  photoId: string;
+  fileName: string;
+  capturedAt: string;
+  processingState: ProcessingState;
+  archived: boolean;
+  displayObjectKey?: string;
+  displayDimensions?: {
+    width: number;
+    height: number;
+  };
+}
+
+export interface ListTimelinePhotosResponse {
+  photos: TimelinePhoto[];
+}
+
+export interface PhotoDetail {
+  photoId: string;
+  fileName: string;
+  format: PhotoFormat;
+  fileSizeBytes: number;
+  capturedAt?: string;
+  capturedAtSource?: CapturedAtSource;
+  processingState: ProcessingState;
+  archived: boolean;
+  metadata?: PhotoMetadata;
+  displayDimensions?: {
+    width: number;
+    height: number;
+  };
+}
+
+export type GetPhotoDetailResponse = PhotoDetail;
+
+export interface ArchivePhotoResponse {
+  photoId: string;
+  archived: true;
+}
+
+export interface CreateTemporaryPhotoUrlResponse {
+  url: string;
+  expiresInSeconds: number;
+}

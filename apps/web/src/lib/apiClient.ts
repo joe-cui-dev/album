@@ -1,8 +1,12 @@
 import type {
   CreateUploadBatchRequest,
   CreateUploadBatchResponse,
+  ArchivePhotoResponse,
+  CreateTemporaryPhotoUrlResponse,
+  GetPhotoDetailResponse,
   GetSessionResponse,
   GetUploadBatchStatusResponse,
+  ListTimelinePhotosResponse,
   RequestSignInCodeRequest,
   RequestSignInCodeResponse,
   RetryProcessingResponse,
@@ -68,6 +72,27 @@ export const apiClient = {
     }),
   getUploadBatchStatus: (uploadBatchId: string) =>
     request<GetUploadBatchStatusResponse>(`/upload-batches/${uploadBatchId}`),
+  listTimelinePhotos: (query: Record<string, string> = {}) => {
+    const search = new URLSearchParams(query);
+    const suffix = search.size ? `?${search.toString()}` : "";
+    return request<ListTimelinePhotosResponse>(`/timeline${suffix}`);
+  },
+  getPhotoDetail: (photoId: string) =>
+    request<GetPhotoDetailResponse>(`/photos/${photoId}`),
+  archivePhoto: (photoId: string) =>
+    request<ArchivePhotoResponse>(`/photos/${photoId}/archive`, {
+      method: "POST",
+    }),
+  createDisplayAccessUrl: (photoId: string) =>
+    request<CreateTemporaryPhotoUrlResponse>(
+      `/photos/${photoId}/display-access`,
+      { method: "POST" },
+    ),
+  createOriginalDownloadUrl: (photoId: string) =>
+    request<CreateTemporaryPhotoUrlResponse>(
+      `/photos/${photoId}/original-download`,
+      { method: "POST" },
+    ),
   retryProcessing: (photoId: string) =>
     request<RetryProcessingResponse>(`/photos/${photoId}/retry-processing`, {
       method: "POST",

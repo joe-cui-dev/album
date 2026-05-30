@@ -259,6 +259,80 @@ export class AlbumStack extends Stack {
       },
     );
 
+    const listTimelinePhotos = new NodejsFunction(
+      this,
+      "ListTimelinePhotosHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "list-timeline-photos.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "ListTimelinePhotosLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const getPhotoDetail = new NodejsFunction(this, "GetPhotoDetailHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
+      handler: "getPhotoDetailHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "GetPhotoDetailLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const archivePhoto = new NodejsFunction(this, "ArchivePhotoHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
+      handler: "archivePhotoHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ArchivePhotoLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const displayAccessUrl = new NodejsFunction(
+      this,
+      "DisplayAccessUrlHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
+        handler: "displayAccessUrlHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "DisplayAccessUrlLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const originalDownloadUrl = new NodejsFunction(
+      this,
+      "OriginalDownloadUrlHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
+        handler: "originalDownloadUrlHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "OriginalDownloadUrlLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
     const retryProcessing = new NodejsFunction(
       this,
       "RetryProcessingHandler",
@@ -315,8 +389,15 @@ export class AlbumStack extends Stack {
 
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
+    photosBucket.grantRead(displayAccessUrl);
+    photosBucket.grantRead(originalDownloadUrl);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
+    metadataTable.grantReadData(listTimelinePhotos);
+    metadataTable.grantReadData(getPhotoDetail);
+    metadataTable.grantReadWriteData(archivePhoto);
+    metadataTable.grantReadData(displayAccessUrl);
+    metadataTable.grantReadData(originalDownloadUrl);
     metadataTable.grantReadData(retryProcessing);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
@@ -389,6 +470,11 @@ export class AlbumStack extends Stack {
     for (const lambda of [
       createUploadBatch,
       uploadBatchStatus,
+      listTimelinePhotos,
+      getPhotoDetail,
+      archivePhoto,
+      displayAccessUrl,
+      originalDownloadUrl,
       retryProcessing,
       session,
       processPhoto,
@@ -469,6 +555,51 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "UploadBatchStatusIntegration",
         uploadBatchStatus,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/timeline",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ListTimelinePhotosIntegration",
+        listTimelinePhotos,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "GetPhotoDetailIntegration",
+        getPhotoDetail,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/archive",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "ArchivePhotoIntegration",
+        archivePhoto,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/display-access",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "DisplayAccessUrlIntegration",
+        displayAccessUrl,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/original-download",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "OriginalDownloadUrlIntegration",
+        originalDownloadUrl,
       ),
     });
 

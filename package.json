@@ -16,6 +16,9 @@
     "check": "npm run check --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "dev:web": "npm run dev -w @album/web",
+    "logs": "node scripts/logs.mjs query",
+    "logs:tail": "node scripts/logs.mjs tail",
+    "logs:groups": "node scripts/logs.mjs groups",
     "cdk": "npm run cdk -w @album/infra",
     "cdk:synth": "npm run synth -w @album/infra",
     "deploy": "./scripts/deploy.sh"

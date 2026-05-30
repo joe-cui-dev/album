@@ -1,7 +1,17 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { LogOut, Trash2, Upload } from "lucide-react";
+import {
+  Archive,
+  Download,
+  Image,
+  LogOut,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import type {
+  GetPhotoDetailResponse,
   GetUploadBatchStatusResponse,
+  TimelinePhoto,
   SessionUser,
   UploadBatchPhotoStatus,
 } from "@album/shared";
@@ -31,6 +41,15 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [uploadBatchId, setUploadBatchId] = useState<string>();
   const [batchStatus, setBatchStatus] = useState<GetUploadBatchStatusResponse>();
+  const [timelinePhotos, setTimelinePhotos] = useState<TimelinePhoto[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<GetPhotoDetailResponse>();
+  const [displayUrl, setDisplayUrl] = useState<string>();
+  const [originalDownloadUrl, setOriginalDownloadUrl] = useState<string>();
+  const [timelineYear, setTimelineYear] = useState("");
+  const [timelineMonth, setTimelineMonth] = useState("");
+  const [timelineProcessingState, setTimelineProcessingState] = useState("");
+  const [showArchivedTimeline, setShowArchivedTimeline] = useState(false);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [retryPolling, setRetryPolling] = useState(false);
   const [warning, setWarning] = useState<string>();
   const [error, setError] = useState<string>();
@@ -99,6 +118,67 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
   const signOut = async () => {
     await apiClient.signOut();
     onSignedOut();
+  };
+
+  const refreshTimeline = async () => {
+    setTimelineLoading(true);
+    setError(undefined);
+    try {
+      const response = await apiClient.listTimelinePhotos(
+        removeEmptyQuery({
+          year: timelineYear,
+          month: timelineMonth,
+          processingState: timelineProcessingState,
+          archived: showArchivedTimeline ? "true" : "",
+        }),
+      );
+      setTimelinePhotos(response.photos);
+      if (
+        selectedPhoto &&
+        !response.photos.some((photo) => photo.photoId === selectedPhoto.photoId)
+      ) {
+        setSelectedPhoto(undefined);
+        setDisplayUrl(undefined);
+        setOriginalDownloadUrl(undefined);
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Timeline failed");
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
+  const openPhoto = async (photoId: string) => {
+    setError(undefined);
+    setOriginalDownloadUrl(undefined);
+    try {
+      const detail = await apiClient.getPhotoDetail(photoId);
+      setSelectedPhoto(detail);
+      if (detail.processingState === "ready") {
+        const access = await apiClient.createDisplayAccessUrl(photoId);
+        setDisplayUrl(access.url);
+      } else {
+        setDisplayUrl(undefined);
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Photo detail failed");
+    }
+  };
+
+  const archiveSelectedPhoto = async () => {
+    if (!selectedPhoto) {
+      return;
+    }
+    await apiClient.archivePhoto(selectedPhoto.photoId);
+    await refreshTimeline();
+  };
+
+  const createOriginalDownload = async () => {
+    if (!selectedPhoto) {
+      return;
+    }
+    const response = await apiClient.createOriginalDownloadUrl(selectedPhoto.photoId);
+    setOriginalDownloadUrl(response.url);
   };
 
   const createUploadBatch = async () => {
@@ -198,6 +278,113 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
         </button>
       </header>
 
+      <section className="grid gap-5 border-b border-stone-200 py-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-stone-950">Timeline</h2>
+              <p className="mt-1 text-sm text-stone-600">
+                {timelinePhotos.length
+                  ? `${timelinePhotos.length} photos`
+                  : "No timeline photos"}
+              </p>
+            </div>
+            <button
+              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 disabled:text-stone-500"
+              disabled={timelineLoading}
+              onClick={refreshTimeline}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
+              Refresh timeline
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 rounded-lg border border-stone-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm font-semibold text-stone-800">
+              Year
+              <input
+                className="mt-1 block min-h-10 w-full rounded-md border border-stone-300 px-3 font-normal text-stone-950"
+                inputMode="numeric"
+                onChange={(event) => setTimelineYear(event.target.value)}
+                placeholder="2025"
+                type="text"
+                value={timelineYear}
+              />
+            </label>
+            <label className="text-sm font-semibold text-stone-800">
+              Month
+              <select
+                className="mt-1 block min-h-10 w-full rounded-md border border-stone-300 px-3 font-normal text-stone-950"
+                onChange={(event) => setTimelineMonth(event.target.value)}
+                value={timelineMonth}
+              >
+                <option value="">All</option>
+                {Array.from({ length: 12 }, (_, index) => (
+                  <option key={index + 1} value={String(index + 1).padStart(2, "0")}>
+                    {String(index + 1).padStart(2, "0")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-semibold text-stone-800">
+              State
+              <select
+                className="mt-1 block min-h-10 w-full rounded-md border border-stone-300 px-3 font-normal text-stone-950"
+                onChange={(event) => setTimelineProcessingState(event.target.value)}
+                value={timelineProcessingState}
+              >
+                <option value="">Ready</option>
+                <option value="processingFailed">Processing failed</option>
+                <option value="exactDuplicate">Exact duplicate</option>
+                <option value="processing">Processing</option>
+                <option value="uploaded">Uploaded</option>
+                <option value="uploadRequested">Upload requested</option>
+              </select>
+            </label>
+            <label className="flex min-h-10 items-center gap-2 self-end text-sm font-semibold text-stone-800">
+              <input
+                checked={showArchivedTimeline}
+                className="h-4 w-4"
+                onChange={(event) => setShowArchivedTimeline(event.target.checked)}
+                type="checkbox"
+              />
+              Archived
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {timelinePhotos.map((photo) => (
+              <button
+                aria-label={`Open ${photo.fileName}`}
+                className="min-h-32 rounded-lg border border-stone-200 bg-white p-4 text-left hover:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                key={photo.photoId}
+                onClick={() => void openPhoto(photo.photoId)}
+                type="button"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-800">
+                  <Image aria-hidden="true" className="h-5 w-5" />
+                </span>
+                <span className="mt-3 block break-words font-semibold text-stone-950">
+                  {photo.fileName}
+                </span>
+                <span className="mt-1 block text-sm text-stone-600">
+                  {formatDateTime(photo.capturedAt)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <PhotoDetailPanel
+          displayUrl={displayUrl}
+          onArchive={() => void archiveSelectedPhoto()}
+          onDownloadOriginal={() => void createOriginalDownload()}
+          originalDownloadUrl={originalDownloadUrl}
+          photo={selectedPhoto}
+        />
+      </section>
+
       <section className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           <label className="block rounded-lg border border-dashed border-stone-300 bg-white p-5">
@@ -272,6 +459,103 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
         </aside>
       </section>
     </main>
+  );
+}
+
+function PhotoDetailPanel({
+  displayUrl,
+  onArchive,
+  onDownloadOriginal,
+  originalDownloadUrl,
+  photo,
+}: {
+  displayUrl: string | undefined;
+  onArchive: () => void;
+  onDownloadOriginal: () => void;
+  originalDownloadUrl: string | undefined;
+  photo: GetPhotoDetailResponse | undefined;
+}) {
+  if (!photo) {
+    return (
+      <aside className="rounded-lg border border-stone-200 bg-white p-4">
+        <h2 className="text-lg font-bold text-stone-950">Photo detail</h2>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="rounded-lg border border-stone-200 bg-white p-4">
+      <h2 className="break-words text-lg font-bold text-stone-950">
+        {photo.fileName}
+      </h2>
+      {displayUrl ? (
+        <img
+          alt={photo.fileName}
+          className="mt-4 aspect-[4/3] w-full rounded-md object-cover"
+          src={displayUrl}
+        />
+      ) : null}
+
+      <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+        <dt className="font-semibold text-stone-700">Captured</dt>
+        <dd className="text-stone-950">
+          {photo.capturedAt ? formatDateTime(photo.capturedAt) : "Unknown"}
+        </dd>
+        <dt className="font-semibold text-stone-700">State</dt>
+        <dd className="text-stone-950">{labelProcessingState(photo.processingState)}</dd>
+        <dt className="font-semibold text-stone-700">Format</dt>
+        <dd className="uppercase text-stone-950">{photo.format}</dd>
+        <dt className="font-semibold text-stone-700">Size</dt>
+        <dd className="text-stone-950">{formatBytes(photo.fileSizeBytes)}</dd>
+        {photo.metadata?.width && photo.metadata.height ? (
+          <>
+            <dt className="font-semibold text-stone-700">Dimensions</dt>
+            <dd className="text-stone-950">
+              {photo.metadata.width} x {photo.metadata.height}
+            </dd>
+          </>
+        ) : null}
+        {photo.metadata?.cameraMake ? (
+          <>
+            <dt className="font-semibold text-stone-700">Camera</dt>
+            <dd className="text-stone-950">
+              {[photo.metadata.cameraMake, photo.metadata.cameraModel]
+                .filter(Boolean)
+                .join(" ")}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900"
+          onClick={onDownloadOriginal}
+          type="button"
+        >
+          <Download aria-hidden="true" className="h-4 w-4" />
+          Download original
+        </button>
+        <button
+          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900"
+          onClick={onArchive}
+          type="button"
+        >
+          <Archive aria-hidden="true" className="h-4 w-4" />
+          Archive photo
+        </button>
+      </div>
+      {originalDownloadUrl ? (
+        <a
+          className="mt-3 inline-flex min-h-10 items-center rounded-md bg-emerald-800 px-3 text-sm font-bold text-white"
+          href={originalDownloadUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Open original download
+        </a>
+      ) : null}
+    </aside>
   );
 }
 
@@ -355,3 +639,28 @@ const labelProcessingState = (state: UploadBatchPhotoStatus["processingState"]) 
     processingFailed: "Processing failed",
     exactDuplicate: "Exact duplicate",
   })[state];
+
+const formatDateTime = (value: string): string => {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+};
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
+
+const removeEmptyQuery = (
+  query: Record<string, string>,
+): Record<string, string> => {
+  return Object.fromEntries(
+    Object.entries(query).filter(([, value]) => value.length > 0),
+  );
+};

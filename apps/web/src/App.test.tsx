@@ -484,4 +484,100 @@ describe("App", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(await screen.findByText("Processing state: Processing")).toBeInTheDocument();
   });
+
+  it("browses timeline photos, opens detail, archives, and creates a single-photo original download", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          signedIn: true,
+          user: { userId: "user-1", email: "joe@example.com" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          photos: [
+            {
+              photoId: "photo-1",
+              fileName: "beach.jpg",
+              capturedAt: "2025-01-02T10:00:00.000Z",
+              processingState: "ready",
+              archived: false,
+              displayDimensions: { width: 1600, height: 1200 },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          photoId: "photo-1",
+          fileName: "beach.jpg",
+          format: "jpeg",
+          fileSizeBytes: 1234,
+          capturedAt: "2025-01-02T10:00:00.000Z",
+          capturedAtSource: "exif",
+          processingState: "ready",
+          archived: false,
+          metadata: {
+            width: 4000,
+            height: 3000,
+            cameraMake: "Canon",
+          },
+          displayDimensions: { width: 1600, height: 1200 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          url: "https://temporary.example/display.jpg",
+          expiresInSeconds: 300,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          url: "https://temporary.example/original.jpg",
+          expiresInSeconds: 300,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ photoId: "photo-1", archived: true }))
+      .mockResolvedValueOnce(Response.json({ photos: [] }));
+
+    renderApp(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh timeline" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open beach.jpg" }));
+
+    expect(await screen.findByText("Canon")).toBeInTheDocument();
+    expect(screen.getByAltText("beach.jpg")).toHaveAttribute(
+      "src",
+      "https://temporary.example/display.jpg",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Download original" }));
+    expect(await screen.findByRole("link", { name: "Open original download" })).toHaveAttribute(
+      "href",
+      "https://temporary.example/original.jpg",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Archive photo" }));
+    expect(await screen.findByText("No timeline photos")).toBeInTheDocument();
+    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/timeline`, {
+      credentials: "include",
+      headers: {},
+    });
+    expect(fetch).toHaveBeenNthCalledWith(4, `${apiBaseUrl}/photos/photo-1/display-access`, {
+      method: "POST",
+      credentials: "include",
+      headers: {},
+    });
+    expect(fetch).toHaveBeenNthCalledWith(5, `${apiBaseUrl}/photos/photo-1/original-download`, {
+      method: "POST",
+      credentials: "include",
+      headers: {},
+    });
+    expect(fetch).toHaveBeenNthCalledWith(6, `${apiBaseUrl}/photos/photo-1/archive`, {
+      method: "POST",
+      credentials: "include",
+      headers: {},
+    });
+  });
 });
