@@ -46,7 +46,15 @@ _Avoid_: export, bulk download
 
 **Display Photo**:
 A smaller photo derived from an Original Photo for browsing in the web app. A Display Photo is oriented for normal viewing even when the Original Photo stores its orientation as metadata.
-_Avoid_: thumbnail, preview image
+_Avoid_: preview image
+
+**Timeline Thumbnail**:
+A small photo derived from an Original Photo for fast browsing in the Timeline. A Timeline Thumbnail is private album content, not a public or long-lived thumbnail URL.
+_Avoid_: public thumbnail, preview image
+
+**Timeline Thumbnail Size**:
+The target sizing rule used when creating a Timeline Thumbnail from an Original Photo. The first version limits the longest edge to 320 pixels while preserving the image's aspect ratio and does not enlarge smaller photos.
+_Avoid_: icon size, preview size
 
 **Display Access**:
 A temporary grant for a signed-in User to view one of their own Display Photos. Display Access does not make Display Photos publicly browsable.
@@ -93,11 +101,11 @@ A group of Original Photos selected and submitted by the User in one upload acti
 _Avoid_: import job, folder sync
 
 **Processing State**:
-The state of a photo between upload and being ready to browse as a Display Photo.
+The state of a photo between upload and being ready to browse with its Display Photo and Timeline Thumbnail.
 _Avoid_: job status, queue state
 
 **Processing Failed**:
-A Processing State where the Original Photo was uploaded but the Display Photo or Photo Metadata could not be created.
+A Processing State where the Original Photo was uploaded but the Display Photo, Timeline Thumbnail, or Photo Metadata could not be created.
 _Avoid_: broken upload, invalid photo
 
 **Retry Processing**:
@@ -174,8 +182,8 @@ Domain expert: "No. The first version only supports Original Download for one ph
 Developer: "Can a User download another User's Original Photo by knowing its id or object key?"
 Domain expert: "No. Original Download is temporary and scoped to the signed-in User."
 
-Developer: "How many web versions should we create for each photo?"
-Domain expert: "The first version creates one Display Photo using the chosen Display Size."
+Developer: "How many browsing versions should we create for each photo?"
+Domain expert: "Create a Display Photo for detailed viewing and a Timeline Thumbnail for fast Timeline browsing."
 
 Developer: "Should the main view show upload batches?"
 Domain expert: "No. The main view is the Timeline, which follows when the photos were captured."
@@ -202,7 +210,7 @@ Developer: "Can new people register?"
 Domain expert: "No. The User signs in with a Sign-In Code sent to their email."
 
 Developer: "Is upload always one photo at a time?"
-Domain expert: "No. The User can submit an Upload Batch, and each photo has a Processing State until its Display Photo is ready."
+Domain expert: "No. The User can submit an Upload Batch, and each photo has a Processing State until its Display Photo and Timeline Thumbnail are ready."
 
 Developer: "If processing fails, should we delete the uploaded file?"
 Domain expert: "No. Mark it as Processing Failed and allow Retry Processing."

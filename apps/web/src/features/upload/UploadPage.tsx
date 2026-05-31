@@ -353,22 +353,32 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
             </label>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {timelinePhotos.map((photo) => (
               <button
                 aria-label={`Open ${photo.fileName}`}
-                className="min-h-32 rounded-lg border border-stone-200 bg-white p-4 text-left hover:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                className="rounded-lg border border-stone-200 bg-white p-2 text-left hover:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-800"
                 key={photo.photoId}
                 onClick={() => void openPhoto(photo.photoId)}
                 type="button"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-800">
-                  <Image aria-hidden="true" className="h-5 w-5" />
-                </span>
-                <span className="mt-3 block break-words font-semibold text-stone-950">
+                {photo.timelineThumbnailUrl ? (
+                  <img
+                    alt={`${photo.fileName} thumbnail`}
+                    className="aspect-square w-full rounded-md bg-stone-100 object-cover"
+                    decoding="async"
+                    loading="lazy"
+                    src={photo.timelineThumbnailUrl}
+                  />
+                ) : (
+                  <span className="flex aspect-square w-full items-center justify-center rounded-md bg-emerald-50 text-emerald-800">
+                    <Image aria-hidden="true" className="h-6 w-6" />
+                  </span>
+                )}
+                <span className="mt-2 block truncate text-sm font-semibold text-stone-950">
                   {photo.fileName}
                 </span>
-                <span className="mt-1 block text-sm text-stone-600">
+                <span className="mt-1 block truncate text-xs text-stone-600">
                   {formatDateTime(photo.capturedAt)}
                 </span>
               </button>

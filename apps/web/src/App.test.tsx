@@ -504,6 +504,8 @@ describe("App", () => {
               processingState: "ready",
               archived: false,
               displayDimensions: { width: 1600, height: 1200 },
+              timelineThumbnailUrl: "https://temporary.example/thumbnail.jpg",
+              timelineThumbnailDimensions: { width: 320, height: 240 },
             },
           ],
         }),
@@ -544,6 +546,10 @@ describe("App", () => {
     renderApp(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Refresh timeline" }));
+    expect(await screen.findByAltText("beach.jpg thumbnail")).toHaveAttribute(
+      "src",
+      "https://temporary.example/thumbnail.jpg",
+    );
     await userEvent.click(await screen.findByRole("button", { name: "Open beach.jpg" }));
 
     expect(await screen.findByText("Canon")).toBeInTheDocument();

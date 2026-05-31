@@ -405,6 +405,7 @@ export class AlbumStack extends Stack {
 
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
+    photosBucket.grantRead(listTimelinePhotos);
     photosBucket.grantRead(displayAccessUrl);
     photosBucket.grantRead(originalDownloadUrl);
     metadataTable.grantReadWriteData(createUploadBatch);

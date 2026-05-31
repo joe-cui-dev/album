@@ -1,5 +1,9 @@
 import sharp from "sharp";
-import { createDisplayPhoto, handleProcessPhoto } from "./process-photo.js";
+import {
+  createDisplayPhoto,
+  createTimelineThumbnail,
+  handleProcessPhoto,
+} from "./process-photo.js";
 
 describe("handleProcessPhoto", () => {
   it("marks the matching Photo as processingFailed when S3 metadata does not match the original object key", async () => {
@@ -58,8 +62,14 @@ describe("handleProcessPhoto", () => {
         createDisplayPhoto: async () => {
           throw new Error("should not create display photos for mismatches");
         },
+        createTimelineThumbnail: async () => {
+          throw new Error("should not create timeline thumbnails for mismatches");
+        },
         writeDisplayPhoto: async () => {
           throw new Error("should not write display photos for mismatches");
+        },
+        writeTimelineThumbnail: async () => {
+          throw new Error("should not write timeline thumbnails for mismatches");
         },
         markReady: async () => {
           throw new Error("should not mark mismatched uploads ready");
@@ -138,8 +148,14 @@ describe("handleProcessPhoto", () => {
         createDisplayPhoto: async () => {
           throw new Error("should not create display photos for duplicates");
         },
+        createTimelineThumbnail: async () => {
+          throw new Error("should not create timeline thumbnails for duplicates");
+        },
         writeDisplayPhoto: async () => {
           throw new Error("should not write display photos for duplicates");
+        },
+        writeTimelineThumbnail: async () => {
+          throw new Error("should not write timeline thumbnails for duplicates");
         },
         markReady: async () => {
           throw new Error("should not mark duplicates ready");
@@ -167,8 +183,9 @@ describe("handleProcessPhoto", () => {
     ]);
   });
 
-  it("writes a display JPEG, marks the Photo ready, and creates a lightweight Timeline item", async () => {
+  it("writes derived JPEGs, marks the Photo ready, and creates a lightweight Timeline item", async () => {
     const displayWrites: unknown[] = [];
+    const timelineThumbnailWrites: unknown[] = [];
     const readyWrites: unknown[] = [];
     const timelineWrites: unknown[] = [];
 
@@ -217,8 +234,15 @@ describe("handleProcessPhoto", () => {
             cameraMake: "Fuji",
           },
         }),
+        createTimelineThumbnail: async () => ({
+          body: Buffer.from("timeline thumbnail jpeg"),
+          dimensions: { width: 320, height: 213 },
+        }),
         writeDisplayPhoto: async (input) => {
           displayWrites.push(input);
+        },
+        writeTimelineThumbnail: async (input) => {
+          timelineThumbnailWrites.push(input);
         },
         markReady: async (input) => {
           readyWrites.push(input);
@@ -241,6 +265,12 @@ describe("handleProcessPhoto", () => {
         body: Buffer.from("display jpeg"),
       },
     ]);
+    expect(timelineThumbnailWrites).toEqual([
+      {
+        objectKey: "timeline-thumbnails/user-1/photo-1.jpg",
+        body: Buffer.from("timeline thumbnail jpeg"),
+      },
+    ]);
     expect(readyWrites).toEqual([
       {
         userId: "user-1",
@@ -249,6 +279,8 @@ describe("handleProcessPhoto", () => {
           "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9",
         displayObjectKey: "display/user-1/photo-1.jpg",
         displayDimensions: { width: 2048, height: 1365 },
+        timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg",
+        timelineThumbnailDimensions: { width: 320, height: 213 },
         capturedAt: "2026-01-02T03:04:05.000Z",
         capturedAtSource: "fileModifiedTime",
         metadata: {
@@ -315,7 +347,12 @@ describe("handleProcessPhoto", () => {
           metadata: { width: 1200, height: 800 },
           capturedAt: "2025-12-24T10:11:12.000Z",
         }),
+        createTimelineThumbnail: async () => ({
+          body: Buffer.from("timeline thumbnail jpeg"),
+          dimensions: { width: 320, height: 213 },
+        }),
         writeDisplayPhoto: async () => undefined,
+        writeTimelineThumbnail: async () => undefined,
         markReady: async (input) => {
           readyWrites.push(input);
         },
@@ -384,7 +421,12 @@ describe("handleProcessPhoto", () => {
           dimensions: { width: 100, height: 100 },
           metadata: { width: 100, height: 100 },
         }),
+        createTimelineThumbnail: async () => ({
+          body: Buffer.from("timeline thumbnail jpeg"),
+          dimensions: { width: 100, height: 100 },
+        }),
         writeDisplayPhoto: async () => undefined,
+        writeTimelineThumbnail: async () => undefined,
         markReady: async () => undefined,
         putTimelineItem: async () => undefined,
         markProcessingFailed: async () => {
@@ -488,6 +530,48 @@ describe("createDisplayPhoto", () => {
       height: 512,
     });
     expect(largeResult.dimensions).toEqual({ width: 2048, height: 512 });
+
+    await expect(sharp(smallResult.body).metadata()).resolves.toMatchObject({
+      format: "jpeg",
+      width: 32,
+      height: 16,
+    });
+    expect(smallResult.dimensions).toEqual({ width: 32, height: 16 });
+  });
+});
+
+describe("createTimelineThumbnail", () => {
+  it("writes timeline thumbnails as JPEG with longest edge constrained to 320 pixels without enlarging small images", async () => {
+    const largeOriginal = await sharp({
+      create: {
+        width: 4096,
+        height: 1024,
+        channels: 3,
+        background: "#6699cc",
+      },
+    })
+      .png()
+      .toBuffer();
+    const smallOriginal = await sharp({
+      create: {
+        width: 32,
+        height: 16,
+        channels: 3,
+        background: "#99cc66",
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const largeResult = await createTimelineThumbnail(largeOriginal);
+    const smallResult = await createTimelineThumbnail(smallOriginal);
+
+    await expect(sharp(largeResult.body).metadata()).resolves.toMatchObject({
+      format: "jpeg",
+      width: 320,
+      height: 80,
+    });
+    expect(largeResult.dimensions).toEqual({ width: 320, height: 80 });
 
     await expect(sharp(smallResult.body).metadata()).resolves.toMatchObject({
       format: "jpeg",

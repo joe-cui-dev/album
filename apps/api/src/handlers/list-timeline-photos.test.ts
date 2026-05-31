@@ -23,6 +23,8 @@ describe("handleListTimelinePhotos", () => {
               capturedAt: "2024-12-31T23:00:00.000Z",
               processingState: "ready",
               archived: false,
+              timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-old.jpg",
+              timelineThumbnailDimensions: { width: 320, height: 240 },
             },
             "photo-new": {
               photoId,
@@ -32,6 +34,8 @@ describe("handleListTimelinePhotos", () => {
               archived: false,
               displayObjectKey: "display/user-1/photo-new.jpg",
               displayDimensions: { width: 1600, height: 1200 },
+              timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-new.jpg",
+              timelineThumbnailDimensions: { width: 320, height: 240 },
             },
             "photo-archived": {
               photoId,
@@ -50,6 +54,8 @@ describe("handleListTimelinePhotos", () => {
           } as const;
           return photos[photoId as keyof typeof photos];
         },
+        createTimelineThumbnailUrl: async ({ objectKey }) =>
+          `https://temporary.example/${objectKey}`,
       },
     });
 
@@ -64,6 +70,9 @@ describe("handleListTimelinePhotos", () => {
           archived: false,
           displayObjectKey: "display/user-1/photo-new.jpg",
           displayDimensions: { width: 1600, height: 1200 },
+          timelineThumbnailUrl:
+            "https://temporary.example/timeline-thumbnails/user-1/photo-new.jpg",
+          timelineThumbnailDimensions: { width: 320, height: 240 },
         },
         {
           photoId: "photo-old",
@@ -71,6 +80,9 @@ describe("handleListTimelinePhotos", () => {
           capturedAt: "2024-12-31T23:00:00.000Z",
           processingState: "ready",
           archived: false,
+          timelineThumbnailUrl:
+            "https://temporary.example/timeline-thumbnails/user-1/photo-old.jpg",
+          timelineThumbnailDimensions: { width: 320, height: 240 },
         },
       ],
     });
@@ -102,6 +114,9 @@ describe("handleListTimelinePhotos", () => {
             photoId === "photo-1" ? "processingFailed" : "ready",
           archived: photoId === "photo-1",
         }),
+        createTimelineThumbnailUrl: async () => {
+          throw new Error("should not sign thumbnails for non-ready photos");
+        },
       },
     });
 

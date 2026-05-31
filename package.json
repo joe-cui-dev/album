@@ -19,6 +19,7 @@
     "logs": "node scripts/logs.mjs query",
     "logs:tail": "node scripts/logs.mjs tail",
     "logs:groups": "node scripts/logs.mjs groups",
+    "reset:data": "node scripts/reset-data.mjs",
     "cdk": "npm run cdk -w @album/infra",
     "cdk:synth": "npm run synth -w @album/infra",
     "deploy": "./scripts/deploy.sh"

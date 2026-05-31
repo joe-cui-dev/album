@@ -21,6 +21,7 @@ import type {
 import {
   displayPhotoLongestEdgePixels,
   parseOriginalObjectKey,
+  timelineThumbnailLongestEdgePixels,
 } from "@album/shared";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -45,12 +46,15 @@ interface PhotoProcessingItem {
   processingState: ProcessingState;
 }
 
-interface DisplayPhotoResult {
+interface DerivedPhotoResult {
   body: Uint8Array;
   dimensions: {
     width: number;
     height: number;
   };
+}
+
+interface DisplayPhotoResult extends DerivedPhotoResult {
   metadata: PhotoMetadata;
   capturedAt?: string;
 }
@@ -86,7 +90,14 @@ interface ProcessPhotoDeps {
     duplicateOfPhotoId: string;
   }) => Promise<void>;
   createDisplayPhoto: (originalBytes: Uint8Array) => Promise<DisplayPhotoResult>;
+  createTimelineThumbnail: (
+    originalBytes: Uint8Array,
+  ) => Promise<DerivedPhotoResult>;
   writeDisplayPhoto: (input: {
+    objectKey: string;
+    body: Uint8Array;
+  }) => Promise<void>;
+  writeTimelineThumbnail: (input: {
     objectKey: string;
     body: Uint8Array;
   }) => Promise<void>;
@@ -96,6 +107,11 @@ interface ProcessPhotoDeps {
     sha256: string;
     displayObjectKey: string;
     displayDimensions: {
+      width: number;
+      height: number;
+    };
+    timelineThumbnailObjectKey: string;
+    timelineThumbnailDimensions: {
       width: number;
       height: number;
     };
@@ -234,7 +250,18 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
         );
       },
       createDisplayPhoto,
+      createTimelineThumbnail,
       writeDisplayPhoto: async ({ objectKey, body }) => {
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: config.photosBucketName,
+            Key: objectKey,
+            Body: body,
+            ContentType: "image/jpeg",
+          }),
+        );
+      },
+      writeTimelineThumbnail: async ({ objectKey, body }) => {
         await s3.send(
           new PutObjectCommand({
             Bucket: config.photosBucketName,
@@ -250,6 +277,8 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
         sha256,
         displayObjectKey,
         displayDimensions,
+        timelineThumbnailObjectKey,
+        timelineThumbnailDimensions,
         capturedAt,
         capturedAtSource,
         metadata,
@@ -262,7 +291,7 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
               sk: `PHOTO#${photoId}`,
             },
             UpdateExpression:
-              "SET processingState = :state, sha256 = :sha256, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, capturedAt = :capturedAt, capturedAtSource = :capturedAtSource, #metadata = :metadata REMOVE failureCode, failureMessage",
+              "SET processingState = :state, sha256 = :sha256, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, timelineThumbnailObjectKey = :timelineThumbnailObjectKey, timelineThumbnailDimensions = :timelineThumbnailDimensions, capturedAt = :capturedAt, capturedAtSource = :capturedAtSource, #metadata = :metadata REMOVE failureCode, failureMessage",
             ExpressionAttributeNames: {
               "#metadata": "metadata",
             },
@@ -271,6 +300,8 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
               ":sha256": sha256,
               ":displayObjectKey": displayObjectKey,
               ":displayDimensions": displayDimensions,
+              ":timelineThumbnailObjectKey": timelineThumbnailObjectKey,
+              ":timelineThumbnailDimensions": timelineThumbnailDimensions,
               ":capturedAt": capturedAt,
               ":capturedAtSource": capturedAtSource,
               ":metadata": metadata,
@@ -390,13 +421,15 @@ export const handleProcessPhoto = async ({
       }
 
       let displayPhoto: DisplayPhotoResult;
+      let timelineThumbnail: DerivedPhotoResult;
       try {
         displayPhoto = await deps.createDisplayPhoto(originalBytes);
+        timelineThumbnail = await deps.createTimelineThumbnail(originalBytes);
       } catch (error) {
         console.error(
           JSON.stringify({
             level: "error",
-            message: "Failed to decode uploaded photo",
+            message: "Failed to create derived photo output",
             objectKey,
             error: error instanceof Error ? error.message : String(error),
           }),
@@ -411,10 +444,15 @@ export const handleProcessPhoto = async ({
       }
 
       const displayObjectKey = `display/${keyParts.userId}/${keyParts.photoId}.jpg`;
+      const timelineThumbnailObjectKey = `timeline-thumbnails/${keyParts.userId}/${keyParts.photoId}.jpg`;
       const capturedAt = resolveCapturedAt(photo, displayPhoto);
       await deps.writeDisplayPhoto({
         objectKey: displayObjectKey,
         body: displayPhoto.body,
+      });
+      await deps.writeTimelineThumbnail({
+        objectKey: timelineThumbnailObjectKey,
+        body: timelineThumbnail.body,
       });
       await deps.markReady({
         userId: keyParts.userId,
@@ -422,6 +460,8 @@ export const handleProcessPhoto = async ({
         sha256,
         displayObjectKey,
         displayDimensions: displayPhoto.dimensions,
+        timelineThumbnailObjectKey,
+        timelineThumbnailDimensions: timelineThumbnail.dimensions,
         capturedAt: capturedAt.value,
         capturedAtSource: capturedAt.source,
         metadata: displayPhoto.metadata,
@@ -542,6 +582,29 @@ export const createDisplayPhoto = async (
       ...(exif.location ? { location: exif.location } : {}),
     },
     ...(exif.capturedAt ? { capturedAt: exif.capturedAt } : {}),
+  };
+};
+
+export const createTimelineThumbnail = async (
+  originalBytes: Uint8Array,
+): Promise<DerivedPhotoResult> => {
+  const rendered = await sharp(originalBytes)
+    .rotate()
+    .resize({
+      width: timelineThumbnailLongestEdgePixels,
+      height: timelineThumbnailLongestEdgePixels,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 80 })
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    body: rendered.data,
+    dimensions: {
+      width: rendered.info.width,
+      height: rendered.info.height,
+    },
   };
 };
 

@@ -3,6 +3,7 @@ export type PhotoFormat = "jpeg" | "png" | "heic";
 export const maxFilesPerUploadBatch = 100;
 export const maxOriginalPhotoBytes = 50 * 1024 * 1024;
 export const displayPhotoLongestEdgePixels = 2048;
+export const timelineThumbnailLongestEdgePixels = 320;
 
 export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
 
@@ -78,6 +79,7 @@ export interface Photo {
   uploadBatchId: string;
   originalObjectKey: string;
   displayObjectKey?: string;
+  timelineThumbnailObjectKey?: string;
   fileName: string;
   format: PhotoFormat;
   fileSizeBytes: number;
@@ -91,6 +93,10 @@ export interface Photo {
   archived: boolean;
   metadata?: PhotoMetadata;
   displayDimensions?: {
+    width: number;
+    height: number;
+  };
+  timelineThumbnailDimensions?: {
     width: number;
     height: number;
   };
@@ -179,6 +185,11 @@ export interface TimelinePhoto {
   archived: boolean;
   displayObjectKey?: string;
   displayDimensions?: {
+    width: number;
+    height: number;
+  };
+  timelineThumbnailUrl?: string;
+  timelineThumbnailDimensions?: {
     width: number;
     height: number;
   };

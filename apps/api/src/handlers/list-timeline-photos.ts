@@ -3,11 +3,13 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   DynamoDBDocumentClient,
   GetCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ListTimelinePhotosResponse,
   ProcessingState,
@@ -18,15 +20,31 @@ import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, ok, unauthorized } from "../http.js";
 
+const temporaryUrlExpiresInSeconds = 300;
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 interface TimelineItem {
   photoId: string;
   capturedAt: string;
 }
 
-interface TimelinePhotoItem extends TimelinePhoto {
+interface TimelinePhotoItem {
+  photoId: string;
+  fileName: string;
   capturedAt: string;
+  processingState: ProcessingState;
+  archived: boolean;
+  displayObjectKey?: string;
+  displayDimensions?: {
+    width: number;
+    height: number;
+  };
+  timelineThumbnailObjectKey?: string;
+  timelineThumbnailDimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 interface TimelineQuery {
@@ -46,6 +64,7 @@ interface ListTimelineDeps {
     userId: string;
     photoId: string;
   }) => Promise<TimelinePhotoItem | undefined>;
+  createTimelineThumbnailUrl: (input: { objectKey: string }) => Promise<string>;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
@@ -92,6 +111,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         );
         return asTimelinePhotoItem(result.Item);
       },
+      createTimelineThumbnailUrl,
     },
   });
 };
@@ -127,7 +147,7 @@ export const handleListTimelinePhotos = async ({
     userId: user.userId,
     ...capturedAtRange.range,
   });
-  const photos = (
+  const visiblePhotos = (
     await Promise.all(
       timelineItems.map((item) =>
         deps.getPhoto({ userId: user.userId, photoId: item.photoId }),
@@ -143,8 +163,10 @@ export const handleListTimelinePhotos = async ({
     .filter((photo) =>
       query.archived === "true" ? photo.archived : !photo.archived,
     )
-    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))
-    .map(toTimelinePhoto);
+    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt));
+  const photos = await Promise.all(
+    visiblePhotos.map((photo) => toTimelinePhoto(photo, deps)),
+  );
 
   return ok({ photos } satisfies ListTimelinePhotosResponse);
 };
@@ -186,17 +208,46 @@ const rangeFromQuery = (
   };
 };
 
-const toTimelinePhoto = (photo: TimelinePhotoItem): TimelinePhoto => ({
-  photoId: photo.photoId,
-  fileName: photo.fileName,
-  capturedAt: photo.capturedAt,
-  processingState: photo.processingState,
-  archived: photo.archived,
-  ...(photo.displayObjectKey ? { displayObjectKey: photo.displayObjectKey } : {}),
-  ...(photo.displayDimensions
-    ? { displayDimensions: photo.displayDimensions }
-    : {}),
-});
+const toTimelinePhoto = async (
+  photo: TimelinePhotoItem,
+  deps: Pick<ListTimelineDeps, "createTimelineThumbnailUrl">,
+): Promise<TimelinePhoto> => {
+  const timelineThumbnailUrl =
+    photo.processingState === "ready" && photo.timelineThumbnailObjectKey
+      ? await deps.createTimelineThumbnailUrl({
+          objectKey: photo.timelineThumbnailObjectKey,
+        })
+      : undefined;
+
+  return {
+    photoId: photo.photoId,
+    fileName: photo.fileName,
+    capturedAt: photo.capturedAt,
+    processingState: photo.processingState,
+    archived: photo.archived,
+    ...(photo.displayObjectKey ? { displayObjectKey: photo.displayObjectKey } : {}),
+    ...(photo.displayDimensions
+      ? { displayDimensions: photo.displayDimensions }
+      : {}),
+    ...(timelineThumbnailUrl ? { timelineThumbnailUrl } : {}),
+    ...(photo.timelineThumbnailDimensions
+      ? { timelineThumbnailDimensions: photo.timelineThumbnailDimensions }
+      : {}),
+  };
+};
+
+const createTimelineThumbnailUrl = async ({ objectKey }: { objectKey: string }) => {
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: config.photosBucketName,
+      Key: objectKey,
+    }),
+    {
+      expiresIn: temporaryUrlExpiresInSeconds,
+    },
+  );
+};
 
 const asTimelineItem = (
   item: Record<string, unknown> | undefined,
