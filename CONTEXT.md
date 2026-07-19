@@ -96,6 +96,10 @@ _Avoid_: per-user domain, public user page, user directory
 A one-time code sent to an Allowed User's email address to prove access to their Personal Album.
 _Avoid_: password, registration, invitation
 
+**Session**:
+The temporary signed-in state created by verifying a Sign-In Code, carried by the User's browser and used to scope every request to that User's Personal Album.
+_Avoid_: password login, API key, shared login
+
 **Upload Batch**:
 A group of Original Photos selected and submitted by the User in one upload action.
 _Avoid_: import job, folder sync
@@ -208,6 +212,9 @@ Domain expert: "No. Allowed Users enter through the Shared App Entry and are sco
 
 Developer: "Can new people register?"
 Domain expert: "No. The User signs in with a Sign-In Code sent to their email."
+
+Developer: "Does signing in give the browser a long-lived API key?"
+Domain expert: "No. Verifying a Sign-In Code creates a temporary Session scoped to that User's Personal Album."
 
 Developer: "Is upload always one photo at a time?"
 Domain expert: "No. The User can submit an Upload Batch, and each photo has a Processing State until its Display Photo and Timeline Thumbnail are ready."
