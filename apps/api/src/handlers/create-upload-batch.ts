@@ -14,12 +14,11 @@ import {
   photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
-import type { AuthenticatedUser } from "../auth.js";
-import { getAuthenticatedUser } from "../auth.js";
+import type { AuthedContext } from "../auth-wrapper.js";
+import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, ok, unauthorized } from "../http.js";
-import { personalAlbumStore } from "../store/configured-store.js";
-import type { PersonalAlbumStore } from "../store/personal-album.js";
+import { badRequest, ok } from "../http.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 
 const s3 = new S3Client({});
 interface UploadFile {
@@ -39,18 +38,16 @@ interface CreateUploadUrlInput {
 interface CreateUploadBatchDeps {
   now: () => Date;
   newId: () => string;
-  store: PersonalAlbumStore;
   createUploadUrl: (input: CreateUploadUrlInput) => Promise<string>;
 }
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleCreateUploadBatch({
-    user: getAuthenticatedUser(event),
+export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleCreateUploadBatch({
+    ...context,
     body: event.body,
     deps: {
       now: () => new Date(),
       newId: randomUUID,
-      store: personalAlbumStore,
       createUploadUrl: async ({ objectKey, contentType, metadata }) => {
         const command = new PutObjectCommand({
           Bucket: config.photosBucketName,
@@ -64,22 +61,18 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         });
       },
     },
-  });
-};
+  }),
+);
 
 export const handleCreateUploadBatch = async ({
   user,
+  album,
   body,
   deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   body: string | undefined;
   deps: CreateUploadBatchDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
-
   if (!body) {
     return badRequest("Missing request body");
   }
@@ -102,7 +95,6 @@ export const handleCreateUploadBatch = async ({
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
-  const album = deps.store.personalAlbumOf(user.userId);
 
   for (const file of request.files) {
     const photoId = deps.newId();

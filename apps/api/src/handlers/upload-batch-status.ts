@@ -7,12 +7,11 @@ import type {
   ProcessingState,
   UploadBatchPhotoStatus,
 } from "@album/shared";
-import type { AuthenticatedUser } from "../auth.js";
-import { getAuthenticatedUser } from "../auth.js";
+import type { AuthedContext } from "../auth-wrapper.js";
+import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, json, ok, unauthorized } from "../http.js";
-import { personalAlbumStore } from "../store/configured-store.js";
-import type { PersonalAlbumStore } from "../store/personal-album.js";
+import { badRequest, json, ok } from "../http.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 
 const processingStates: ProcessingState[] = [
   "uploadRequested",
@@ -23,35 +22,23 @@ const processingStates: ProcessingState[] = [
   "exactDuplicate",
 ];
 
-interface UploadBatchStatusDeps {
-  store: PersonalAlbumStore;
-}
-
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleGetUploadBatchStatus({
-    user: getAuthenticatedUser(event),
+export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleGetUploadBatchStatus({
+    ...context,
     uploadBatchId: event.pathParameters?.uploadBatchId,
-    deps: { store: personalAlbumStore },
-  });
-};
+  }),
+);
 
 export const handleGetUploadBatchStatus = async ({
-  user,
+  album,
   uploadBatchId,
-  deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   uploadBatchId: string | undefined;
-  deps: UploadBatchStatusDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!uploadBatchId) {
     return badRequest("uploadBatchId is required");
   }
 
-  const album = deps.store.personalAlbumOf(user.userId);
   const batch = await album.getUploadBatch(uploadBatchId);
   if (!batch) {
     return json(404, { message: "Upload batch not found" });

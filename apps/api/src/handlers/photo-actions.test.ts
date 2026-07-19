@@ -27,8 +27,8 @@ const createReadyAlbum = async () => {
 
 describe("photo action handlers", () => {
   it("returns read-only photo metadata for a signed-in user's photo", async () => {
-    const { store } = await createReadyAlbum();
-    const response = await handleGetPhotoDetail({ user, photoId: "photo-1", deps: { store } });
+    const { album } = await createReadyAlbum();
+    const response = await handleGetPhotoDetail({ user, album, photoId: "photo-1" });
     const body = JSON.parse(response.body ?? "{}");
     expect(response.statusCode).toBe(200);
     expect(body).toEqual({
@@ -41,17 +41,17 @@ describe("photo action handlers", () => {
   });
 
   it("archives a signed-in user's photo", async () => {
-    const { store, album } = await createReadyAlbum();
-    const response = await handleArchivePhoto({ user, photoId: "photo-1", deps: { store } });
+    const { album } = await createReadyAlbum();
+    const response = await handleArchivePhoto({ user, album, photoId: "photo-1" });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ photoId: "photo-1", archived: true });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ archived: true });
   });
 
   it("creates a temporary display access URL only for ready photos with display output", async () => {
-    const { store } = await createReadyAlbum();
+    const { album } = await createReadyAlbum();
     const response = await handleCreateDisplayAccessUrl({
-      user, photoId: "photo-1", deps: { store, createTemporaryUrl: async ({ objectKey }) => {
+      user, album, photoId: "photo-1", deps: { createTemporaryUrl: async ({ objectKey }) => {
         expect(objectKey).toBe("display/user-1/photo-1.jpg"); return "https://temporary.example/display";
       } },
     });
@@ -60,9 +60,9 @@ describe("photo action handlers", () => {
   });
 
   it("creates a temporary original download URL for the signed-in user's original photo", async () => {
-    const { store } = await createReadyAlbum();
+    const { album } = await createReadyAlbum();
     const response = await handleCreateOriginalDownloadUrl({
-      user, photoId: "photo-1", deps: { store, createTemporaryUrl: async ({ objectKey, downloadFileName }) => {
+      user, album, photoId: "photo-1", deps: { createTemporaryUrl: async ({ objectKey, downloadFileName }) => {
         expect(objectKey).toBe("originals/user-1/batch-1/photo-1"); expect(downloadFileName).toBe("beach.jpg"); return "https://temporary.example/original";
       } },
     });

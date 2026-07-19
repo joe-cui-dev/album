@@ -10,12 +10,11 @@ import type {
   ProcessingState,
   TimelinePhoto,
 } from "@album/shared";
-import type { AuthenticatedUser } from "../auth.js";
-import { getAuthenticatedUser } from "../auth.js";
+import type { AuthedContext } from "../auth-wrapper.js";
+import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, ok, unauthorized } from "../http.js";
-import { personalAlbumStore } from "../store/configured-store.js";
-import type { PersonalAlbumStore } from "../store/personal-album.js";
+import { badRequest, ok } from "../http.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 
 const temporaryUrlExpiresInSeconds = 300;
 const s3 = new S3Client({});
@@ -28,34 +27,27 @@ interface TimelineQuery {
 }
 
 interface ListTimelineDeps {
-  store: PersonalAlbumStore;
   createTimelineThumbnailUrl: (input: { objectKey: string }) => Promise<string>;
 }
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleListTimelinePhotos({
-    user: getAuthenticatedUser(event),
+export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleListTimelinePhotos({
+    ...context,
     query: event.queryStringParameters ?? {},
     deps: {
-      store: personalAlbumStore,
       createTimelineThumbnailUrl,
     },
-  });
-};
+  }),
+);
 
 export const handleListTimelinePhotos = async ({
-  user,
+  album,
   query,
   deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   query: TimelineQuery;
   deps: ListTimelineDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
-
   const capturedAtRange = rangeFromQuery(query);
   if (!capturedAtRange.valid) {
     return badRequest(capturedAtRange.message);
@@ -70,7 +62,7 @@ export const handleListTimelinePhotos = async ({
     return badRequest("archived must be true or false");
   }
 
-  const visiblePhotos = await deps.store.personalAlbumOf(user.userId).listTimelinePhotos({
+  const visiblePhotos = await album.listTimelinePhotos({
     ...capturedAtRange.range,
     processingState: query.processingState ?? "ready",
     archived: query.archived === "true",

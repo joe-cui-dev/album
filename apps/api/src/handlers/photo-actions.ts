@@ -10,89 +10,67 @@ import type {
   GetPhotoDetailResponse,
   Photo,
 } from "@album/shared";
-import type { AuthenticatedUser } from "../auth.js";
-import { getAuthenticatedUser } from "../auth.js";
+import type { AuthedContext } from "../auth-wrapper.js";
+import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, json, ok, unauthorized } from "../http.js";
-import { personalAlbumStore } from "../store/configured-store.js";
-import type { PersonalAlbumStore } from "../store/personal-album.js";
+import { badRequest, json, ok } from "../http.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 
 const temporaryUrlExpiresInSeconds = 300;
 const s3 = new S3Client({});
 
-interface GetPhotoDeps {
-  store: PersonalAlbumStore;
-}
-
-interface ArchivePhotoDeps extends GetPhotoDeps {
-}
-
-interface TemporaryUrlDeps extends GetPhotoDeps {
+interface TemporaryUrlDeps {
   createTemporaryUrl: (input: {
     objectKey: string;
     downloadFileName?: string;
   }) => Promise<string>;
 }
 
-export const getPhotoDetailHandler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleGetPhotoDetail({
-    user: getAuthenticatedUser(event),
+export const getPhotoDetailHandler: APIGatewayProxyHandlerV2 = withAuth(
+  (context, event) => handleGetPhotoDetail({
+    ...context,
     photoId: event.pathParameters?.photoId,
-    deps: { store: personalAlbumStore },
-  });
-};
+  }),
+);
 
-export const archivePhotoHandler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleArchivePhoto({
-    user: getAuthenticatedUser(event),
+export const archivePhotoHandler: APIGatewayProxyHandlerV2 = withAuth(
+  (context, event) => handleArchivePhoto({
+    ...context,
     photoId: event.pathParameters?.photoId,
-    deps: { store: personalAlbumStore },
-  });
-};
+  }),
+);
 
-export const displayAccessUrlHandler: APIGatewayProxyHandlerV2 = async (
-  event,
-) => {
-  return handleCreateDisplayAccessUrl({
-    user: getAuthenticatedUser(event),
+export const displayAccessUrlHandler: APIGatewayProxyHandlerV2 = withAuth(
+  (context, event) => handleCreateDisplayAccessUrl({
+    ...context,
     photoId: event.pathParameters?.photoId,
     deps: {
-      store: personalAlbumStore,
       createTemporaryUrl,
     },
-  });
-};
+  }),
+);
 
-export const originalDownloadUrlHandler: APIGatewayProxyHandlerV2 = async (
-  event,
-) => {
-  return handleCreateOriginalDownloadUrl({
-    user: getAuthenticatedUser(event),
+export const originalDownloadUrlHandler: APIGatewayProxyHandlerV2 = withAuth(
+  (context, event) => handleCreateOriginalDownloadUrl({
+    ...context,
     photoId: event.pathParameters?.photoId,
     deps: {
-      store: personalAlbumStore,
       createTemporaryUrl,
     },
-  });
-};
+  }),
+);
 
 export const handleGetPhotoDetail = async ({
-  user,
+  album,
   photoId,
-  deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   photoId: string | undefined;
-  deps: GetPhotoDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!photoId) {
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
+  const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -101,22 +79,15 @@ export const handleGetPhotoDetail = async ({
 };
 
 export const handleArchivePhoto = async ({
-  user,
+  album,
   photoId,
-  deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   photoId: string | undefined;
-  deps: ArchivePhotoDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!photoId) {
     return badRequest("photoId is required");
   }
 
-  const album = deps.store.personalAlbumOf(user.userId);
   const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
@@ -129,21 +100,18 @@ export const handleArchivePhoto = async ({
 
 export const handleCreateDisplayAccessUrl = async ({
   user,
+  album,
   photoId,
   deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   photoId: string | undefined;
   deps: TemporaryUrlDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!photoId) {
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
+  const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -159,21 +127,18 @@ export const handleCreateDisplayAccessUrl = async ({
 
 export const handleCreateOriginalDownloadUrl = async ({
   user,
+  album,
   photoId,
   deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   photoId: string | undefined;
   deps: TemporaryUrlDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!photoId) {
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
+  const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }

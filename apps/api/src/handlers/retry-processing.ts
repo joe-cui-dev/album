@@ -8,17 +8,15 @@ import type {
   RetryProcessingResponse,
   UploadBatchPhotoStatus,
 } from "@album/shared";
-import type { AuthenticatedUser } from "../auth.js";
-import { getAuthenticatedUser } from "../auth.js";
+import type { AuthedContext } from "../auth-wrapper.js";
+import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, json, ok, unauthorized } from "../http.js";
-import { personalAlbumStore } from "../store/configured-store.js";
-import type { PersonalAlbumStore } from "../store/personal-album.js";
+import { badRequest, json, ok } from "../http.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 
 const sqs = new SQSClient({});
 
 interface RetryProcessingDeps {
-  store: PersonalAlbumStore;
   sendRetryMessage: (message: {
     userId: string;
     photoId: string;
@@ -26,12 +24,11 @@ interface RetryProcessingDeps {
   }) => Promise<void>;
 }
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  return handleRetryProcessing({
-    user: getAuthenticatedUser(event),
+export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleRetryProcessing({
+    ...context,
     photoId: event.pathParameters?.photoId,
     deps: {
-      store: personalAlbumStore,
       sendRetryMessage: async (message) => {
         if (!config.processingQueueUrl) {
           throw new Error("Missing PROCESSING_QUEUE_URL");
@@ -47,26 +44,23 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         );
       },
     },
-  });
-};
+  }),
+);
 
 export const handleRetryProcessing = async ({
   user,
+  album,
   photoId,
   deps,
-}: {
-  user: AuthenticatedUser | undefined;
+}: AuthedContext & {
   photoId: string | undefined;
   deps: RetryProcessingDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!user) {
-    return unauthorized();
-  }
   if (!photoId) {
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
+  const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }

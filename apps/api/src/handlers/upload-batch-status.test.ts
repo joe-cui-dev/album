@@ -14,7 +14,7 @@ describe("handleGetUploadBatchStatus", () => {
     await album.markExactDuplicate({ photoId: "photo-2", sha256: "duplicate", duplicateOfPhotoId: "photo-1" });
     await album.markProcessingFailed({ photoId: "photo-3", failureCode: "unsupportedImage", failureMessage: "We couldn't process this photo." });
 
-    const response = await handleGetUploadBatchStatus({ user: { userId: "user-1", email: "user@example.com" }, uploadBatchId: "batch-1", deps: { store } });
+    const response = await handleGetUploadBatchStatus({ user: { userId: "user-1", email: "user@example.com" }, album, uploadBatchId: "batch-1" });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body ?? "{}");
     expect(body).toEqual({
