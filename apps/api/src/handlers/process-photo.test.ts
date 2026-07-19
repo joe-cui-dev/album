@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
+import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
 import { createDisplayPhoto, createTimelineThumbnail, handleProcessPhoto } from "./process-photo.js";
 
 const objectKey = "originals/user-1/batch-1/photo-1";
@@ -11,19 +12,22 @@ const createStore = async (state: "uploadRequested" | "processingFailed" = "uplo
   if (state === "processingFailed") await album.markProcessingFailed({ photoId: "photo-1", failureCode: "failed", failureMessage: "failed" });
   return { store, album };
 };
-const validMetadata = async () => ({ "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1" });
+const validMetadata = { "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1" };
+const photoObjects = (
+  metadata: Record<string, string | undefined> = validMetadata,
+  body: Uint8Array = Buffer.from("jpeg bytes"),
+) => createInMemoryPhotoObjectStore([
+  { objectKey, body, contentType: "image/jpeg", metadata },
+]);
 const outputDeps = () => ({
-  readObjectBytes: async () => Buffer.from("jpeg bytes"),
   createDisplayPhoto: async () => ({ body: Buffer.from("display jpeg"), dimensions: { width: 2048, height: 1365 }, metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } }),
   createTimelineThumbnail: async () => ({ body: Buffer.from("timeline thumbnail jpeg"), dimensions: { width: 320, height: 213 } }),
-  writeDisplayPhoto: async () => undefined,
-  writeTimelineThumbnail: async () => undefined,
 });
 
 describe("handleProcessPhoto", () => {
   it("marks the matching Photo as processingFailed when S3 metadata does not match the original object key", async () => {
     const { store, album } = await createStore();
-    await handleProcessPhoto({ records: record(), deps: { store, getObjectMetadata: async () => ({ "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "different-photo" }), ...outputDeps() } });
+    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects({ "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "different-photo" }), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "processingFailed", failureCode: "metadataMismatch", failureMessage: "We couldn't verify this upload. Please try again." });
   });
 
@@ -31,30 +35,29 @@ describe("handleProcessPhoto", () => {
     const { store, album } = await createStore();
     await album.createPhoto({ photoId: "already-ready", uploadBatchId: "batch-0", originalObjectKey: "originals/user-1/batch-0/already-ready", fileName: "old.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-01-01T00:00:00.000Z" });
     await album.markReady({ photoId: "already-ready", sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3", fileName: "old.jpg", displayObjectKey: "display/user-1/already-ready.jpg", displayDimensions: { width: 1, height: 1 }, timelineThumbnailObjectKey: "timeline-thumbnails/user-1/already-ready.jpg", timelineThumbnailDimensions: { width: 1, height: 1 }, capturedAt: "2026-01-01T00:00:00.000Z", capturedAtSource: "exif", metadata: {} });
-    await handleProcessPhoto({ records: record(), deps: { store, getObjectMetadata: validMetadata, ...outputDeps(), readObjectBytes: async () => Buffer.from("uploaded original bytes") } });
+    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(validMetadata, Buffer.from("uploaded original bytes")), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "exactDuplicate", sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3", duplicateOfPhotoId: "already-ready" });
   });
 
   it("writes derived JPEGs and marks the Photo ready in the Timeline", async () => {
     const { store, album } = await createStore();
-    const displayWrites: unknown[] = [];
-    const thumbnailWrites: unknown[] = [];
-    await handleProcessPhoto({ records: record(), deps: { store, getObjectMetadata: validMetadata, ...outputDeps(), writeDisplayPhoto: async (input) => { displayWrites.push(input); }, writeTimelineThumbnail: async (input) => { thumbnailWrites.push(input); } } });
-    expect(displayWrites).toEqual([{ objectKey: "display/user-1/photo-1.jpg", body: Buffer.from("display jpeg") }]);
-    expect(thumbnailWrites).toEqual([{ objectKey: "timeline-thumbnails/user-1/photo-1.jpg", body: Buffer.from("timeline thumbnail jpeg") }]);
+    const objects = photoObjects();
+    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: objects, ...outputDeps() } });
+    await expect(objects.readObjectBytes("display/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("display jpeg"));
+    await expect(objects.readObjectBytes("timeline-thumbnails/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("timeline thumbnail jpeg"));
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready", sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9", displayObjectKey: "display/user-1/photo-1.jpg", timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg", capturedAt: "2026-01-02T03:04:05.000Z", capturedAtSource: "fileModifiedTime", metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } });
     await expect(album.listTimelinePhotos({ processingState: "ready", archived: false })).resolves.toMatchObject([{ photoId: "photo-1" }]);
   });
 
   it("uses EXIF captured time from decoded photo metadata before file modified time", async () => {
     const { store, album } = await createStore();
-    await handleProcessPhoto({ records: record(), deps: { store, getObjectMetadata: validMetadata, ...outputDeps(), createDisplayPhoto: async () => ({ body: Buffer.from("display jpeg"), dimensions: { width: 1200, height: 800 }, metadata: { width: 1200, height: 800 }, capturedAt: "2025-12-24T10:11:12.000Z" }) } });
+    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps(), createDisplayPhoto: async () => ({ body: Buffer.from("display jpeg"), dimensions: { width: 1200, height: 800 }, metadata: { width: 1200, height: 800 }, capturedAt: "2025-12-24T10:11:12.000Z" }) } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ capturedAt: "2025-12-24T10:11:12.000Z", capturedAtSource: "exif" });
   });
 
   it("processes custom retry messages from the Retry Processing API", async () => {
     const { store, album } = await createStore("processingFailed");
-    await handleProcessPhoto({ records: record({ type: "retryPhotoProcessing", userId: "user-1", photoId: "photo-1", originalObjectKey: objectKey }), deps: { store, getObjectMetadata: validMetadata, ...outputDeps() } });
+    await handleProcessPhoto({ records: record({ type: "retryPhotoProcessing", userId: "user-1", photoId: "photo-1", originalObjectKey: objectKey }), deps: { store, photoObjects: photoObjects(), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready" });
   });
 });

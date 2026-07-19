@@ -2,8 +2,6 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ArchivePhotoResponse,
   CreateTemporaryPhotoUrlResponse,
@@ -12,18 +10,13 @@ import type {
 } from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
-import { config } from "../config.js";
 import { badRequest, json, ok } from "../http.js";
+import { photoObjectStore } from "../store/configured-store.js";
 import type { PersonalAlbum } from "../store/personal-album.js";
-
-const temporaryUrlExpiresInSeconds = 300;
-const s3 = new S3Client({});
+import type { PhotoObjectStore } from "../store/photo-objects.js";
 
 interface TemporaryUrlDeps {
-  createTemporaryUrl: (input: {
-    objectKey: string;
-    downloadFileName?: string;
-  }) => Promise<string>;
+  photoObjects: PhotoObjectStore;
 }
 
 export const getPhotoDetailHandler: APIGatewayProxyHandlerV2 = withAuth(
@@ -45,7 +38,7 @@ export const displayAccessUrlHandler: APIGatewayProxyHandlerV2 = withAuth(
     ...context,
     photoId: event.pathParameters?.photoId,
     deps: {
-      createTemporaryUrl,
+      photoObjects: photoObjectStore,
     },
   }),
 );
@@ -55,7 +48,7 @@ export const originalDownloadUrlHandler: APIGatewayProxyHandlerV2 = withAuth(
     ...context,
     photoId: event.pathParameters?.photoId,
     deps: {
-      createTemporaryUrl,
+      photoObjects: photoObjectStore,
     },
   }),
 );
@@ -119,10 +112,11 @@ export const handleCreateDisplayAccessUrl = async ({
     return json(409, { message: "Photo display is not ready" });
   }
 
-  return ok({
-    url: await deps.createTemporaryUrl({ objectKey: photo.displayObjectKey }),
-    expiresInSeconds: temporaryUrlExpiresInSeconds,
-  } satisfies CreateTemporaryPhotoUrlResponse);
+  return ok(
+    (await deps.photoObjects.presignDownload({
+      objectKey: photo.displayObjectKey,
+    })) satisfies CreateTemporaryPhotoUrlResponse,
+  );
 };
 
 export const handleCreateOriginalDownloadUrl = async ({
@@ -143,38 +137,12 @@ export const handleCreateOriginalDownloadUrl = async ({
     return json(404, { message: "Photo not found" });
   }
 
-  return ok({
-    url: await deps.createTemporaryUrl({
+  return ok(
+    (await deps.photoObjects.presignDownload({
       objectKey: photo.originalObjectKey,
-      downloadFileName: photo.fileName,
-    }),
-    expiresInSeconds: temporaryUrlExpiresInSeconds,
-  } satisfies CreateTemporaryPhotoUrlResponse);
-};
-
-const createTemporaryUrl = async ({
-  objectKey,
-  downloadFileName,
-}: {
-  objectKey: string;
-  downloadFileName?: string;
-}) => {
-  const command = new GetObjectCommand({
-    Bucket: config.photosBucketName,
-    Key: objectKey,
-    ...(downloadFileName
-      ? {
-          ResponseContentDisposition: `attachment; filename="${contentDispositionFileName(downloadFileName)}"`,
-        }
-      : {}),
-  });
-  return getSignedUrl(s3, command, {
-    expiresIn: temporaryUrlExpiresInSeconds,
-  });
-};
-
-const contentDispositionFileName = (fileName: string): string => {
-  return fileName.replace(/["\\\r\n]/g, "_");
+      attachmentFileName: photo.fileName,
+    })) satisfies CreateTemporaryPhotoUrlResponse,
+  );
 };
 
 const toPhotoDetail = (photo: Photo): GetPhotoDetailResponse => ({

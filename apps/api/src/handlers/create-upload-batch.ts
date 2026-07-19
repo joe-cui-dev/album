@@ -2,8 +2,6 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   CreateUploadBatchRequest,
   CreateUploadBatchResponse,
@@ -18,11 +16,10 @@ import {
 import { randomUUID } from "node:crypto";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
-import { config } from "../config.js";
 import { badRequest, ok } from "../http.js";
+import { photoObjectStore } from "../store/configured-store.js";
 import type { PersonalAlbum } from "../store/personal-album.js";
-
-const s3 = new S3Client({});
+import type { PhotoObjectStore } from "../store/photo-objects.js";
 
 interface UploadFile {
   fileName: string;
@@ -35,11 +32,7 @@ interface UploadFile {
 interface CreateUploadBatchDeps {
   now: () => Date;
   newId: () => string;
-  createUploadUrl: (input: {
-    objectKey: string;
-    contentType: string;
-    metadata: Record<string, string>;
-  }) => Promise<string>;
+  photoObjects: PhotoObjectStore;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
@@ -49,18 +42,7 @@ export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
     deps: {
       now: () => new Date(),
       newId: randomUUID,
-      createUploadUrl: async ({ objectKey, contentType, metadata }) => {
-        const command = new PutObjectCommand({
-          Bucket: config.photosBucketName,
-          Key: objectKey,
-          ContentType: contentType,
-          Metadata: metadata,
-        });
-
-        return getSignedUrl(s3, command, {
-          expiresIn: config.uploadUrlExpiresInSeconds,
-        });
-      },
+      photoObjects: photoObjectStore,
     },
   }),
 );
@@ -126,11 +108,13 @@ export const handleCreateUploadBatch = async ({
     uploads.push({
       photoId,
       objectKey,
-      uploadUrl: await deps.createUploadUrl({
-        objectKey,
-        contentType: file.contentType,
-        metadata,
-      }),
+      uploadUrl: (
+        await deps.photoObjects.presignUpload({
+          objectKey,
+          contentType: file.contentType,
+          metadata,
+        })
+      ).url,
       duplicate: false,
     });
     photoIds.push(photoId);

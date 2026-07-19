@@ -1,9 +1,14 @@
 import type { CreateUploadBatchRequest } from "@album/shared";
+import type { PhotoObjectStore } from "../store/photo-objects.js";
+import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
 import { handleCreateUploadBatch } from "./create-upload-batch.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
-const validDeps = () => ({ now: () => new Date("2026-05-26T01:02:03.000Z"), newId: () => "unused", createUploadUrl: async () => "https://upload.example/photo" });
+const withPresignUpload = (
+  presignUpload: PhotoObjectStore["presignUpload"],
+): PhotoObjectStore => ({ ...createInMemoryPhotoObjectStore(), presignUpload });
+const validDeps = () => ({ now: () => new Date("2026-05-26T01:02:03.000Z"), newId: () => "unused", photoObjects: withPresignUpload(async () => ({ url: "https://upload.example/photo", expiresInSeconds: 900 })) });
 
 describe("handleCreateUploadBatch", () => {
   it("creates the upload batch and one canonical Photo per requested file", async () => {
@@ -13,7 +18,7 @@ describe("handleCreateUploadBatch", () => {
       { fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, clientSha256: "client-hash", fileModifiedAt: "2026-01-02T03:04:05.000Z" },
       { fileName: "scan.png", contentType: "image/png", fileSizeBytes: 2048 },
     ] };
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify(request), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", createUploadUrl: async ({ objectKey }) => `https://upload/${objectKey}` } });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify(request), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", photoObjects: withPresignUpload(async ({ objectKey }) => ({ url: `https://upload/${objectKey}`, expiresInSeconds: 900 })) } });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body ?? "{}") as { uploadBatchId: string; uploads: Array<{ photoId: string; objectKey: string; uploadUrl: string }> };
     expect(body.uploadBatchId).toBe("batch-1");
@@ -52,7 +57,7 @@ describe("handleCreateUploadBatch", () => {
     const store = createInMemoryPersonalAlbumStore();
     const inputs: unknown[] = [];
     const ids = ["batch-1", "photo-1"];
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "photo.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, fileModifiedAt: "not-a-date" }] } satisfies CreateUploadBatchRequest), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", createUploadUrl: async (input) => { inputs.push(input); return "https://upload.example/photo"; } } });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "photo.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, fileModifiedAt: "not-a-date" }] } satisfies CreateUploadBatchRequest), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", photoObjects: withPresignUpload(async (input) => { inputs.push(input); return { url: "https://upload.example/photo", expiresInSeconds: 900 }; }) } });
     expect(response.statusCode).toBe(200);
     await expect(store.personalAlbumOf("user-1").getPhoto("photo-1")).resolves.not.toHaveProperty("fileModifiedAt");
     expect(inputs[0]).toEqual({ objectKey: "originals/user-1/batch-1/photo-1", contentType: "image/jpeg", metadata: { "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1", "original-file-name": "photo.jpg" } });

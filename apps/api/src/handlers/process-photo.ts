@@ -1,10 +1,4 @@
 import type { SQSEvent, SQSHandler } from "aws-lambda";
-import {
-  GetObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
 import type { CapturedAtSource, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
@@ -16,11 +10,9 @@ import {
 } from "@album/shared";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { config } from "../config.js";
-import { personalAlbumStore } from "../store/configured-store.js";
+import { personalAlbumStore, photoObjectStore } from "../store/configured-store.js";
 import type { PersonalAlbumStore } from "../store/personal-album.js";
-
-const s3 = new S3Client({});
+import type { PhotoObjectStore } from "../store/photo-objects.js";
 
 interface ProcessRecord {
   messageId: string;
@@ -41,73 +33,22 @@ interface DisplayPhotoResult extends DerivedPhotoResult {
 }
 
 interface ProcessPhotoDeps {
-  getObjectMetadata: (
-    objectKey: string,
-  ) => Promise<Record<string, string | undefined>>;
   store: PersonalAlbumStore;
-  readObjectBytes: (objectKey: string) => Promise<Uint8Array>;
+  photoObjects: PhotoObjectStore;
   createDisplayPhoto: (originalBytes: Uint8Array) => Promise<DisplayPhotoResult>;
   createTimelineThumbnail: (
     originalBytes: Uint8Array,
   ) => Promise<DerivedPhotoResult>;
-  writeDisplayPhoto: (input: {
-    objectKey: string;
-    body: Uint8Array;
-  }) => Promise<void>;
-  writeTimelineThumbnail: (input: {
-    objectKey: string;
-    body: Uint8Array;
-  }) => Promise<void>;
 }
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
   await handleProcessPhoto({
     records: event.Records,
     deps: {
-      getObjectMetadata: async (objectKey) => {
-        const result = await s3.send(
-          new HeadObjectCommand({
-            Bucket: config.photosBucketName,
-            Key: objectKey,
-          }),
-        );
-        return result.Metadata ?? {};
-      },
       store: personalAlbumStore,
-      readObjectBytes: async (objectKey) => {
-        const result = await s3.send(
-          new GetObjectCommand({
-            Bucket: config.photosBucketName,
-            Key: objectKey,
-          }),
-        );
-        if (!result.Body) {
-          return new Uint8Array();
-        }
-        return result.Body.transformToByteArray();
-      },
+      photoObjects: photoObjectStore,
       createDisplayPhoto,
       createTimelineThumbnail,
-      writeDisplayPhoto: async ({ objectKey, body }) => {
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: config.photosBucketName,
-            Key: objectKey,
-            Body: body,
-            ContentType: "image/jpeg",
-          }),
-        );
-      },
-      writeTimelineThumbnail: async ({ objectKey, body }) => {
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: config.photosBucketName,
-            Key: objectKey,
-            Body: body,
-            ContentType: "image/jpeg",
-          }),
-        );
-      },
     },
   });
 };
@@ -132,7 +73,7 @@ export const handleProcessPhoto = async ({
       }
       const album = processAlbum(deps, keyParts.userId);
 
-      const metadata = await deps.getObjectMetadata(objectKey);
+      const metadata = await deps.photoObjects.readObjectMetadata(objectKey);
       if (!matchesOriginalObjectMetadata(metadata, keyParts)) {
         const photo = await album.getPhoto(keyParts.photoId);
         if (photo) {
@@ -171,7 +112,7 @@ export const handleProcessPhoto = async ({
       }
 
       await album.markProcessingStarted(keyParts.photoId);
-      const originalBytes = await deps.readObjectBytes(objectKey);
+      const originalBytes = await deps.photoObjects.readObjectBytes(objectKey);
       const sha256 = createHash("sha256").update(originalBytes).digest("hex");
       const duplicate = await album.findReadyPhotoBySha256({
         sha256,
@@ -211,11 +152,11 @@ export const handleProcessPhoto = async ({
       const displayObjectKey = buildDisplayObjectKey(keyParts);
       const timelineThumbnailObjectKey = buildTimelineThumbnailObjectKey(keyParts);
       const capturedAt = resolveCapturedAt(photo, displayPhoto);
-      await deps.writeDisplayPhoto({
+      await deps.photoObjects.writeJpegObject({
         objectKey: displayObjectKey,
         body: displayPhoto.body,
       });
-      await deps.writeTimelineThumbnail({
+      await deps.photoObjects.writeJpegObject({
         objectKey: timelineThumbnailObjectKey,
         body: timelineThumbnail.body,
       });

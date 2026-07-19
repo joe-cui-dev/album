@@ -2,8 +2,6 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ListTimelinePhotosResponse,
   Photo,
@@ -12,12 +10,10 @@ import type {
 } from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
-import { config } from "../config.js";
 import { badRequest, ok } from "../http.js";
+import { photoObjectStore } from "../store/configured-store.js";
 import type { PersonalAlbum } from "../store/personal-album.js";
-
-const temporaryUrlExpiresInSeconds = 300;
-const s3 = new S3Client({});
+import type { PhotoObjectStore } from "../store/photo-objects.js";
 
 interface TimelineQuery {
   year?: string;
@@ -27,7 +23,7 @@ interface TimelineQuery {
 }
 
 interface ListTimelineDeps {
-  createTimelineThumbnailUrl: (input: { objectKey: string }) => Promise<string>;
+  photoObjects: PhotoObjectStore;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
@@ -35,7 +31,7 @@ export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
     ...context,
     query: event.queryStringParameters ?? {},
     deps: {
-      createTimelineThumbnailUrl,
+      photoObjects: photoObjectStore,
     },
   }),
 );
@@ -113,13 +109,15 @@ const rangeFromQuery = (
 
 const toTimelinePhoto = async (
   photo: Photo,
-  deps: Pick<ListTimelineDeps, "createTimelineThumbnailUrl">,
+  deps: Pick<ListTimelineDeps, "photoObjects">,
 ): Promise<TimelinePhoto> => {
   const timelineThumbnailUrl =
     photo.processingState === "ready" && photo.timelineThumbnailObjectKey
-      ? await deps.createTimelineThumbnailUrl({
-          objectKey: photo.timelineThumbnailObjectKey,
-        })
+      ? (
+          await deps.photoObjects.presignDownload({
+            objectKey: photo.timelineThumbnailObjectKey,
+          })
+        ).url
       : undefined;
 
   return {
@@ -137,19 +135,6 @@ const toTimelinePhoto = async (
       ? { timelineThumbnailDimensions: photo.timelineThumbnailDimensions }
       : {}),
   };
-};
-
-const createTimelineThumbnailUrl = async ({ objectKey }: { objectKey: string }) => {
-  return getSignedUrl(
-    s3,
-    new GetObjectCommand({
-      Bucket: config.photosBucketName,
-      Key: objectKey,
-    }),
-    {
-      expiresIn: temporaryUrlExpiresInSeconds,
-    },
-  );
 };
 
 const isProcessingState = (value: unknown): value is ProcessingState => {

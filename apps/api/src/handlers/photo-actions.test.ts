@@ -1,4 +1,6 @@
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
+import type { PhotoObjectStore } from "../store/photo-objects.js";
+import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
 import {
   handleArchivePhoto,
   handleCreateDisplayAccessUrl,
@@ -7,6 +9,9 @@ import {
 } from "./photo-actions.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
+const withPresignDownload = (
+  presignDownload: PhotoObjectStore["presignDownload"],
+): PhotoObjectStore => ({ ...createInMemoryPhotoObjectStore(), presignDownload });
 
 const createReadyAlbum = async () => {
   const store = createInMemoryPersonalAlbumStore();
@@ -51,9 +56,9 @@ describe("photo action handlers", () => {
   it("creates a temporary display access URL only for ready photos with display output", async () => {
     const { album } = await createReadyAlbum();
     const response = await handleCreateDisplayAccessUrl({
-      user, album, photoId: "photo-1", deps: { createTemporaryUrl: async ({ objectKey }) => {
-        expect(objectKey).toBe("display/user-1/photo-1.jpg"); return "https://temporary.example/display";
-      } },
+      user, album, photoId: "photo-1", deps: { photoObjects: withPresignDownload(async ({ objectKey }) => {
+        expect(objectKey).toBe("display/user-1/photo-1.jpg"); return { url: "https://temporary.example/display", expiresInSeconds: 300 };
+      }) },
     });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ url: "https://temporary.example/display", expiresInSeconds: 300 });
@@ -62,9 +67,9 @@ describe("photo action handlers", () => {
   it("creates a temporary original download URL for the signed-in user's original photo", async () => {
     const { album } = await createReadyAlbum();
     const response = await handleCreateOriginalDownloadUrl({
-      user, album, photoId: "photo-1", deps: { createTemporaryUrl: async ({ objectKey, downloadFileName }) => {
-        expect(objectKey).toBe("originals/user-1/batch-1/photo-1"); expect(downloadFileName).toBe("beach.jpg"); return "https://temporary.example/original";
-      } },
+      user, album, photoId: "photo-1", deps: { photoObjects: withPresignDownload(async ({ objectKey, attachmentFileName }) => {
+        expect(objectKey).toBe("originals/user-1/batch-1/photo-1"); expect(attachmentFileName).toBe("beach.jpg"); return { url: "https://temporary.example/original", expiresInSeconds: 300 };
+      }) },
     });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ url: "https://temporary.example/original", expiresInSeconds: 300 });
