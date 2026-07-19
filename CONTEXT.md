@@ -36,6 +36,10 @@ _Avoid_: super user, admin gallery, moderator
 A private album belonging to exactly one User. In the first version, a Personal Album is the User's private photo space, not a separate object the User creates, names, shares, or deletes.
 _Avoid_: shared album, social album, workspace, album collection
 
+**Personal Light Table**:
+The internal product design concept for presenting one User's Personal Album as a quiet, photo-first space for revisiting their own memories. It is not a User-facing album name or navigation label, and “Personal” describes the ownership boundary rather than access to other family Users' Photos.
+_Avoid_: Family Light Table, shared light table, family gallery, Light Table as UI label
+
 **Photo**:
 An entry in a Personal Album created when the User submits a file as part of an Upload Batch. A Photo exists even when its upload is incomplete, its processing fails, or it is identified as an Exact Duplicate; it does not necessarily appear in the Timeline.
 _Avoid_: image file, timeline item, display image
@@ -53,7 +57,7 @@ A smaller photo derived from an Original Photo for browsing in the web app. A Di
 _Avoid_: preview image
 
 **Timeline Thumbnail**:
-A small photo derived from an Original Photo for fast browsing in the Timeline. A Timeline Thumbnail is private album content, not a public or long-lived thumbnail URL.
+A responsive Small or Large photo derived from an Original Photo for fast browsing in the Timeline without downloading the Display Photo. Timeline Thumbnails are private album content, not public or long-lived thumbnail URLs.
 _Avoid_: public thumbnail, preview image
 
 **Display Access**:
@@ -61,23 +65,47 @@ A temporary grant for a signed-in User to view one of their own Display Photos. 
 _Avoid_: public image URL, static public photo, shared photo link
 
 **Captured At**:
-The moment a photo was taken. Prefer the photo's EXIF timestamp when available; it is distinct from when the photo was uploaded.
-_Avoid_: uploaded at, created at
+The capture-local calendar value used to order and group a Photo in the Timeline. Its known components are described by Captured At Precision; it does not change with the viewing browser's time zone and identifies an absolute moment only when date, time, and a reliable Capture Time Offset are available.
+_Avoid_: viewer-local time, uploaded at, created at
+
+**Captured At Precision**:
+The degree of calendar detail genuinely known for Captured At: Year, Month, Day, or Date and Time. Unknown components remain absent rather than being filled with invented defaults.
+_Avoid_: approximate date, assumed January, assumed midnight
+
+**Capture Time Offset**:
+A reliable UTC offset recorded with a Photo's Captured At value when the source provides one. A missing Capture Time Offset does not mean UTC and must not be inferred from the viewing browser's time zone.
+_Avoid_: viewer time zone, assumed UTC, upload time zone
 
 **Captured At Source**:
-The origin of a photo's Captured At value. The fallback order is EXIF timestamp, then file modified time, then upload time.
+The origin of a Photo's active Captured At value. Processing resolves the Original Captured At from EXIF timestamp, then file modified time, then upload time; a User adjustment can override the active value without replacing the original.
 _Avoid_: timestamp type, date source
 
+**Added At**:
+The moment a Photo was added to the Personal Album. It provides a stable display order when Captured At cannot order Photos precisely, but it is never presented as the time the Photo was captured.
+_Avoid_: Captured At, photo date
+
+**Original Captured At**:
+The Captured At value first resolved during Photo processing and retained when the User later adjusts the active Captured At value.
+_Avoid_: current date, edited EXIF
+
+**Adjust Captured At**:
+A User action that changes the capture-local date and time used to place a Photo in the Timeline while preserving Original Captured At and leaving the Original Photo unchanged.
+_Avoid_: edit EXIF, change file date, re-upload
+
 **Timeline**:
-The primary browsing view, where Ready Photos are ordered and grouped by Captured At. Photos in other Processing States do not appear in the Timeline.
+The primary continuous browsing view, where Ready Photos are ordered from newest to oldest and grouped by their known Captured At calendar period. Photos with a known month are grouped by month; Year-precision Photos appear after the year's known months under Date Unknown and use Added At only for stable ordering within that group. Photos in other Processing States do not appear.
 _Avoid_: album list, gallery categories
 
-**Timeline Filter**:
-A simple condition that narrows which Ready Photos are visible in the Timeline by year, month, or Archived Photo status.
-_Avoid_: search, discovery
+**Timeline Navigation**:
+A way for the User to jump to a year or month in the Timeline without treating that period as a search result or separate album.
+_Avoid_: year filter, month filter, date search
+
+**Photo Viewer**:
+A focused view for looking at one Photo from the Timeline while retaining the ability to move between neighbouring Photos. Photo Metadata and management actions are secondary to viewing the Photo itself.
+_Avoid_: photo detail panel, asset inspector, edit screen
 
 **Mobile Browsing**:
-Using the Personal Album from a phone browser to browse the Timeline, view photo details, and perform Manual Upload.
+Using the Personal Album from a phone browser to browse the Timeline, use the Photo Viewer, and perform Manual Upload.
 _Avoid_: mobile app, PWA, offline mode
 
 **Private Access**:
@@ -100,6 +128,10 @@ _Avoid_: password login, API key, shared login
 A group of Original Photos selected and submitted by the User in one upload action.
 _Avoid_: import job, folder sync
 
+**Upload Tray**:
+The non-blocking workspace that shows file selection and the current Upload Batch while the User continues browsing their Personal Album. It may recover a recently active batch after Original Photos finish transferring and server processing remains underway, but it does not promise to resume an interrupted browser file transfer and is not durable Upload Batch history; failures that require later action belong in Processing Issues.
+_Avoid_: upload modal, upload history, processing log
+
 **Processing State**:
 The durable lifecycle state of a Photo: Upload Requested, Processing, Ready, Processing Failed, or Exact Duplicate. Upload completion triggers processing but is not itself a Processing State.
 _Avoid_: job status, queue state, Uploaded state
@@ -108,8 +140,12 @@ _Avoid_: job status, queue state, Uploaded state
 A Processing State where the Original Photo was uploaded but the Display Photo, Timeline Thumbnail, or Photo Metadata could not be created.
 _Avoid_: broken upload, invalid photo
 
+**Processing Issue**:
+An unresolved need for User attention created when a Photo enters Processing Failed. It remains open while Retry Processing is underway and resolves only when the Photo becomes Ready.
+_Avoid_: Processing State, error log, upload error
+
 **Processing Issues**:
-A durable view of a User's Processing Failed Photos so they remain discoverable and retryable after a page refresh or on another device. It is separate from the Timeline and is not a complete Upload Batch history.
+A durable view of a User's open Processing Issues so they remain discoverable and retryable after a page refresh or on another device. It appears as a navigation destination only while at least one Processing Issue is open; it is separate from the Timeline and is not a complete Upload Batch history.
 _Avoid_: failed timeline, upload history, error log
 
 **Retry Processing**:
@@ -125,8 +161,16 @@ The place where a photo was captured, usually represented by coordinates in Phot
 _Avoid_: map, place page
 
 **Archived Photo**:
-A Photo hidden from the default Timeline by the User while its Original Photo, browsing versions, and Photo Metadata remain preserved. An Archived Photo can be returned to the default Timeline with Restore Photo.
+A Photo hidden from the Timeline by the User while its Original Photo, browsing versions, and Photo Metadata remain preserved. It remains available in the Archive and can be returned to the Timeline with Restore Photo.
 _Avoid_: deleted photo, trashed photo, removed image
+
+**Archive Photo**:
+A reversible User action that moves a Photo out of the Timeline and into the Archive without deleting or reprocessing it.
+_Avoid_: delete photo, remove permanently, trash photo
+
+**Archive**:
+The private browsing view containing a User's Archived Photos, ordered and grouped by Captured At so they can be viewed or restored. The Archive is not a deletion queue or a Timeline Filter.
+_Avoid_: trash, recycle bin, archived filter
 
 **Restore Photo**:
 A User action that returns an Archived Photo to the default Timeline without recreating or reprocessing it.
@@ -145,8 +189,8 @@ An upload started by the User selecting photo files in the web app.
 _Avoid_: sync, backup, camera roll import
 
 **Exact Duplicate**:
-A terminal Photo whose Original Photo has exactly the same file contents as a ready Photo in the same User's Personal Album. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline.
-_Avoid_: similar photo, near duplicate, duplicate-looking photo
+A terminal Photo whose Original Photo has exactly the same file contents as a Ready Photo in the same User's Personal Album. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline; the Upload Tray describes this outcome to the User as “Already in your album” and may link to the matching Ready Photo.
+_Avoid_: duplicate error, similar photo, near duplicate, duplicate-looking photo
 
 **Supported Photo Format**:
 A photo format the app accepts and can process into a Display Photo. The MVP supports JPEG, PNG, and HEIC; it does not support RAW files, videos, or Live Photos.
