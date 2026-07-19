@@ -1,39 +1,46 @@
 # Personal Album
 
-A private family allowlist photo album built with TypeScript, Node.js, and low-idle-cost AWS serverless services. Each User has one independent Personal Album.
+A private photo album for a small family allowlist. Each User signs in by email and has one independent Personal Album.
+
+## Current Status
+
+The AWS production stack is deployed. Authentication, direct upload, photo processing, Timeline browsing, photo detail, archive, temporary Display Access, and Original Download are implemented.
+
+The MVP is not yet accepted. Production smoke testing and a small set of product and security gaps remain; see the [MVP roadmap](./docs/mvp-plan.md).
 
 ## Workspace
 
-- `apps/web`: React + Vite static SPA.
-- `apps/api`: plain TypeScript Lambda handlers.
-- `infra`: AWS CDK app.
-- `packages/shared`: shared domain and API types.
+- `apps/web` — React and Vite SPA.
+- `apps/api` — TypeScript Lambda handlers and storage adapters.
+- `infra` — AWS CDK production stack.
+- `packages/shared` — shared API types and photo object-key contracts.
 
-## First Commands
+## Local Development
+
+Node.js 22 or newer is required.
 
 ```sh
 npm install
 npm run check
-cp .env.example .env
-npm run cdk:synth
+npm test
 npm run dev:web
 ```
 
-The target production region is `ap-southeast-2`.
+Copy `.env.example` to `.env` for local configuration. Secrets and real user addresses must not be committed.
 
-Set local deployment values in `.env` instead of committing them:
+## Deployment
 
 ```sh
-USER_ALLOWLIST=joe:joe@example.com,mum:mum@example.com
-BUDGET_ALERT_EMAIL=you@example.com
-SESSION_SIGNING_SECRET=replace-with-a-long-random-secret
-SES_FROM_EMAIL=you@example.com
-ALLOW_DEV_AUTH_CODES=false
-ALBUM_DOMAIN=album.example.com
-CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/example
-HOSTED_ZONE_DOMAIN=example.com
-HOSTED_ZONE_ID=Z00000000000000000000
+npm run cdk:synth
+npm run deploy
 ```
 
-You can still override local values for one command with CDK context, for example
-`npm run cdk -- deploy -c userAllowlist=joe:joe@example.com,mum:mum@example.com -c sessionSigningSecret=replace-with-a-long-random-secret -c albumDomain=album.example.com`.
+Deployment prerequisites, configuration, smoke tests, logs, and data-reset guidance are in [docs/deployment.md](./docs/deployment.md).
+
+## Project Documentation
+
+- [Domain language](./CONTEXT.md)
+- [MVP roadmap](./docs/mvp-plan.md)
+- [Deployment runbook](./docs/deployment.md)
+- [Phase 5 processing record](./docs/phase-5-work-checklist.md)
+- [Architecture decisions](./docs/adr/)

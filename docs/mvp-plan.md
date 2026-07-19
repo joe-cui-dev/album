@@ -1,192 +1,82 @@
-# MVP Implementation Plan
+# MVP Roadmap
 
-This plan turns the agreed Personal Album scope into implementation phases. The first version optimizes for private access, low idle cost, reliable manual upload of existing photos, and strict isolation between a small set of family Users.
+This is the living roadmap for Personal Album. It records the intended MVP boundary, what the current code provides, and what still blocks acceptance.
 
-## Product Scope
+## Status
 
-The MVP is a family allowlist Personal Album service. Each Allowed User signs in with an email Sign-In Code, has exactly one independent Personal Album, performs Manual Upload of Supported Photo Formats, browses their own Timeline, views read-only Photo Metadata, archives photos, retries failed processing, and downloads one Original Photo at a time.
+- Phases 1–5 are implemented.
+- Phase 6 core features are implemented and deployed.
+- Phase 7 infrastructure guardrails are largely implemented.
+- Production smoke testing has not been confirmed, so the MVP is not yet accepted.
 
-The MVP does not include public registration, shared albums, administrator browsing of other Users' albums, comments, search, tags, folder hierarchy, auto-sync, videos, RAW files, Live Photos, bulk export, PWA/offline mode, cross-region disaster recovery, CI/CD, or separate AWS dev/staging environments.
+Implementation, deployment, and production verification are separate milestones. A feature is only accepted after it works in the production user journey.
 
-## Architecture
+## MVP Boundary
 
-- Frontend: React, TypeScript, and Vite static SPA.
-- Infrastructure: AWS CDK, deployed manually to one production environment.
-- Region: `ap-southeast-2`.
-- Domain: `album.joe-cui.com` under the existing `joe-cui.com` Route 53 hosted zone.
-- API: API Gateway HTTP API backed by plain TypeScript Lambda handlers.
-- Auth: Sign-In Code email through Amazon SES for the configured User Allowlist; session stored in an HttpOnly Secure cookie.
-- Storage: private S3 bucket for Original Photos and Display Photos.
-- Access: API-authorized temporary URLs for Display Access and Original Download.
-- Metadata: DynamoDB on-demand.
-- Processing: S3 object-created events routed through SQS to a Lambda processor with DLQ.
-- Observability: CloudWatch-only minimal logs, alarms, and DLQ monitoring.
+The MVP supports a small family User Allowlist. Each Allowed User has one independent Personal Album and can:
 
-## Data Concepts
+- sign in with an emailed Sign-In Code;
+- manually upload JPEG, PNG, and HEIC photos;
+- see processing progress and retry failures;
+- browse Ready Photos in a private Timeline;
+- view Photo Metadata;
+- archive and restore Photos;
+- view a Display Photo and download one Original Photo at a time.
 
-Core records should represent:
+The MVP excludes public registration, shared albums, administrator browsing, search, tags, folders, automatic sync, videos, RAW files, Live Photos, bulk export, offline/PWA support, and cross-region disaster recovery.
 
-- User record from the configured User Allowlist.
-- User session.
-- Upload Batch.
-- Photo.
-- Photo Metadata.
-- Processing State.
-- Exact Duplicate hash.
-- Archived Photo state.
+## Current Architecture
 
-Photo records need enough fields to support Timeline browsing:
+- React and Vite SPA hosted from private S3 through CloudFront.
+- API Gateway HTTP API using its default AWS URL.
+- Cross-site Session cookie and explicitly allowed SPA origins.
+- Plain TypeScript Lambda handlers.
+- Private S3 storage with direct browser upload and temporary download URLs.
+- DynamoDB on-demand metadata storage.
+- S3 events buffered through SQS for Sharp-based photo processing.
+- CloudWatch logs and alarms, an SQS dead-letter queue, AWS Budgets, retained buckets, S3 versioning, and DynamoDB point-in-time recovery.
+- One manually deployed production environment in `ap-southeast-2`.
 
-- photo id.
-- owning User ID.
-- original object key.
-- display object key.
-- file name.
-- format.
-- file size.
-- dimensions.
-- SHA-256 hash.
-- Captured At.
-- Captured At Source.
-- Processing State.
-- archived flag.
-- optional camera, lens, and Location metadata.
+Using the default API Gateway URL remains acceptable through MVP acceptance. A same-site `/api/*` route is a possible later simplification, not an MVP blocker.
 
-Captured At fallback order is:
+## Delivered
 
-1. EXIF timestamp.
-2. file modified time.
-3. upload time.
+- Allowlist Sign-In Code flow and signed Session cookies.
+- Per-User Personal Album storage boundary.
+- Upload Batch creation, direct S3 upload, progress, status, and retry.
+- Authoritative duplicate detection from uploaded bytes.
+- EXIF extraction with Captured At fallback.
+- Display Photo and Timeline Thumbnail generation.
+- Timeline API and responsive browsing UI.
+- Photo detail, Archive, temporary Display Access, and Original Download.
+- Shared photo object-key contracts and storage adapters.
+- CDK deployment, frontend hosting, operational logs helper, and automated tests.
 
-## API Surface
+## Remaining Before MVP Acceptance
 
-Initial API endpoints should cover:
+### Product consistency
 
-- Request Sign-In Code.
-- Verify Sign-In Code and set session cookie.
-- Get current session.
-- Sign out.
-- Create Upload Batch and presigned S3 upload URLs.
-- Get Upload Batch status.
-- List Timeline photos with Timeline Filters.
-- Get photo detail.
-- Archive photo.
-- Retry Processing.
-- Create Display Access URL.
-- Create Original Download URL.
+- Add Restore Photo so Archive is reversible.
+- Add a durable Processing Issues view so failed Photos remain discoverable after refresh or on another device.
+- Remove the unused `uploaded` Processing State.
+- Keep Timeline limited to Ready Photos and remove non-ready Processing State filters from its API and UI.
 
-The API must not proxy Original Photo bytes or Display Photo bytes. API handlers must derive the owning User ID from the authenticated session, never from client-provided user input.
+### Security
 
-## Implementation Phases
+- Revalidate the User Allowlist on protected requests so removing a User revokes existing Sessions.
+- Add suitable Sign-In Code abuse controls without exposing allowlist membership.
+- Validate the request origin for state-changing browser requests while cross-site Session cookies are in use.
 
-### Phase 1: Repository and CDK Foundation
+### Production acceptance
 
-- Create the TypeScript workspace structure:
-  - `apps/web`
-  - `apps/api`
-  - `infra`
-  - `packages/shared`
-- Add shared TypeScript config, linting, formatting, and test scripts.
-- Create CDK app and production stack.
-- Configure account, region, and domain inputs.
-- Add `cdk synth` verification.
+- Complete the production smoke test in [deployment.md](./deployment.md).
+- Confirm real JPEG, PNG, and HEIC processing.
+- Confirm User isolation, mobile browsing, alarms, and budget notifications.
 
-### Phase 2: Core Infrastructure
+## After MVP
 
-- Create private S3 bucket with versioning.
-- Add lifecycle cleanup for incomplete multipart uploads.
-- Create DynamoDB table with on-demand billing and point-in-time recovery.
-- Create SQS processing queue and DLQ.
-- Create DNS record for `album.joe-cui.com`.
-- Configure temporary S3 object access for browser display and downloads.
-- Configure CloudWatch log retention.
-- Add AWS Budgets alert and key CloudWatch alarms.
+Potential later work includes a same-site API route, permanent deletion policy, broader backup and recovery, richer browsing, and automated delivery. These are deliberately not designed in detail here.
 
-### Phase 3: Authentication
+## Decisions
 
-- Implement SES Sign-In Code sender.
-- Store one-time codes with expiry.
-- Verify code only for emails in the configured User Allowlist.
-- Resolve the signed-in email to a stable User ID.
-- Set HttpOnly Secure session cookie.
-- Add middleware/helper for authenticated Lambda handlers.
-- Build sign-in UI in the SPA.
-
-### Phase 4: Upload Batch and Direct Upload
-
-- Implement Create Upload Batch API.
-- Generate photo ids and private S3 object keys scoped under the signed-in User ID.
-- Accept client SHA-256 pre-hash for early Exact Duplicate checks within the signed-in User's Personal Album.
-- Return presigned S3 upload URLs.
-- Configure browser direct upload to S3 with CORS.
-- Build upload UI with per-photo progress and batch status.
-
-### Phase 5: Photo Processing
-
-- Route S3 object-created events to SQS.
-- Implement processor Lambda.
-- Resolve the owning User ID from the object key and preserve it on metadata records.
-- Compute authoritative SHA-256 from the S3 object.
-- Extract Photo Metadata and Captured At.
-- Generate one Display Photo at the configured Display Size.
-- Write Processing State to DynamoDB.
-- Mark failures as Processing Failed without deleting the Original Photo.
-- Support Retry Processing.
-- Build the upload processing status UI for batch progress, per-photo Processing State, Processing Failed visibility, Exact Duplicate visibility, and Retry Processing. Full Timeline browsing, photo detail, Display Access, and Original Download remain Phase 6 scope.
-- Verify processing with small JPEG, PNG, and real HEIC fixtures.
-
-### Phase 6: Timeline and Photo Detail
-
-- Implement Timeline query by User ID and Captured At.
-- Add Timeline Filters for year/month, Processing State, and archived status.
-- Build responsive Timeline UI for desktop and Mobile Browsing.
-- Build photo detail view with read-only Photo Metadata.
-- Add Archive action.
-- Add temporary Display Access URL creation.
-- Add single-photo Original Download.
-
-### Phase 7: Hardening and Cost Guardrails
-
-- Add Lambda reserved concurrency limits.
-- Add upload size limits.
-- Add DLQ alarm.
-- Add Lambda error and throttle alarms.
-- Verify CloudWatch log retention.
-- Verify S3 lifecycle rules.
-- Verify DynamoDB PITR.
-- Smoke test the production deployment.
-
-## Acceptance Checklist
-
-- Allowed Users can sign in with a Sign-In Code sent by SES.
-- A non-allowlisted email cannot sign in.
-- Each signed-in User sees only their own Personal Album through the shared app entry.
-- A signed-in User can upload a batch of JPEG, PNG, and HEIC photos.
-- Original Photos upload directly to S3 without passing through API Gateway or Lambda.
-- S3 object keys and metadata records include the owning User ID.
-- Each uploaded photo eventually becomes ready, Processing Failed, or Exact Duplicate within the owning User's Personal Album.
-- Ready photos appear in the signed-in User's Timeline ordered by Captured At.
-- A photo without EXIF timestamp still appears using the agreed Captured At fallback order.
-- Display Photos are viewable only through temporary Display Access authorized for the signed-in User.
-- Original Photos are not public and can only be downloaded through temporary Original Download authorized for the signed-in User.
-- Archived Photos are hidden from the default Timeline.
-- Processing Failed photos preserve the Original Photo and can be retried.
-- Mobile Browsing works for Timeline, detail, and Manual Upload.
-- `cdk synth` passes.
-- Cost Guardrails are present in CDK.
-
-## ADRs
-
-The implementation should follow these recorded decisions:
-
-- [Use AWS Serverless Infrastructure Managed by CDK](./adr/0001-serverless-aws-cdk.md)
-- [Use DynamoDB On-Demand for Photo Metadata](./adr/0002-dynamodb-on-demand-for-photo-metadata.md)
-- [Keep Photo Objects Private Behind CloudFront](./adr/0003-private-s3-cloudfront-photo-access.md) (partially superseded by ADR-0011)
-- [Upload Original Photos Directly to S3](./adr/0004-s3-direct-upload-for-original-photos.md)
-- [Deploy in a Single Sydney Region](./adr/0005-single-region-sydney-deployment.md)
-- [Use Protective Retention Without Cross-Region Backup](./adr/0006-protective-retention-without-cross-region-backup.md)
-- [Use a React Vite Static SPA](./adr/0007-react-vite-static-spa.md)
-- [Use Plain TypeScript Lambda Handlers](./adr/0008-plain-typescript-lambda-handlers.md)
-- [Include Cost Guardrails in the First Version](./adr/0009-first-version-cost-guardrails.md)
-- [Buffer Photo Processing with SQS](./adr/0010-sqs-buffer-for-photo-processing.md)
-- [Use Family Allowlist Users with Session-Scoped Photo Access](./adr/0011-family-allowlist-user-isolation.md)
+Long-lived architectural trade-offs are recorded in [docs/adr](./adr/). The domain vocabulary and product meanings live in [CONTEXT.md](../CONTEXT.md).
