@@ -7,11 +7,16 @@ export const timelineThumbnailLongestEdgePixels = 320;
 
 export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
 
-export interface OriginalObjectKeyParts {
-  userId: string;
-  uploadBatchId: string;
-  photoId: string;
-}
+export {
+  ORIGINALS_KEY_PREFIX,
+  buildDisplayObjectKey,
+  buildOriginalObjectKey,
+  buildTimelineThumbnailObjectKey,
+  matchesOriginalObjectMetadata,
+  originalUploadMetadata,
+  parseOriginalObjectKey,
+} from "./photo-keys.js";
+export type { OriginalObjectKeyParts } from "./photo-keys.js";
 
 export const photoFormatForFile = (input: {
   fileName: string;
@@ -35,20 +40,6 @@ export const photoFormatForFile = (input: {
     return "heic";
   }
   return undefined;
-};
-
-export const parseOriginalObjectKey = (
-  objectKey: string,
-): OriginalObjectKeyParts | undefined => {
-  const match = /^originals\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(objectKey);
-  if (!match?.[1] || !match[2] || !match[3]) {
-    return undefined;
-  }
-  return {
-    userId: match[1],
-    uploadBatchId: match[2],
-    photoId: match[3],
-  };
 };
 
 export type CapturedAtSource = "exif" | "fileModifiedTime" | "uploadTime";

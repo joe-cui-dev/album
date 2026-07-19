@@ -11,6 +11,8 @@ import type {
 import {
   maxFilesPerUploadBatch,
   maxOriginalPhotoBytes,
+  buildOriginalObjectKey,
+  originalUploadMetadata,
   photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
@@ -21,6 +23,7 @@ import { badRequest, ok } from "../http.js";
 import type { PersonalAlbum } from "../store/personal-album.js";
 
 const s3 = new S3Client({});
+
 interface UploadFile {
   fileName: string;
   contentType: string;
@@ -29,16 +32,14 @@ interface UploadFile {
   fileModifiedAt?: string;
 }
 
-interface CreateUploadUrlInput {
-  objectKey: string;
-  contentType: string;
-  metadata: Record<string, string>;
-}
-
 interface CreateUploadBatchDeps {
   now: () => Date;
   newId: () => string;
-  createUploadUrl: (input: CreateUploadUrlInput) => Promise<string>;
+  createUploadUrl: (input: {
+    objectKey: string;
+    contentType: string;
+    metadata: Record<string, string>;
+  }) => Promise<string>;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
@@ -98,12 +99,11 @@ export const handleCreateUploadBatch = async ({
 
   for (const file of request.files) {
     const photoId = deps.newId();
-    const objectKey = `originals/${user.userId}/${uploadBatchId}/${photoId}`;
+    const keyParts = { userId: user.userId, uploadBatchId, photoId };
+    const objectKey = buildOriginalObjectKey(keyParts);
     const fileModifiedAt = validIsoDate(file.fileModifiedAt);
     const metadata = removeEmptyMetadata({
-      "user-id": user.userId,
-      "upload-batch-id": uploadBatchId,
-      "photo-id": photoId,
+      ...originalUploadMetadata(keyParts),
       "original-file-name": file.fileName,
       "client-sha256": file.clientSha256,
       "file-modified-at": fileModifiedAt,

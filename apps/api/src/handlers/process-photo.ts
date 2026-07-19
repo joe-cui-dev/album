@@ -8,6 +8,9 @@ import {
 import type { CapturedAtSource, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
+  buildDisplayObjectKey,
+  buildTimelineThumbnailObjectKey,
+  matchesOriginalObjectMetadata,
   parseOriginalObjectKey,
   timelineThumbnailLongestEdgePixels,
 } from "@album/shared";
@@ -130,7 +133,7 @@ export const handleProcessPhoto = async ({
       const album = processAlbum(deps, keyParts.userId);
 
       const metadata = await deps.getObjectMetadata(objectKey);
-      if (!metadataMatchesKey(metadata, keyParts)) {
+      if (!matchesOriginalObjectMetadata(metadata, keyParts)) {
         const photo = await album.getPhoto(keyParts.photoId);
         if (photo) {
           await album.markProcessingFailed({
@@ -205,8 +208,8 @@ export const handleProcessPhoto = async ({
         continue;
       }
 
-      const displayObjectKey = `display/${keyParts.userId}/${keyParts.photoId}.jpg`;
-      const timelineThumbnailObjectKey = `timeline-thumbnails/${keyParts.userId}/${keyParts.photoId}.jpg`;
+      const displayObjectKey = buildDisplayObjectKey(keyParts);
+      const timelineThumbnailObjectKey = buildTimelineThumbnailObjectKey(keyParts);
       const capturedAt = resolveCapturedAt(photo, displayPhoto);
       await deps.writeDisplayPhoto({
         objectKey: displayObjectKey,
@@ -266,17 +269,6 @@ const extractS3ObjectKeys = (body: string): string[] => {
   } catch {
     return [];
   }
-};
-
-const metadataMatchesKey = (
-  metadata: Record<string, string | undefined>,
-  keyParts: NonNullable<ReturnType<typeof parseOriginalObjectKey>>,
-): boolean => {
-  return (
-    metadata["user-id"] === keyParts.userId &&
-    metadata["upload-batch-id"] === keyParts.uploadBatchId &&
-    metadata["photo-id"] === keyParts.photoId
-  );
 };
 
 interface ParsedExif {
