@@ -1,4 +1,7 @@
 export const ORIGINALS_KEY_PREFIX = "originals/";
+const originalObjectKeyPattern = new RegExp(
+  `^${ORIGINALS_KEY_PREFIX}([^/]+)/([^/]+)/([^/]+)$`,
+);
 
 export interface OriginalObjectKeyParts {
   userId: string;
@@ -16,7 +19,7 @@ export const buildOriginalObjectKey = ({
 export const parseOriginalObjectKey = (
   objectKey: string,
 ): OriginalObjectKeyParts | undefined => {
-  const match = /^originals\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(objectKey);
+  const match = originalObjectKeyPattern.exec(objectKey);
   if (!match?.[1] || !match[2] || !match[3]) {
     return undefined;
   }
