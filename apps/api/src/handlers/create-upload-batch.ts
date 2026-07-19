@@ -2,9 +2,7 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   CreateUploadBatchRequest,
@@ -20,9 +18,10 @@ import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, ok, unauthorized } from "../http.js";
+import { personalAlbumStore } from "../store/configured-store.js";
+import type { PersonalAlbumStore } from "../store/personal-album.js";
 
 const s3 = new S3Client({});
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 interface UploadFile {
   fileName: string;
   contentType: string;
@@ -40,7 +39,8 @@ interface CreateUploadUrlInput {
 interface CreateUploadBatchDeps {
   now: () => Date;
   newId: () => string;
-  putItem: (item: Record<string, unknown>) => Promise<void>;
+  store?: PersonalAlbumStore;
+  putItem?: (item: Record<string, unknown>) => Promise<void>;
   createUploadUrl: (input: CreateUploadUrlInput) => Promise<string>;
 }
 
@@ -51,14 +51,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     deps: {
       now: () => new Date(),
       newId: randomUUID,
-      putItem: async (item) => {
-        await dynamodb.send(
-          new PutCommand({
-            TableName: config.metadataTableName,
-            Item: item,
-          }),
-        );
-      },
+      store: personalAlbumStore,
       createUploadUrl: async ({ objectKey, contentType, metadata }) => {
         const command = new PutObjectCommand({
           Bucket: config.photosBucketName,
@@ -110,6 +103,7 @@ export const handleCreateUploadBatch = async ({
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
+  const album = deps.store?.personalAlbumOf(user.userId);
 
   for (const file of request.files) {
     const photoId = deps.newId();
@@ -124,11 +118,8 @@ export const handleCreateUploadBatch = async ({
       "file-modified-at": fileModifiedAt,
     });
 
-    await deps.putItem({
-      pk: `USER#${user.userId}`,
-      sk: `PHOTO#${photoId}`,
+    const photo = {
       photoId,
-      userId: user.userId,
       uploadBatchId,
       originalObjectKey: objectKey,
       fileName: file.fileName,
@@ -138,9 +129,19 @@ export const handleCreateUploadBatch = async ({
       ...(file.clientSha256 ? { clientSha256: file.clientSha256 } : {}),
       uploadRequestedAt: createdAt,
       ...(fileModifiedAt ? { fileModifiedAt } : {}),
-      processingState: "uploadRequested",
-      archived: false,
-    });
+    };
+    if (album) {
+      await album.createPhoto(photo);
+    } else {
+      await deps.putItem?.({
+        pk: `USER#${user.userId}`,
+        sk: `PHOTO#${photoId}`,
+        ...photo,
+        userId: user.userId,
+        processingState: "uploadRequested",
+        archived: false,
+      });
+    }
 
     uploads.push({
       photoId,
@@ -155,14 +156,21 @@ export const handleCreateUploadBatch = async ({
     photoIds.push(photoId);
   }
 
-  await deps.putItem({
-    pk: `USER#${user.userId}`,
-    sk: `UPLOAD_BATCH#${uploadBatchId}`,
+  const batch = {
     uploadBatchId,
-    userId: user.userId,
     createdAt,
     photoIds,
-  });
+  };
+  if (album) {
+    await album.createUploadBatch(batch);
+  } else {
+    await deps.putItem?.({
+      pk: `USER#${user.userId}`,
+      sk: `UPLOAD_BATCH#${uploadBatchId}`,
+      ...batch,
+      userId: user.userId,
+    });
+  }
 
   return ok({ uploadBatchId, uploads } satisfies CreateUploadBatchResponse);
 };

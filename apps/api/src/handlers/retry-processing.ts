@@ -2,9 +2,7 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   ProcessingState,
   RetryProcessingResponse,
@@ -14,8 +12,9 @@ import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, json, ok, unauthorized } from "../http.js";
+import { personalAlbumStore } from "../store/configured-store.js";
+import type { PersonalAlbumStore } from "../store/personal-album.js";
 
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const sqs = new SQSClient({});
 
 interface RetryPhotoItem {
@@ -28,10 +27,8 @@ interface RetryPhotoItem {
 }
 
 interface RetryProcessingDeps {
-  getPhoto: (input: {
-    userId: string;
-    photoId: string;
-  }) => Promise<RetryPhotoItem | undefined>;
+  store?: PersonalAlbumStore;
+  getPhoto?: (input: { userId: string; photoId: string }) => Promise<RetryPhotoItem | undefined>;
   sendRetryMessage: (message: {
     userId: string;
     photoId: string;
@@ -44,18 +41,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     user: getAuthenticatedUser(event),
     photoId: event.pathParameters?.photoId,
     deps: {
-      getPhoto: async ({ userId, photoId }) => {
-        const result = await dynamodb.send(
-          new GetCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-          }),
-        );
-        return asRetryPhotoItem(result.Item);
-      },
+      store: personalAlbumStore,
       sendRetryMessage: async (message) => {
         if (!config.processingQueueUrl) {
           throw new Error("Missing PROCESSING_QUEUE_URL");
@@ -90,7 +76,9 @@ export const handleRetryProcessing = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.getPhoto({ userId: user.userId, photoId });
+  const photo = deps.store
+    ? await deps.store.personalAlbumOf(user.userId).getPhoto(photoId)
+    : await deps.getPhoto?.({ userId: user.userId, photoId });
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -116,41 +104,4 @@ const toPhotoStatus = (photo: RetryPhotoItem): UploadBatchPhotoStatus => {
     ...(photo.failureCode ? { failureCode: photo.failureCode } : {}),
     ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
   };
-};
-
-const asRetryPhotoItem = (
-  item: Record<string, unknown> | undefined,
-): RetryPhotoItem | undefined => {
-  if (
-    !item ||
-    typeof item.photoId !== "string" ||
-    typeof item.fileName !== "string" ||
-    typeof item.originalObjectKey !== "string" ||
-    !isProcessingState(item.processingState)
-  ) {
-    return undefined;
-  }
-  return {
-    photoId: item.photoId,
-    fileName: item.fileName,
-    processingState: item.processingState,
-    originalObjectKey: item.originalObjectKey,
-    ...(typeof item.failureCode === "string"
-      ? { failureCode: item.failureCode }
-      : {}),
-    ...(typeof item.failureMessage === "string"
-      ? { failureMessage: item.failureMessage }
-      : {}),
-  };
-};
-
-const isProcessingState = (value: unknown): value is ProcessingState => {
-  return [
-    "uploadRequested",
-    "uploaded",
-    "processing",
-    "ready",
-    "processingFailed",
-    "exactDuplicate",
-  ].includes(value as ProcessingState);
 };

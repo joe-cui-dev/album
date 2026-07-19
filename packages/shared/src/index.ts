@@ -82,9 +82,12 @@ export interface Photo {
   timelineThumbnailObjectKey?: string;
   fileName: string;
   format: PhotoFormat;
+  contentType?: string;
   fileSizeBytes: number;
   sha256?: string;
   clientSha256?: string;
+  uploadRequestedAt?: string;
+  fileModifiedAt?: string;
   capturedAt?: string;
   capturedAtSource?: CapturedAtSource;
   processingState: ProcessingState;

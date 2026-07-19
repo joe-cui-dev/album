@@ -2,13 +2,7 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  QueryCommand,
-} from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ListTimelinePhotosResponse,
@@ -19,32 +13,22 @@ import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, ok, unauthorized } from "../http.js";
+import { personalAlbumStore } from "../store/configured-store.js";
+import type { PersonalAlbumStore } from "../store/personal-album.js";
 
 const temporaryUrlExpiresInSeconds = 300;
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
-
-interface TimelineItem {
-  photoId: string;
-  capturedAt: string;
-}
 
 interface TimelinePhotoItem {
   photoId: string;
   fileName: string;
-  capturedAt: string;
+  capturedAt?: string;
   processingState: ProcessingState;
   archived: boolean;
   displayObjectKey?: string;
-  displayDimensions?: {
-    width: number;
-    height: number;
-  };
+  displayDimensions?: { width: number; height: number };
   timelineThumbnailObjectKey?: string;
-  timelineThumbnailDimensions?: {
-    width: number;
-    height: number;
-  };
+  timelineThumbnailDimensions?: { width: number; height: number };
 }
 
 interface TimelineQuery {
@@ -55,15 +39,13 @@ interface TimelineQuery {
 }
 
 interface ListTimelineDeps {
-  queryTimeline: (input: {
+  store?: PersonalAlbumStore;
+  queryTimeline?: (input: {
     userId: string;
     fromCapturedAt?: string;
     toCapturedAt?: string;
-  }) => Promise<TimelineItem[]>;
-  getPhoto: (input: {
-    userId: string;
-    photoId: string;
-  }) => Promise<TimelinePhotoItem | undefined>;
+  }) => Promise<Array<{ photoId: string; capturedAt: string }>>;
+  getPhoto?: (input: { userId: string; photoId: string }) => Promise<TimelinePhotoItem | undefined>;
   createTimelineThumbnailUrl: (input: { objectKey: string }) => Promise<string>;
 }
 
@@ -72,45 +54,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     user: getAuthenticatedUser(event),
     query: event.queryStringParameters ?? {},
     deps: {
-      queryTimeline: async ({ userId, fromCapturedAt, toCapturedAt }) => {
-        const expressionValues: Record<string, string> = {
-          ":pk": `USER#${userId}`,
-        };
-        let keyConditionExpression = "pk = :pk AND begins_with(sk, :timeline)";
-
-        if (fromCapturedAt && toCapturedAt) {
-          keyConditionExpression = "pk = :pk AND sk BETWEEN :fromSk AND :toSk";
-          expressionValues[":fromSk"] = `TIMELINE#${fromCapturedAt}`;
-          expressionValues[":toSk"] = `TIMELINE#${toCapturedAt}`;
-        } else {
-          expressionValues[":timeline"] = "TIMELINE#";
-        }
-
-        const result = await dynamodb.send(
-          new QueryCommand({
-            TableName: config.metadataTableName,
-            KeyConditionExpression: keyConditionExpression,
-            ExpressionAttributeValues: expressionValues,
-          }),
-        );
-        return (
-          result.Items?.map(asTimelineItem).filter(
-            (item): item is TimelineItem => Boolean(item),
-          ) ?? []
-        );
-      },
-      getPhoto: async ({ userId, photoId }) => {
-        const result = await dynamodb.send(
-          new GetCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-          }),
-        );
-        return asTimelinePhotoItem(result.Item);
-      },
+      store: personalAlbumStore,
       createTimelineThumbnailUrl,
     },
   });
@@ -143,27 +87,19 @@ export const handleListTimelinePhotos = async ({
     return badRequest("archived must be true or false");
   }
 
-  const timelineItems = await deps.queryTimeline({
-    userId: user.userId,
-    ...capturedAtRange.range,
-  });
-  const visiblePhotos = (
-    await Promise.all(
-      timelineItems.map((item) =>
-        deps.getPhoto({ userId: user.userId, photoId: item.photoId }),
-      ),
-    )
-  )
-    .filter((photo): photo is TimelinePhotoItem => Boolean(photo))
-    .filter((photo) =>
-      query.processingState
-        ? photo.processingState === query.processingState
-        : photo.processingState === "ready",
-    )
-    .filter((photo) =>
-      query.archived === "true" ? photo.archived : !photo.archived,
-    )
-    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt));
+  const visiblePhotos = deps.store
+    ? await deps.store.personalAlbumOf(user.userId).listTimelinePhotos({
+        ...capturedAtRange.range,
+        processingState: query.processingState ?? "ready",
+        archived: query.archived === "true",
+      })
+    : await listLegacyTimelinePhotos({
+        deps,
+        userId: user.userId,
+        range: capturedAtRange.range,
+        processingState: query.processingState ?? "ready",
+        archived: query.archived === "true",
+      });
   const photos = await Promise.all(
     visiblePhotos.map((photo) => toTimelinePhoto(photo, deps)),
   );
@@ -222,7 +158,7 @@ const toTimelinePhoto = async (
   return {
     photoId: photo.photoId,
     fileName: photo.fileName,
-    capturedAt: photo.capturedAt,
+    capturedAt: photo.capturedAt ?? "",
     processingState: photo.processingState,
     archived: photo.archived,
     ...(photo.displayObjectKey ? { displayObjectKey: photo.displayObjectKey } : {}),
@@ -249,36 +185,27 @@ const createTimelineThumbnailUrl = async ({ objectKey }: { objectKey: string }) 
   );
 };
 
-const asTimelineItem = (
-  item: Record<string, unknown> | undefined,
-): TimelineItem | undefined => {
-  if (
-    !item ||
-    typeof item.photoId !== "string" ||
-    typeof item.capturedAt !== "string"
-  ) {
-    return undefined;
-  }
-  return {
-    photoId: item.photoId,
-    capturedAt: item.capturedAt,
-  };
-};
-
-const asTimelinePhotoItem = (
-  item: Record<string, unknown> | undefined,
-): TimelinePhotoItem | undefined => {
-  if (
-    !item ||
-    typeof item.photoId !== "string" ||
-    typeof item.fileName !== "string" ||
-    typeof item.capturedAt !== "string" ||
-    !isProcessingState(item.processingState) ||
-    typeof item.archived !== "boolean"
-  ) {
-    return undefined;
-  }
-  return item as unknown as TimelinePhotoItem;
+const listLegacyTimelinePhotos = async ({
+  deps,
+  userId,
+  range,
+  processingState,
+  archived,
+}: {
+  deps: ListTimelineDeps;
+  userId: string;
+  range: { fromCapturedAt?: string; toCapturedAt?: string };
+  processingState: ProcessingState;
+  archived: boolean;
+}) => {
+  const items = await deps.queryTimeline?.({ userId, ...range });
+  const photos = await Promise.all(
+    (items ?? []).map((item) => deps.getPhoto?.({ userId, photoId: item.photoId })),
+  );
+  return photos
+    .filter((photo): photo is TimelinePhotoItem => Boolean(photo))
+    .filter((photo) => photo.processingState === processingState && photo.archived === archived)
+    .sort((left, right) => (right.capturedAt ?? "").localeCompare(left.capturedAt ?? ""));
 };
 
 const isProcessingState = (value: unknown): value is ProcessingState => {

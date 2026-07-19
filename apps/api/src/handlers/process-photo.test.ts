@@ -275,6 +275,7 @@ describe("handleProcessPhoto", () => {
       {
         userId: "user-1",
         photoId: "photo-1",
+        fileName: "beach.jpg",
         sha256:
           "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9",
         displayObjectKey: "display/user-1/photo-1.jpg",

@@ -2,60 +2,46 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ArchivePhotoResponse,
-  CapturedAtSource,
   CreateTemporaryPhotoUrlResponse,
   GetPhotoDetailResponse,
-  PhotoFormat,
-  PhotoMetadata,
-  ProcessingState,
 } from "@album/shared";
 import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, json, ok, unauthorized } from "../http.js";
+import { personalAlbumStore } from "../store/configured-store.js";
+import type { PersonalAlbumStore } from "../store/personal-album.js";
 
 const temporaryUrlExpiresInSeconds = 300;
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 
 interface PhotoActionItem {
   photoId: string;
   userId: string;
   fileName: string;
-  format: PhotoFormat;
+  format: import("@album/shared").PhotoFormat;
   fileSizeBytes: number;
   originalObjectKey: string;
   displayObjectKey?: string;
   capturedAt?: string;
-  capturedAtSource?: CapturedAtSource;
-  processingState: ProcessingState;
+  capturedAtSource?: import("@album/shared").CapturedAtSource;
+  processingState: import("@album/shared").ProcessingState;
   archived: boolean;
-  metadata?: PhotoMetadata;
-  displayDimensions?: {
-    width: number;
-    height: number;
-  };
+  metadata?: import("@album/shared").PhotoMetadata;
+  displayDimensions?: { width: number; height: number };
 }
 
 interface GetPhotoDeps {
-  getPhoto: (input: {
-    userId: string;
-    photoId: string;
-  }) => Promise<PhotoActionItem | undefined>;
+  store?: PersonalAlbumStore;
+  getPhoto?: (input: { userId: string; photoId: string }) => Promise<PhotoActionItem | undefined>;
 }
 
 interface ArchivePhotoDeps extends GetPhotoDeps {
-  archivePhoto: (input: { userId: string; photoId: string }) => Promise<void>;
+  archivePhoto?: (input: { userId: string; photoId: string }) => Promise<void>;
 }
 
 interface TemporaryUrlDeps extends GetPhotoDeps {
@@ -65,24 +51,11 @@ interface TemporaryUrlDeps extends GetPhotoDeps {
   }) => Promise<string>;
 }
 
-const getPhoto = async (userId: string, photoId: string) => {
-  const result = await dynamodb.send(
-    new GetCommand({
-      TableName: config.metadataTableName,
-      Key: {
-        pk: `USER#${userId}`,
-        sk: `PHOTO#${photoId}`,
-      },
-    }),
-  );
-  return asPhotoActionItem(result.Item);
-};
-
 export const getPhotoDetailHandler: APIGatewayProxyHandlerV2 = async (event) => {
   return handleGetPhotoDetail({
     user: getAuthenticatedUser(event),
     photoId: event.pathParameters?.photoId,
-    deps: { getPhoto: ({ userId, photoId }) => getPhoto(userId, photoId) },
+    deps: { store: personalAlbumStore },
   });
 };
 
@@ -90,24 +63,7 @@ export const archivePhotoHandler: APIGatewayProxyHandlerV2 = async (event) => {
   return handleArchivePhoto({
     user: getAuthenticatedUser(event),
     photoId: event.pathParameters?.photoId,
-    deps: {
-      getPhoto: ({ userId, photoId }) => getPhoto(userId, photoId),
-      archivePhoto: async ({ userId, photoId }) => {
-        await dynamodb.send(
-          new UpdateCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-            UpdateExpression: "SET archived = :archived",
-            ExpressionAttributeValues: {
-              ":archived": true,
-            },
-          }),
-        );
-      },
-    },
+    deps: { store: personalAlbumStore },
   });
 };
 
@@ -118,7 +74,7 @@ export const displayAccessUrlHandler: APIGatewayProxyHandlerV2 = async (
     user: getAuthenticatedUser(event),
     photoId: event.pathParameters?.photoId,
     deps: {
-      getPhoto: ({ userId, photoId }) => getPhoto(userId, photoId),
+      store: personalAlbumStore,
       createTemporaryUrl,
     },
   });
@@ -131,7 +87,7 @@ export const originalDownloadUrlHandler: APIGatewayProxyHandlerV2 = async (
     user: getAuthenticatedUser(event),
     photoId: event.pathParameters?.photoId,
     deps: {
-      getPhoto: ({ userId, photoId }) => getPhoto(userId, photoId),
+      store: personalAlbumStore,
       createTemporaryUrl,
     },
   });
@@ -153,7 +109,7 @@ export const handleGetPhotoDetail = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.getPhoto({ userId: user.userId, photoId });
+  const photo = await getPhoto(deps, user.userId, photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -177,12 +133,16 @@ export const handleArchivePhoto = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.getPhoto({ userId: user.userId, photoId });
+  const photo = await getPhoto(deps, user.userId, photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
 
-  await deps.archivePhoto({ userId: user.userId, photoId });
+  if (deps.store) {
+    await deps.store.personalAlbumOf(user.userId).archivePhoto(photoId);
+  } else {
+    await deps.archivePhoto?.({ userId: user.userId, photoId });
+  }
 
   return ok({ photoId, archived: true } satisfies ArchivePhotoResponse);
 };
@@ -203,7 +163,7 @@ export const handleCreateDisplayAccessUrl = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.getPhoto({ userId: user.userId, photoId });
+  const photo = await getPhoto(deps, user.userId, photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -233,7 +193,7 @@ export const handleCreateOriginalDownloadUrl = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await deps.getPhoto({ userId: user.userId, photoId });
+  const photo = await getPhoto(deps, user.userId, photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -272,6 +232,17 @@ const contentDispositionFileName = (fileName: string): string => {
   return fileName.replace(/["\\\r\n]/g, "_");
 };
 
+const getPhoto = async (
+  deps: GetPhotoDeps,
+  userId: string,
+  photoId: string,
+) => {
+  if (deps.store) {
+    return deps.store.personalAlbumOf(userId).getPhoto(photoId);
+  }
+  return deps.getPhoto?.({ userId, photoId });
+};
+
 const toPhotoDetail = (photo: PhotoActionItem): GetPhotoDetailResponse => ({
   photoId: photo.photoId,
   fileName: photo.fileName,
@@ -288,37 +259,3 @@ const toPhotoDetail = (photo: PhotoActionItem): GetPhotoDetailResponse => ({
     ? { displayDimensions: photo.displayDimensions }
     : {}),
 });
-
-const asPhotoActionItem = (
-  item: Record<string, unknown> | undefined,
-): PhotoActionItem | undefined => {
-  if (
-    !item ||
-    typeof item.photoId !== "string" ||
-    typeof item.userId !== "string" ||
-    typeof item.fileName !== "string" ||
-    !isPhotoFormat(item.format) ||
-    typeof item.fileSizeBytes !== "number" ||
-    typeof item.originalObjectKey !== "string" ||
-    !isProcessingState(item.processingState) ||
-    typeof item.archived !== "boolean"
-  ) {
-    return undefined;
-  }
-  return item as unknown as PhotoActionItem;
-};
-
-const isPhotoFormat = (value: unknown): value is PhotoFormat => {
-  return ["jpeg", "png", "heic"].includes(value as PhotoFormat);
-};
-
-const isProcessingState = (value: unknown): value is ProcessingState => {
-  return [
-    "uploadRequested",
-    "uploaded",
-    "processing",
-    "ready",
-    "processingFailed",
-    "exactDuplicate",
-  ].includes(value as ProcessingState);
-};

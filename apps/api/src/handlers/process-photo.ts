@@ -1,23 +1,11 @@
 import type { SQSEvent, SQSHandler } from "aws-lambda";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-import type {
-  CapturedAtSource,
-  PhotoMetadata,
-  ProcessingState,
-} from "@album/shared";
+import type { CapturedAtSource, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
   parseOriginalObjectKey,
@@ -26,24 +14,14 @@ import {
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { config } from "../config.js";
+import { personalAlbumStore } from "../store/configured-store.js";
+import type { PersonalAlbumStore } from "../store/personal-album.js";
 
 const s3 = new S3Client({});
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 interface ProcessRecord {
   messageId: string;
   body: string;
-}
-
-interface PhotoProcessingItem {
-  photoId: string;
-  userId: string;
-  uploadBatchId: string;
-  originalObjectKey: string;
-  fileName?: string;
-  fileModifiedAt?: string;
-  uploadRequestedAt?: string;
-  processingState: ProcessingState;
 }
 
 interface DerivedPhotoResult {
@@ -59,36 +37,26 @@ interface DisplayPhotoResult extends DerivedPhotoResult {
   capturedAt?: string;
 }
 
+interface LegacyPhotoProcessingItem {
+  photoId: string;
+  userId: string;
+  uploadBatchId: string;
+  originalObjectKey: string;
+  fileName?: string;
+  fileModifiedAt?: string;
+  uploadRequestedAt?: string;
+  processingState: import("@album/shared").ProcessingState;
+}
+
 interface ProcessPhotoDeps {
   getObjectMetadata: (
     objectKey: string,
   ) => Promise<Record<string, string | undefined>>;
-  getPhoto: (input: {
-    userId: string;
-    photoId: string;
-  }) => Promise<PhotoProcessingItem | undefined>;
-  markProcessingFailed: (input: {
-    userId: string;
-    photoId: string;
-    failureCode: string;
-    failureMessage: string;
-  }) => Promise<void>;
-  markProcessingStarted: (input: {
-    userId: string;
-    photoId: string;
-  }) => Promise<void>;
+  store?: PersonalAlbumStore;
+  getPhoto?: (input: { userId: string; photoId: string }) => Promise<LegacyPhotoProcessingItem | undefined>;
+  markProcessingFailed?: (input: { userId: string; photoId: string; failureCode: string; failureMessage: string }) => Promise<void>;
+  markProcessingStarted?: (input: { userId: string; photoId: string }) => Promise<void>;
   readObjectBytes: (objectKey: string) => Promise<Uint8Array>;
-  findReadyPhotoBySha256: (input: {
-    userId: string;
-    sha256: string;
-    excludePhotoId: string;
-  }) => Promise<{ photoId: string } | undefined>;
-  markExactDuplicate: (input: {
-    userId: string;
-    photoId: string;
-    sha256: string;
-    duplicateOfPhotoId: string;
-  }) => Promise<void>;
   createDisplayPhoto: (originalBytes: Uint8Array) => Promise<DisplayPhotoResult>;
   createTimelineThumbnail: (
     originalBytes: Uint8Array,
@@ -101,31 +69,21 @@ interface ProcessPhotoDeps {
     objectKey: string;
     body: Uint8Array;
   }) => Promise<void>;
-  markReady: (input: {
+  findReadyPhotoBySha256?: (input: { userId: string; sha256: string; excludePhotoId: string }) => Promise<{ photoId: string } | undefined>;
+  markExactDuplicate?: (input: { userId: string; photoId: string; sha256: string; duplicateOfPhotoId: string }) => Promise<void>;
+  markReady?: (input: {
     userId: string;
     photoId: string;
     sha256: string;
     displayObjectKey: string;
-    displayDimensions: {
-      width: number;
-      height: number;
-    };
+    displayDimensions: { width: number; height: number };
     timelineThumbnailObjectKey: string;
-    timelineThumbnailDimensions: {
-      width: number;
-      height: number;
-    };
+    timelineThumbnailDimensions: { width: number; height: number };
     capturedAt: string;
     capturedAtSource: CapturedAtSource;
     metadata: PhotoMetadata;
   }) => Promise<void>;
-  putTimelineItem: (input: {
-    userId: string;
-    photoId: string;
-    capturedAt: string;
-    fileName: string;
-    processingState: "ready";
-  }) => Promise<void>;
+  putTimelineItem?: (input: { userId: string; photoId: string; capturedAt: string; fileName: string; processingState: "ready" }) => Promise<void>;
 }
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
@@ -141,57 +99,7 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
         );
         return result.Metadata ?? {};
       },
-      getPhoto: async ({ userId, photoId }) => {
-        const result = await dynamodb.send(
-          new GetCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-          }),
-        );
-        return asPhotoProcessingItem(result.Item);
-      },
-      markProcessingFailed: async ({
-        userId,
-        photoId,
-        failureCode,
-        failureMessage,
-      }) => {
-        await dynamodb.send(
-          new UpdateCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-            UpdateExpression:
-              "SET processingState = :state, failureCode = :code, failureMessage = :message",
-            ExpressionAttributeValues: {
-              ":state": "processingFailed",
-              ":code": failureCode,
-              ":message": failureMessage,
-            },
-          }),
-        );
-      },
-      markProcessingStarted: async ({ userId, photoId }) => {
-        await dynamodb.send(
-          new UpdateCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-            UpdateExpression:
-              "SET processingState = :state REMOVE failureCode, failureMessage",
-            ExpressionAttributeValues: {
-              ":state": "processing",
-            },
-          }),
-        );
-      },
+      store: personalAlbumStore,
       readObjectBytes: async (objectKey) => {
         const result = await s3.send(
           new GetObjectCommand({
@@ -203,51 +111,6 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
           return new Uint8Array();
         }
         return result.Body.transformToByteArray();
-      },
-      findReadyPhotoBySha256: async ({ userId, sha256, excludePhotoId }) => {
-        const result = await dynamodb.send(
-          new QueryCommand({
-            TableName: config.metadataTableName,
-            KeyConditionExpression: "pk = :pk AND begins_with(sk, :photo)",
-            FilterExpression:
-              "sha256 = :sha256 AND processingState = :ready AND photoId <> :photoId",
-            ExpressionAttributeValues: {
-              ":pk": `USER#${userId}`,
-              ":photo": "PHOTO#",
-              ":sha256": sha256,
-              ":ready": "ready",
-              ":photoId": excludePhotoId,
-            },
-            Limit: 1,
-          }),
-        );
-        const item = result.Items?.[0];
-        return typeof item?.photoId === "string"
-          ? { photoId: item.photoId }
-          : undefined;
-      },
-      markExactDuplicate: async ({
-        userId,
-        photoId,
-        sha256,
-        duplicateOfPhotoId,
-      }) => {
-        await dynamodb.send(
-          new UpdateCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-            UpdateExpression:
-              "SET processingState = :state, sha256 = :sha256, duplicateOfPhotoId = :duplicateOfPhotoId REMOVE failureCode, failureMessage",
-            ExpressionAttributeValues: {
-              ":state": "exactDuplicate",
-              ":sha256": sha256,
-              ":duplicateOfPhotoId": duplicateOfPhotoId,
-            },
-          }),
-        );
       },
       createDisplayPhoto,
       createTimelineThumbnail,
@@ -268,66 +131,6 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
             Key: objectKey,
             Body: body,
             ContentType: "image/jpeg",
-          }),
-        );
-      },
-      markReady: async ({
-        userId,
-        photoId,
-        sha256,
-        displayObjectKey,
-        displayDimensions,
-        timelineThumbnailObjectKey,
-        timelineThumbnailDimensions,
-        capturedAt,
-        capturedAtSource,
-        metadata,
-      }) => {
-        await dynamodb.send(
-          new UpdateCommand({
-            TableName: config.metadataTableName,
-            Key: {
-              pk: `USER#${userId}`,
-              sk: `PHOTO#${photoId}`,
-            },
-            UpdateExpression:
-              "SET processingState = :state, sha256 = :sha256, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, timelineThumbnailObjectKey = :timelineThumbnailObjectKey, timelineThumbnailDimensions = :timelineThumbnailDimensions, capturedAt = :capturedAt, capturedAtSource = :capturedAtSource, #metadata = :metadata REMOVE failureCode, failureMessage",
-            ExpressionAttributeNames: {
-              "#metadata": "metadata",
-            },
-            ExpressionAttributeValues: {
-              ":state": "ready",
-              ":sha256": sha256,
-              ":displayObjectKey": displayObjectKey,
-              ":displayDimensions": displayDimensions,
-              ":timelineThumbnailObjectKey": timelineThumbnailObjectKey,
-              ":timelineThumbnailDimensions": timelineThumbnailDimensions,
-              ":capturedAt": capturedAt,
-              ":capturedAtSource": capturedAtSource,
-              ":metadata": metadata,
-            },
-          }),
-        );
-      },
-      putTimelineItem: async ({
-        userId,
-        photoId,
-        capturedAt,
-        fileName,
-        processingState,
-      }) => {
-        await dynamodb.send(
-          new PutCommand({
-            TableName: config.metadataTableName,
-            Item: {
-              pk: `USER#${userId}`,
-              sk: `TIMELINE#${capturedAt}#${photoId}`,
-              userId,
-              photoId,
-              capturedAt,
-              fileName,
-              processingState,
-            },
           }),
         );
       },
@@ -353,16 +156,13 @@ export const handleProcessPhoto = async ({
         });
         continue;
       }
+      const album = processAlbum(deps, keyParts.userId);
 
       const metadata = await deps.getObjectMetadata(objectKey);
       if (!metadataMatchesKey(metadata, keyParts)) {
-        const photo = await deps.getPhoto({
-          userId: keyParts.userId,
-          photoId: keyParts.photoId,
-        });
+        const photo = await album.getPhoto(keyParts.photoId);
         if (photo) {
-          await deps.markProcessingFailed({
-            userId: keyParts.userId,
+          await album.markProcessingFailed({
             photoId: keyParts.photoId,
             failureCode: "metadataMismatch",
             failureMessage: "We couldn't verify this upload. Please try again.",
@@ -376,10 +176,7 @@ export const handleProcessPhoto = async ({
         continue;
       }
 
-      const photo = await deps.getPhoto({
-        userId: keyParts.userId,
-        photoId: keyParts.photoId,
-      });
+      const photo = await album.getPhoto(keyParts.photoId);
       if (!photo) {
         logInfo("Ignoring photo processing message with no matching Photo", {
           messageId: record.messageId,
@@ -399,20 +196,15 @@ export const handleProcessPhoto = async ({
         continue;
       }
 
-      await deps.markProcessingStarted({
-        userId: keyParts.userId,
-        photoId: keyParts.photoId,
-      });
+      await album.markProcessingStarted(keyParts.photoId);
       const originalBytes = await deps.readObjectBytes(objectKey);
       const sha256 = createHash("sha256").update(originalBytes).digest("hex");
-      const duplicate = await deps.findReadyPhotoBySha256({
-        userId: keyParts.userId,
+      const duplicate = await album.findReadyPhotoBySha256({
         sha256,
         excludePhotoId: keyParts.photoId,
       });
       if (duplicate) {
-        await deps.markExactDuplicate({
-          userId: keyParts.userId,
+        await album.markExactDuplicate({
           photoId: keyParts.photoId,
           sha256,
           duplicateOfPhotoId: duplicate.photoId,
@@ -434,8 +226,7 @@ export const handleProcessPhoto = async ({
             error: error instanceof Error ? error.message : String(error),
           }),
         );
-        await deps.markProcessingFailed({
-          userId: keyParts.userId,
+        await album.markProcessingFailed({
           photoId: keyParts.photoId,
           failureCode: "unsupportedImage",
           failureMessage: "We couldn't process this photo.",
@@ -454,9 +245,9 @@ export const handleProcessPhoto = async ({
         objectKey: timelineThumbnailObjectKey,
         body: timelineThumbnail.body,
       });
-      await deps.markReady({
-        userId: keyParts.userId,
+      await album.markReady({
         photoId: keyParts.photoId,
+        fileName: photo.fileName ?? keyParts.photoId,
         sha256,
         displayObjectKey,
         displayDimensions: displayPhoto.dimensions,
@@ -465,13 +256,6 @@ export const handleProcessPhoto = async ({
         capturedAt: capturedAt.value,
         capturedAtSource: capturedAt.source,
         metadata: displayPhoto.metadata,
-      });
-      await deps.putTimelineItem({
-        userId: keyParts.userId,
-        photoId: keyParts.photoId,
-        capturedAt: capturedAt.value,
-        fileName: photo.fileName ?? keyParts.photoId,
-        processingState: "ready",
       });
     }
   }
@@ -522,22 +306,6 @@ const metadataMatchesKey = (
     metadata["upload-batch-id"] === keyParts.uploadBatchId &&
     metadata["photo-id"] === keyParts.photoId
   );
-};
-
-const asPhotoProcessingItem = (
-  item: Record<string, unknown> | undefined,
-): PhotoProcessingItem | undefined => {
-  if (
-    !item ||
-    typeof item.photoId !== "string" ||
-    typeof item.userId !== "string" ||
-    typeof item.uploadBatchId !== "string" ||
-    typeof item.originalObjectKey !== "string" ||
-    typeof item.processingState !== "string"
-  ) {
-    return undefined;
-  }
-  return item as unknown as PhotoProcessingItem;
 };
 
 interface ParsedExif {
@@ -783,7 +551,7 @@ const parseGpsLocation = ({
 };
 
 const resolveCapturedAt = (
-  photo: PhotoProcessingItem,
+  photo: Pick<Photo, "fileModifiedAt" | "uploadRequestedAt">,
   displayPhoto: DisplayPhotoResult,
 ): { value: string; source: CapturedAtSource } => {
   if (displayPhoto.capturedAt) {
@@ -801,6 +569,57 @@ const resolveCapturedAt = (
   return {
     value: photo.uploadRequestedAt ?? new Date(0).toISOString(),
     source: "uploadTime",
+  };
+};
+
+const processAlbum = (
+  deps: ProcessPhotoDeps,
+  userId: string,
+): {
+  getPhoto(photoId: string): Promise<LegacyPhotoProcessingItem | undefined>;
+  markProcessingFailed(input: { photoId: string; failureCode: string; failureMessage: string }): Promise<void>;
+  markProcessingStarted(photoId: string): Promise<void>;
+  findReadyPhotoBySha256(input: { sha256: string; excludePhotoId: string }): Promise<{ photoId: string } | undefined>;
+  markExactDuplicate(input: { photoId: string; sha256: string; duplicateOfPhotoId: string }): Promise<void>;
+  markReady(input: {
+    photoId: string;
+    fileName: string;
+    sha256: string;
+    displayObjectKey: string;
+    displayDimensions: { width: number; height: number };
+    timelineThumbnailObjectKey: string;
+    timelineThumbnailDimensions: { width: number; height: number };
+    capturedAt: string;
+    capturedAtSource: CapturedAtSource;
+    metadata: PhotoMetadata;
+  }): Promise<void>;
+} => {
+  if (deps.store) {
+    return deps.store.personalAlbumOf(userId);
+  }
+  return {
+    getPhoto: async (photoId) => deps.getPhoto?.({ userId, photoId }),
+    markProcessingFailed: async ({ photoId, failureCode, failureMessage }) => {
+      await deps.markProcessingFailed?.({ userId, photoId, failureCode, failureMessage });
+    },
+    markProcessingStarted: async (photoId) => {
+      await deps.markProcessingStarted?.({ userId, photoId });
+    },
+    findReadyPhotoBySha256: async ({ sha256, excludePhotoId }) =>
+      deps.findReadyPhotoBySha256?.({ userId, sha256, excludePhotoId }),
+    markExactDuplicate: async ({ photoId, sha256, duplicateOfPhotoId }) => {
+      await deps.markExactDuplicate?.({ userId, photoId, sha256, duplicateOfPhotoId });
+    },
+    markReady: async (input) => {
+      await deps.markReady?.({ userId, ...input });
+      await deps.putTimelineItem?.({
+        userId,
+        photoId: input.photoId,
+        capturedAt: input.capturedAt,
+        fileName: input.fileName,
+        processingState: "ready",
+      });
+    },
   };
 };
 
