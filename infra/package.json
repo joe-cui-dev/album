@@ -3,16 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "album-infra": "dist/bin/album.js"
-  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "cdk": "cdk",
     "synth": "npm run build && cdk synth"
   },
   "dependencies": {
+    "@album/shared": "0.1.0",
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.2"
   },
@@ -20,6 +18,7 @@
     "@types/node": "^22.19.19",
     "aws-cdk": "^2.170.0",
     "esbuild": "^0.24.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.0"
   }
 }

@@ -48,6 +48,7 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
+import { ORIGINALS_KEY_PREFIX } from "@album/shared";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -217,7 +218,7 @@ export class AlbumStack extends Stack {
     photosBucket.addEventNotification(
       EventType.OBJECT_CREATED,
       new SqsDestination(processingQueue),
-      { prefix: "originals/" },
+      { prefix: ORIGINALS_KEY_PREFIX },
     );
 
     const commonEnvironment = {
