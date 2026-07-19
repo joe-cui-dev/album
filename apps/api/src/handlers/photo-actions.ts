@@ -8,6 +8,7 @@ import type {
   ArchivePhotoResponse,
   CreateTemporaryPhotoUrlResponse,
   GetPhotoDetailResponse,
+  Photo,
 } from "@album/shared";
 import type { AuthenticatedUser } from "../auth.js";
 import { getAuthenticatedUser } from "../auth.js";
@@ -19,29 +20,11 @@ import type { PersonalAlbumStore } from "../store/personal-album.js";
 const temporaryUrlExpiresInSeconds = 300;
 const s3 = new S3Client({});
 
-interface PhotoActionItem {
-  photoId: string;
-  userId: string;
-  fileName: string;
-  format: import("@album/shared").PhotoFormat;
-  fileSizeBytes: number;
-  originalObjectKey: string;
-  displayObjectKey?: string;
-  capturedAt?: string;
-  capturedAtSource?: import("@album/shared").CapturedAtSource;
-  processingState: import("@album/shared").ProcessingState;
-  archived: boolean;
-  metadata?: import("@album/shared").PhotoMetadata;
-  displayDimensions?: { width: number; height: number };
-}
-
 interface GetPhotoDeps {
-  store?: PersonalAlbumStore;
-  getPhoto?: (input: { userId: string; photoId: string }) => Promise<PhotoActionItem | undefined>;
+  store: PersonalAlbumStore;
 }
 
 interface ArchivePhotoDeps extends GetPhotoDeps {
-  archivePhoto?: (input: { userId: string; photoId: string }) => Promise<void>;
 }
 
 interface TemporaryUrlDeps extends GetPhotoDeps {
@@ -109,7 +92,7 @@ export const handleGetPhotoDetail = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await getPhoto(deps, user.userId, photoId);
+  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -133,16 +116,13 @@ export const handleArchivePhoto = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await getPhoto(deps, user.userId, photoId);
+  const album = deps.store.personalAlbumOf(user.userId);
+  const photo = await album.getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
 
-  if (deps.store) {
-    await deps.store.personalAlbumOf(user.userId).archivePhoto(photoId);
-  } else {
-    await deps.archivePhoto?.({ userId: user.userId, photoId });
-  }
+  await album.archivePhoto(photoId);
 
   return ok({ photoId, archived: true } satisfies ArchivePhotoResponse);
 };
@@ -163,7 +143,7 @@ export const handleCreateDisplayAccessUrl = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await getPhoto(deps, user.userId, photoId);
+  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -193,7 +173,7 @@ export const handleCreateOriginalDownloadUrl = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = await getPhoto(deps, user.userId, photoId);
+  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -232,18 +212,7 @@ const contentDispositionFileName = (fileName: string): string => {
   return fileName.replace(/["\\\r\n]/g, "_");
 };
 
-const getPhoto = async (
-  deps: GetPhotoDeps,
-  userId: string,
-  photoId: string,
-) => {
-  if (deps.store) {
-    return deps.store.personalAlbumOf(userId).getPhoto(photoId);
-  }
-  return deps.getPhoto?.({ userId, photoId });
-};
-
-const toPhotoDetail = (photo: PhotoActionItem): GetPhotoDetailResponse => ({
+const toPhotoDetail = (photo: Photo): GetPhotoDetailResponse => ({
   photoId: photo.photoId,
   fileName: photo.fileName,
   format: photo.format,

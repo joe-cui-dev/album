@@ -24,8 +24,7 @@ const processingStates: ProcessingState[] = [
 ];
 
 interface UploadBatchStatusDeps {
-  store?: PersonalAlbumStore;
-  getItem?: (key: { pk: string; sk: string }) => Promise<Record<string, unknown> | undefined>;
+  store: PersonalAlbumStore;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
@@ -52,20 +51,14 @@ export const handleGetUploadBatchStatus = async ({
     return badRequest("uploadBatchId is required");
   }
 
-  const album = deps.store?.personalAlbumOf(user.userId);
-  const batch = album
-    ? await album.getUploadBatch(uploadBatchId)
-    : asUploadBatch(await deps.getItem?.({ pk: `USER#${user.userId}`, sk: `UPLOAD_BATCH#${uploadBatchId}` }));
+  const album = deps.store.personalAlbumOf(user.userId);
+  const batch = await album.getUploadBatch(uploadBatchId);
   if (!batch) {
     return json(404, { message: "Upload batch not found" });
   }
 
   const photos = await Promise.all(
-    batch.photoIds.map(async (photoId) =>
-      album
-        ? album.getPhoto(photoId)
-        : asPhotoStatus(await deps.getItem?.({ pk: `USER#${user.userId}`, sk: `PHOTO#${photoId}` })),
-    ),
+    batch.photoIds.map((photoId) => album.getPhoto(photoId)),
   );
   const statuses = photos
     .filter((photo): photo is import("@album/shared").Photo => Boolean(photo))
@@ -98,28 +91,3 @@ const toPhotoStatus = (photo: import("@album/shared").Photo): UploadBatchPhotoSt
     ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
   };
 };
-
-const asUploadBatch = (item: Record<string, unknown> | undefined) =>
-  item &&
-  typeof item.uploadBatchId === "string" &&
-  typeof item.userId === "string" &&
-  Array.isArray(item.photoIds) &&
-  item.photoIds.every((photoId) => typeof photoId === "string")
-    ? (item as unknown as { uploadBatchId: string; userId: string; photoIds: string[] })
-    : undefined;
-
-const asPhotoStatus = (item: Record<string, unknown> | undefined) =>
-  item &&
-  typeof item.photoId === "string" &&
-  typeof item.fileName === "string" &&
-  typeof item.originalObjectKey === "string" &&
-  processingStates.includes(item.processingState as ProcessingState)
-    ? ({
-        ...item,
-        uploadBatchId: typeof item.uploadBatchId === "string" ? item.uploadBatchId : "",
-        userId: typeof item.userId === "string" ? item.userId : "",
-        format: "jpeg",
-        fileSizeBytes: 0,
-        archived: false,
-      } as import("@album/shared").Photo)
-    : undefined;

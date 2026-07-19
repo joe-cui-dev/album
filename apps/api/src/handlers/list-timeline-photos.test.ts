@@ -1,135 +1,44 @@
+import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
+import type { PersonalAlbum } from "../store/personal-album.js";
 import { handleListTimelinePhotos } from "./list-timeline-photos.js";
+
+const user = { userId: "user-1", email: "user@example.com" };
+const createPhoto = (album: PersonalAlbum, photoId: string, fileName: string) =>
+  album.createPhoto({ photoId, uploadBatchId: "batch-1", originalObjectKey: `originals/user-1/batch-1/${photoId}`, fileName, format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z" });
+const markReady = (album: PersonalAlbum, photoId: string, fileName: string, capturedAt: string) =>
+  album.markReady({ photoId, sha256: photoId, fileName, displayObjectKey: `display/user-1/${photoId}.jpg`, displayDimensions: { width: 1600, height: 1200 }, timelineThumbnailObjectKey: `timeline-thumbnails/user-1/${photoId}.jpg`, timelineThumbnailDimensions: { width: 320, height: 240 }, capturedAt, capturedAtSource: "exif", metadata: {} });
 
 describe("handleListTimelinePhotos", () => {
   it("returns the signed-in user's newest ready timeline photos and hides archived photos by default", async () => {
-    const response = await handleListTimelinePhotos({
-      user: { userId: "user-1", email: "user@example.com" },
-      query: {},
-      deps: {
-        queryTimeline: async ({ userId }) => {
-          expect(userId).toBe("user-1");
-          return [
-            { photoId: "photo-old", capturedAt: "2024-12-31T23:00:00.000Z" },
-            { photoId: "photo-new", capturedAt: "2025-01-02T10:00:00.000Z" },
-            { photoId: "photo-archived", capturedAt: "2025-01-03T10:00:00.000Z" },
-            { photoId: "photo-processing", capturedAt: "2025-01-04T10:00:00.000Z" },
-          ];
-        },
-        getPhoto: async ({ photoId }) => {
-          const photos = {
-            "photo-old": {
-              photoId,
-              fileName: "old.jpg",
-              capturedAt: "2024-12-31T23:00:00.000Z",
-              processingState: "ready",
-              archived: false,
-              timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-old.jpg",
-              timelineThumbnailDimensions: { width: 320, height: 240 },
-            },
-            "photo-new": {
-              photoId,
-              fileName: "new.jpg",
-              capturedAt: "2025-01-02T10:00:00.000Z",
-              processingState: "ready",
-              archived: false,
-              displayObjectKey: "display/user-1/photo-new.jpg",
-              displayDimensions: { width: 1600, height: 1200 },
-              timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-new.jpg",
-              timelineThumbnailDimensions: { width: 320, height: 240 },
-            },
-            "photo-archived": {
-              photoId,
-              fileName: "archived.jpg",
-              capturedAt: "2025-01-03T10:00:00.000Z",
-              processingState: "ready",
-              archived: true,
-            },
-            "photo-processing": {
-              photoId,
-              fileName: "processing.jpg",
-              capturedAt: "2025-01-04T10:00:00.000Z",
-              processingState: "processing",
-              archived: false,
-            },
-          } as const;
-          return photos[photoId as keyof typeof photos];
-        },
-        createTimelineThumbnailUrl: async ({ objectKey }) =>
-          `https://temporary.example/${objectKey}`,
-      },
-    });
-
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    await createPhoto(album, "photo-old", "old.jpg");
+    await createPhoto(album, "photo-new", "new.jpg");
+    await createPhoto(album, "photo-archived", "archived.jpg");
+    await createPhoto(album, "photo-processing", "processing.jpg");
+    await markReady(album, "photo-old", "old.jpg", "2024-12-31T23:00:00.000Z");
+    await markReady(album, "photo-new", "new.jpg", "2025-01-02T10:00:00.000Z");
+    await markReady(album, "photo-archived", "archived.jpg", "2025-01-03T10:00:00.000Z");
+    await album.archivePhoto("photo-archived");
+    await album.markProcessingStarted("photo-processing");
+    const response = await handleListTimelinePhotos({ user, query: {}, deps: { store, createTimelineThumbnailUrl: async ({ objectKey }) => `https://temporary.example/${objectKey}` } });
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body ?? "{}")).toEqual({
-      photos: [
-        {
-          photoId: "photo-new",
-          fileName: "new.jpg",
-          capturedAt: "2025-01-02T10:00:00.000Z",
-          processingState: "ready",
-          archived: false,
-          displayObjectKey: "display/user-1/photo-new.jpg",
-          displayDimensions: { width: 1600, height: 1200 },
-          timelineThumbnailUrl:
-            "https://temporary.example/timeline-thumbnails/user-1/photo-new.jpg",
-          timelineThumbnailDimensions: { width: 320, height: 240 },
-        },
-        {
-          photoId: "photo-old",
-          fileName: "old.jpg",
-          capturedAt: "2024-12-31T23:00:00.000Z",
-          processingState: "ready",
-          archived: false,
-          timelineThumbnailUrl:
-            "https://temporary.example/timeline-thumbnails/user-1/photo-old.jpg",
-          timelineThumbnailDimensions: { width: 320, height: 240 },
-        },
-      ],
-    });
+    expect(JSON.parse(response.body ?? "{}")).toEqual({ photos: [
+      { photoId: "photo-new", fileName: "new.jpg", capturedAt: "2025-01-02T10:00:00.000Z", processingState: "ready", archived: false, displayObjectKey: "display/user-1/photo-new.jpg", displayDimensions: { width: 1600, height: 1200 }, timelineThumbnailUrl: "https://temporary.example/timeline-thumbnails/user-1/photo-new.jpg", timelineThumbnailDimensions: { width: 320, height: 240 } },
+      { photoId: "photo-old", fileName: "old.jpg", capturedAt: "2024-12-31T23:00:00.000Z", processingState: "ready", archived: false, displayObjectKey: "display/user-1/photo-old.jpg", displayDimensions: { width: 1600, height: 1200 }, timelineThumbnailUrl: "https://temporary.example/timeline-thumbnails/user-1/photo-old.jpg", timelineThumbnailDimensions: { width: 320, height: 240 } },
+    ] });
   });
 
   it("applies year, month, processing state, and archived filters", async () => {
-    const response = await handleListTimelinePhotos({
-      user: { userId: "user-1", email: "user@example.com" },
-      query: {
-        year: "2025",
-        month: "02",
-        processingState: "processingFailed",
-        archived: "true",
-      },
-      deps: {
-        queryTimeline: async ({ fromCapturedAt, toCapturedAt }) => {
-          expect(fromCapturedAt).toBe("2025-02-01T00:00:00.000Z");
-          expect(toCapturedAt).toBe("2025-03-01T00:00:00.000Z");
-          return [
-            { photoId: "photo-1", capturedAt: "2025-02-10T10:00:00.000Z" },
-            { photoId: "photo-2", capturedAt: "2025-02-11T10:00:00.000Z" },
-          ];
-        },
-        getPhoto: async ({ photoId }) => ({
-          photoId,
-          fileName: `${photoId}.jpg`,
-          capturedAt: "2025-02-10T10:00:00.000Z",
-          processingState:
-            photoId === "photo-1" ? "processingFailed" : "ready",
-          archived: photoId === "photo-1",
-        }),
-        createTimelineThumbnailUrl: async () => {
-          throw new Error("should not sign thumbnails for non-ready photos");
-        },
-      },
-    });
-
-    expect(JSON.parse(response.body ?? "{}")).toEqual({
-      photos: [
-        {
-          photoId: "photo-1",
-          fileName: "photo-1.jpg",
-          capturedAt: "2025-02-10T10:00:00.000Z",
-          processingState: "processingFailed",
-          archived: true,
-        },
-      ],
-    });
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    await createPhoto(album, "photo-1", "photo-1.jpg");
+    await createPhoto(album, "photo-2", "photo-2.jpg");
+    await markReady(album, "photo-1", "photo-1.jpg", "2025-02-10T10:00:00.000Z");
+    await markReady(album, "photo-2", "photo-2.jpg", "2025-02-11T10:00:00.000Z");
+    await album.markProcessingFailed({ photoId: "photo-1", failureCode: "failed", failureMessage: "failed" });
+    await album.archivePhoto("photo-1");
+    const response = await handleListTimelinePhotos({ user, query: { year: "2025", month: "02", processingState: "processingFailed", archived: "true" }, deps: { store, createTimelineThumbnailUrl: async () => { throw new Error("should not sign thumbnails for non-ready photos"); } } });
+    expect(JSON.parse(response.body ?? "{}")).toEqual({ photos: [{ photoId: "photo-1", fileName: "photo-1.jpg", capturedAt: "2025-02-10T10:00:00.000Z", processingState: "processingFailed", archived: true, displayObjectKey: "display/user-1/photo-1.jpg", displayDimensions: { width: 1600, height: 1200 }, timelineThumbnailDimensions: { width: 320, height: 240 } }] });
   });
 });

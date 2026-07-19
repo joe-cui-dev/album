@@ -39,8 +39,7 @@ interface CreateUploadUrlInput {
 interface CreateUploadBatchDeps {
   now: () => Date;
   newId: () => string;
-  store?: PersonalAlbumStore;
-  putItem?: (item: Record<string, unknown>) => Promise<void>;
+  store: PersonalAlbumStore;
   createUploadUrl: (input: CreateUploadUrlInput) => Promise<string>;
 }
 
@@ -103,7 +102,7 @@ export const handleCreateUploadBatch = async ({
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
-  const album = deps.store?.personalAlbumOf(user.userId);
+  const album = deps.store.personalAlbumOf(user.userId);
 
   for (const file of request.files) {
     const photoId = deps.newId();
@@ -130,18 +129,7 @@ export const handleCreateUploadBatch = async ({
       uploadRequestedAt: createdAt,
       ...(fileModifiedAt ? { fileModifiedAt } : {}),
     };
-    if (album) {
-      await album.createPhoto(photo);
-    } else {
-      await deps.putItem?.({
-        pk: `USER#${user.userId}`,
-        sk: `PHOTO#${photoId}`,
-        ...photo,
-        userId: user.userId,
-        processingState: "uploadRequested",
-        archived: false,
-      });
-    }
+    await album.createPhoto(photo);
 
     uploads.push({
       photoId,
@@ -161,16 +149,7 @@ export const handleCreateUploadBatch = async ({
     createdAt,
     photoIds,
   };
-  if (album) {
-    await album.createUploadBatch(batch);
-  } else {
-    await deps.putItem?.({
-      pk: `USER#${user.userId}`,
-      sk: `UPLOAD_BATCH#${uploadBatchId}`,
-      ...batch,
-      userId: user.userId,
-    });
-  }
+  await album.createUploadBatch(batch);
 
   return ok({ uploadBatchId, uploads } satisfies CreateUploadBatchResponse);
 };

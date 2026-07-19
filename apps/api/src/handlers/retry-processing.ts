@@ -4,7 +4,7 @@ import type {
 } from "aws-lambda";
 import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import type {
-  ProcessingState,
+  Photo,
   RetryProcessingResponse,
   UploadBatchPhotoStatus,
 } from "@album/shared";
@@ -17,18 +17,8 @@ import type { PersonalAlbumStore } from "../store/personal-album.js";
 
 const sqs = new SQSClient({});
 
-interface RetryPhotoItem {
-  photoId: string;
-  fileName: string;
-  processingState: ProcessingState;
-  originalObjectKey: string;
-  failureCode?: string;
-  failureMessage?: string;
-}
-
 interface RetryProcessingDeps {
-  store?: PersonalAlbumStore;
-  getPhoto?: (input: { userId: string; photoId: string }) => Promise<RetryPhotoItem | undefined>;
+  store: PersonalAlbumStore;
   sendRetryMessage: (message: {
     userId: string;
     photoId: string;
@@ -76,9 +66,7 @@ export const handleRetryProcessing = async ({
     return badRequest("photoId is required");
   }
 
-  const photo = deps.store
-    ? await deps.store.personalAlbumOf(user.userId).getPhoto(photoId)
-    : await deps.getPhoto?.({ userId: user.userId, photoId });
+  const photo = await deps.store.personalAlbumOf(user.userId).getPhoto(photoId);
   if (!photo) {
     return json(404, { message: "Photo not found" });
   }
@@ -95,7 +83,7 @@ export const handleRetryProcessing = async ({
   return ok(toPhotoStatus(photo) satisfies RetryProcessingResponse);
 };
 
-const toPhotoStatus = (photo: RetryPhotoItem): UploadBatchPhotoStatus => {
+const toPhotoStatus = (photo: Photo): UploadBatchPhotoStatus => {
   return {
     photoId: photo.photoId,
     fileName: photo.fileName,

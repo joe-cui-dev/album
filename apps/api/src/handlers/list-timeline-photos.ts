@@ -6,6 +6,7 @@ import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   ListTimelinePhotosResponse,
+  Photo,
   ProcessingState,
   TimelinePhoto,
 } from "@album/shared";
@@ -19,18 +20,6 @@ import type { PersonalAlbumStore } from "../store/personal-album.js";
 const temporaryUrlExpiresInSeconds = 300;
 const s3 = new S3Client({});
 
-interface TimelinePhotoItem {
-  photoId: string;
-  fileName: string;
-  capturedAt?: string;
-  processingState: ProcessingState;
-  archived: boolean;
-  displayObjectKey?: string;
-  displayDimensions?: { width: number; height: number };
-  timelineThumbnailObjectKey?: string;
-  timelineThumbnailDimensions?: { width: number; height: number };
-}
-
 interface TimelineQuery {
   year?: string;
   month?: string;
@@ -39,13 +28,7 @@ interface TimelineQuery {
 }
 
 interface ListTimelineDeps {
-  store?: PersonalAlbumStore;
-  queryTimeline?: (input: {
-    userId: string;
-    fromCapturedAt?: string;
-    toCapturedAt?: string;
-  }) => Promise<Array<{ photoId: string; capturedAt: string }>>;
-  getPhoto?: (input: { userId: string; photoId: string }) => Promise<TimelinePhotoItem | undefined>;
+  store: PersonalAlbumStore;
   createTimelineThumbnailUrl: (input: { objectKey: string }) => Promise<string>;
 }
 
@@ -87,19 +70,11 @@ export const handleListTimelinePhotos = async ({
     return badRequest("archived must be true or false");
   }
 
-  const visiblePhotos = deps.store
-    ? await deps.store.personalAlbumOf(user.userId).listTimelinePhotos({
-        ...capturedAtRange.range,
-        processingState: query.processingState ?? "ready",
-        archived: query.archived === "true",
-      })
-    : await listLegacyTimelinePhotos({
-        deps,
-        userId: user.userId,
-        range: capturedAtRange.range,
-        processingState: query.processingState ?? "ready",
-        archived: query.archived === "true",
-      });
+  const visiblePhotos = await deps.store.personalAlbumOf(user.userId).listTimelinePhotos({
+    ...capturedAtRange.range,
+    processingState: query.processingState ?? "ready",
+    archived: query.archived === "true",
+  });
   const photos = await Promise.all(
     visiblePhotos.map((photo) => toTimelinePhoto(photo, deps)),
   );
@@ -145,7 +120,7 @@ const rangeFromQuery = (
 };
 
 const toTimelinePhoto = async (
-  photo: TimelinePhotoItem,
+  photo: Photo,
   deps: Pick<ListTimelineDeps, "createTimelineThumbnailUrl">,
 ): Promise<TimelinePhoto> => {
   const timelineThumbnailUrl =
@@ -183,29 +158,6 @@ const createTimelineThumbnailUrl = async ({ objectKey }: { objectKey: string }) 
       expiresIn: temporaryUrlExpiresInSeconds,
     },
   );
-};
-
-const listLegacyTimelinePhotos = async ({
-  deps,
-  userId,
-  range,
-  processingState,
-  archived,
-}: {
-  deps: ListTimelineDeps;
-  userId: string;
-  range: { fromCapturedAt?: string; toCapturedAt?: string };
-  processingState: ProcessingState;
-  archived: boolean;
-}) => {
-  const items = await deps.queryTimeline?.({ userId, ...range });
-  const photos = await Promise.all(
-    (items ?? []).map((item) => deps.getPhoto?.({ userId, photoId: item.photoId })),
-  );
-  return photos
-    .filter((photo): photo is TimelinePhotoItem => Boolean(photo))
-    .filter((photo) => photo.processingState === processingState && photo.archived === archived)
-    .sort((left, right) => (right.capturedAt ?? "").localeCompare(left.capturedAt ?? ""));
 };
 
 const isProcessingState = (value: unknown): value is ProcessingState => {

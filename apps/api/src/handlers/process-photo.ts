@@ -37,25 +37,11 @@ interface DisplayPhotoResult extends DerivedPhotoResult {
   capturedAt?: string;
 }
 
-interface LegacyPhotoProcessingItem {
-  photoId: string;
-  userId: string;
-  uploadBatchId: string;
-  originalObjectKey: string;
-  fileName?: string;
-  fileModifiedAt?: string;
-  uploadRequestedAt?: string;
-  processingState: import("@album/shared").ProcessingState;
-}
-
 interface ProcessPhotoDeps {
   getObjectMetadata: (
     objectKey: string,
   ) => Promise<Record<string, string | undefined>>;
-  store?: PersonalAlbumStore;
-  getPhoto?: (input: { userId: string; photoId: string }) => Promise<LegacyPhotoProcessingItem | undefined>;
-  markProcessingFailed?: (input: { userId: string; photoId: string; failureCode: string; failureMessage: string }) => Promise<void>;
-  markProcessingStarted?: (input: { userId: string; photoId: string }) => Promise<void>;
+  store: PersonalAlbumStore;
   readObjectBytes: (objectKey: string) => Promise<Uint8Array>;
   createDisplayPhoto: (originalBytes: Uint8Array) => Promise<DisplayPhotoResult>;
   createTimelineThumbnail: (
@@ -69,21 +55,6 @@ interface ProcessPhotoDeps {
     objectKey: string;
     body: Uint8Array;
   }) => Promise<void>;
-  findReadyPhotoBySha256?: (input: { userId: string; sha256: string; excludePhotoId: string }) => Promise<{ photoId: string } | undefined>;
-  markExactDuplicate?: (input: { userId: string; photoId: string; sha256: string; duplicateOfPhotoId: string }) => Promise<void>;
-  markReady?: (input: {
-    userId: string;
-    photoId: string;
-    sha256: string;
-    displayObjectKey: string;
-    displayDimensions: { width: number; height: number };
-    timelineThumbnailObjectKey: string;
-    timelineThumbnailDimensions: { width: number; height: number };
-    capturedAt: string;
-    capturedAtSource: CapturedAtSource;
-    metadata: PhotoMetadata;
-  }) => Promise<void>;
-  putTimelineItem?: (input: { userId: string; photoId: string; capturedAt: string; fileName: string; processingState: "ready" }) => Promise<void>;
 }
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
@@ -572,56 +543,8 @@ const resolveCapturedAt = (
   };
 };
 
-const processAlbum = (
-  deps: ProcessPhotoDeps,
-  userId: string,
-): {
-  getPhoto(photoId: string): Promise<LegacyPhotoProcessingItem | undefined>;
-  markProcessingFailed(input: { photoId: string; failureCode: string; failureMessage: string }): Promise<void>;
-  markProcessingStarted(photoId: string): Promise<void>;
-  findReadyPhotoBySha256(input: { sha256: string; excludePhotoId: string }): Promise<{ photoId: string } | undefined>;
-  markExactDuplicate(input: { photoId: string; sha256: string; duplicateOfPhotoId: string }): Promise<void>;
-  markReady(input: {
-    photoId: string;
-    fileName: string;
-    sha256: string;
-    displayObjectKey: string;
-    displayDimensions: { width: number; height: number };
-    timelineThumbnailObjectKey: string;
-    timelineThumbnailDimensions: { width: number; height: number };
-    capturedAt: string;
-    capturedAtSource: CapturedAtSource;
-    metadata: PhotoMetadata;
-  }): Promise<void>;
-} => {
-  if (deps.store) {
-    return deps.store.personalAlbumOf(userId);
-  }
-  return {
-    getPhoto: async (photoId) => deps.getPhoto?.({ userId, photoId }),
-    markProcessingFailed: async ({ photoId, failureCode, failureMessage }) => {
-      await deps.markProcessingFailed?.({ userId, photoId, failureCode, failureMessage });
-    },
-    markProcessingStarted: async (photoId) => {
-      await deps.markProcessingStarted?.({ userId, photoId });
-    },
-    findReadyPhotoBySha256: async ({ sha256, excludePhotoId }) =>
-      deps.findReadyPhotoBySha256?.({ userId, sha256, excludePhotoId }),
-    markExactDuplicate: async ({ photoId, sha256, duplicateOfPhotoId }) => {
-      await deps.markExactDuplicate?.({ userId, photoId, sha256, duplicateOfPhotoId });
-    },
-    markReady: async (input) => {
-      await deps.markReady?.({ userId, ...input });
-      await deps.putTimelineItem?.({
-        userId,
-        photoId: input.photoId,
-        capturedAt: input.capturedAt,
-        fileName: input.fileName,
-        processingState: "ready",
-      });
-    },
-  };
-};
+const processAlbum = (deps: ProcessPhotoDeps, userId: string) =>
+  deps.store.personalAlbumOf(userId);
 
 const removeUndefined = <T extends Record<string, unknown>>(input: T): T => {
   return Object.fromEntries(
