@@ -26,6 +26,7 @@ import type { PhotoObjectStore } from "../store/photo-objects.js";
 interface ProcessRecord {
   messageId: string;
   body: string;
+  attributes?: { ApproximateReceiveCount?: string };
 }
 
 interface DerivedPhotoResult {
@@ -54,16 +55,28 @@ interface ProcessPhotoDeps {
 }
 
 export const handler: SQSHandler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
-  const deps: ProcessPhotoDeps = {
+  return handleProcessPhotoBatch({
+    records: event.Records,
+    deps: {
     store: personalAlbumStore,
     photoObjects: photoObjectStore,
     now: () => new Date(),
     createDisplayPhoto,
     createTimelineThumbnail,
     createTimelineThumbnailLarge,
-  };
+    },
+  });
+};
+
+export const handleProcessPhotoBatch = async ({
+  records,
+  deps,
+}: {
+  records: ProcessRecord[];
+  deps: ProcessPhotoDeps;
+}): Promise<SQSBatchResponse> => {
   const failures: Array<{ itemIdentifier: string }> = [];
-  for (const record of event.Records) {
+  for (const record of records) {
     try {
       await handleProcessPhoto({ records: [record], deps });
     } catch (error) {
@@ -73,10 +86,53 @@ export const handler: SQSHandler = async (event: SQSEvent): Promise<SQSBatchResp
         messageId: record.messageId,
         error: error instanceof Error ? error.message : String(error),
       }));
+      if (isFinalProcessingReceive(record)) {
+        await bestEffortRecordFinalProcessingIssues(record, deps, error);
+      }
       failures.push({ itemIdentifier: record.messageId });
     }
   }
   return { batchItemFailures: failures };
+};
+
+const isFinalProcessingReceive = (record: ProcessRecord): boolean =>
+  Number(record.attributes?.ApproximateReceiveCount ?? "0") >= 3;
+
+/**
+ * The final receive remains a batch failure so SQS still moves it to the DLQ.
+ * Recording an Issue is deliberately best effort: a DynamoDB outage must not
+ * suppress DLQ delivery and is surfaced later by reconciliation.
+ */
+const bestEffortRecordFinalProcessingIssues = async (
+  record: ProcessRecord,
+  deps: ProcessPhotoDeps,
+  error: unknown,
+): Promise<void> => {
+  const parsed = parseRecordBody(record.body);
+  await Promise.all(parsed.objectKeys.map(async (objectKey) => {
+    const parts = parseOriginalObjectKey(objectKey);
+    if (!parts) return;
+    try {
+      const album = processAlbum(deps, parts.userId);
+      const photo = await album.getPhoto(parts.photoId);
+      if (!photo || photo.processingState === "ready" || photo.processingState === "exactDuplicate") return;
+      await album.recordProcessingIssueV2({
+        photoId: photo.photoId,
+        fileName: photo.fileName,
+        reasonCode: "finalProcessingFailure",
+        attemptedAt: deps.now().toISOString(),
+        ...(photo.processingAttemptId ? { attemptId: photo.processingAttemptId } : {}),
+      });
+    } catch (issueError) {
+      console.error(JSON.stringify({
+        level: "error",
+        message: "Unable to record final Processing Issue before DLQ",
+        messageId: record.messageId,
+        originalError: error instanceof Error ? error.message : String(error),
+        error: issueError instanceof Error ? issueError.message : String(issueError),
+      }));
+    }
+  }));
 };
 
 export const handleProcessPhoto = async ({

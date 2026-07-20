@@ -53,6 +53,14 @@ export const createS3PhotoObjectStore = ({
     );
     return result.Metadata ?? {};
   },
+  async objectExists(objectKey) {
+    try {
+      await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: objectKey }));
+      return true;
+    } catch {
+      return false;
+    }
+  },
   async readObjectBytes(objectKey) {
     const result = await s3Client.send(
       new GetObjectCommand({ Bucket: bucketName, Key: objectKey }),

@@ -364,6 +364,26 @@ describe("PersonalAlbum v2 contract: claimProcessingAttempt", () => {
       album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-B", startedAt: "t3" }),
     ).rejects.toBeInstanceOf(ProcessingAttemptConflictError);
   });
+
+  it("admits only the retry attempt reserved before its SQS message is sent", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-20T00:00:00.000Z",
+    });
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1", fileName: "photo-1.jpg", reasonCode: "failed", attemptedAt: "2026-07-20T00:01:00.000Z",
+    });
+    await album.reserveProcessingIssueRetryV2({
+      photoId: "photo-1", retryAttemptId: "attempt-A",
+      reservedAt: "2026-07-20T00:01:00.000Z", reservationExpiresAt: "2026-07-20T00:06:00.000Z",
+    });
+    await expect(album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-B", startedAt: "t" }))
+      .rejects.toBeInstanceOf(ProcessingAttemptConflictError);
+    await expect(album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-A", startedAt: "t" }))
+      .resolves.toBe("claimed");
+  });
 });
 
 describe("PersonalAlbum v2 contract: applyMigrationVersionV2 (backfill)", () => {

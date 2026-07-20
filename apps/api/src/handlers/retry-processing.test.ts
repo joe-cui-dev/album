@@ -33,4 +33,33 @@ describe("handleRetryProcessing", () => {
     expect(response.statusCode).toBe(409);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ message: "Only failed photos can be retried" });
   });
+
+  it("returns the existing in-flight attempt without sending a second message", async () => {
+    const store = await seedPhoto("processingFailed");
+    const album = store.personalAlbumOf(user.userId);
+    await album.beginProcessingIssueRetryV2({
+      photoId: "photo-1",
+      retryAttemptId: "in-flight",
+      attemptedAt: "2026-05-26T01:02:04.000Z",
+    });
+    const sendRetryMessage = jest.fn(async () => undefined);
+    const response = await handleRetryProcessing({
+      user, album, photoId: "photo-1",
+      deps: { sendRetryMessage, newRetryAttemptId: () => "new-attempt", now: () => new Date() },
+    });
+    expect(response.statusCode).toBe(202);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({ accepted: true, retryAttemptId: "in-flight" });
+    expect(sendRetryMessage).not.toHaveBeenCalled();
+  });
+
+  it("releases the pending reservation when SQS rejects the message", async () => {
+    const store = await seedPhoto("processingFailed");
+    const album = store.personalAlbumOf(user.userId);
+    await expect(handleRetryProcessing({
+      user, album, photoId: "photo-1",
+      deps: { sendRetryMessage: async () => { throw new Error("SQS unavailable"); }, newRetryAttemptId: () => "retry-1", now: () => new Date() },
+    })).rejects.toThrow("SQS unavailable");
+    await expect(album.getProcessingIssue("photo-1")).resolves.toMatchObject({ status: "failed" });
+    expect((await album.getProcessingIssue("photo-1"))?.retryAttemptId).toBeUndefined();
+  });
 });

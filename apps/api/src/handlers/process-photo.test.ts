@@ -6,6 +6,7 @@ import {
   createTimelineThumbnail,
   createTimelineThumbnailLarge,
   handleProcessPhoto,
+  handleProcessPhotoBatch,
 } from "./process-photo.js";
 
 const objectKey = "originals/user-1/batch-1/photo-1";
@@ -32,6 +33,23 @@ const outputDeps = () => ({
 });
 
 describe("handleProcessPhoto", () => {
+  it("records a best-effort Issue on the final receive while returning the record to its DLQ", async () => {
+    const { store, album } = await createStore();
+    const objects = photoObjects();
+    const response = await handleProcessPhotoBatch({
+      records: [{ ...record()[0]!, attributes: { ApproximateReceiveCount: "3" } }],
+      deps: {
+        store,
+        photoObjects: { ...objects, readObjectBytes: async () => { throw new Error("S3 temporarily unavailable"); } },
+        ...outputDeps(),
+      },
+    });
+    expect(response).toEqual({ batchItemFailures: [{ itemIdentifier: "message-1" }] });
+    await expect(album.getProcessingIssue("photo-1")).resolves.toMatchObject({
+      reasonCode: "finalProcessingFailure",
+      status: "failed",
+    });
+  });
   it("marks the matching Photo as processingFailed when S3 metadata does not match the original object key", async () => {
     const { store, album } = await createStore();
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects({ "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "different-photo" }), ...outputDeps() } });

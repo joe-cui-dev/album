@@ -477,13 +477,38 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           if (!issue || candidate.processingState !== "processingFailed") {
             throw new Error(`Photo ${photoId} has no open Processing Issue`);
           }
-          if (issue.status === "retrying" && issue.retryAttemptId) {
+          if (issue.retryAttemptId && issue.retryAttemptId !== retryAttemptId) {
             return { retryAttemptId: issue.retryAttemptId };
           }
           issue.status = "retrying";
           issue.retryAttemptId = retryAttemptId;
+          delete issue.retryReservationExpiresAt;
           issue.lastAttemptAt = attemptedAt;
           return { retryAttemptId };
+        },
+
+        async reserveProcessingIssueRetryV2({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
+          const candidate = requirePhoto(userId, photoId);
+          const issue = issuesOf(userId).get(photoId);
+          if (!issue || candidate.processingState !== "processingFailed") {
+            throw new Error(`Photo ${photoId} has no open Processing Issue`);
+          }
+          if (
+            issue.retryAttemptId &&
+            (issue.status === "retrying" ||
+              (issue.retryReservationExpiresAt !== undefined && issue.retryReservationExpiresAt >= reservedAt))
+          ) return { retryAttemptId: issue.retryAttemptId };
+          issue.retryAttemptId = retryAttemptId;
+          issue.retryReservationExpiresAt = reservationExpiresAt;
+          return { retryAttemptId };
+        },
+
+        async releaseProcessingIssueRetryV2({ photoId, retryAttemptId }) {
+          const issue = issuesOf(userId).get(photoId);
+          if (issue?.status === "failed" && issue.retryAttemptId === retryAttemptId) {
+            delete issue.retryAttemptId;
+            delete issue.retryReservationExpiresAt;
+          }
         },
 
         async queryProcessingIssuesV2({ limit, after }) {
@@ -505,6 +530,14 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
 
         async claimProcessingAttempt({ photoId, attemptId, startedAt }) {
           const candidate = requirePhoto(userId, photoId);
+          const issue = issuesOf(userId).get(photoId);
+          if (
+            issue?.retryAttemptId !== undefined &&
+            issue.retryAttemptId !== undefined &&
+            issue.retryAttemptId !== attemptId
+          ) {
+            throw new ProcessingAttemptConflictError(photoId);
+          }
           if (candidate.processingAttemptId === attemptId) {
             candidate.processingState = "processing";
             return "resumed";

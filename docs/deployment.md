@@ -28,8 +28,10 @@ aws lambda invoke --function-name "$PHOTO_MAINTENANCE_COORDINATOR" \
   --payload '{"migrationVersion":1}' phase2-backfill-manifest.json
 ```
 
-The isolated maintenance worker consumes one message at a time with reserved
-concurrency two. It is safe to rerun the coordinator after an S3-only write,
+The returned `manifestId` identifies a durable manifest item. The isolated
+maintenance worker consumes one message at a time with reserved concurrency two
+and atomically records completed, skipped, failed, and final-DLQ counts against
+that item. It is safe to rerun the coordinator after an S3-only write,
 transaction conflict, timeout, or DLQ repair: fixed thumbnail keys and the
 migration version make work idempotent. Monitor the Photo Maintenance queue,
 its DLQ, and the corresponding Lambda alarms until the queue and DLQ are empty.
@@ -38,7 +40,8 @@ Run the read-only reconciliation after the queue drains and retain its output:
 
 ```sh
 aws lambda invoke --function-name "$PHASE2_RECONCILIATION" \
-  --cli-binary-format raw-in-base64-out --payload '{}' phase2-reconciliation.json
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"manifestId":"REPLACE_WITH_MANIFEST_ID"}' phase2-reconciliation.json
 ```
 
 The report must contain no discrepancies before Phase 3 starts. It checks v2

@@ -13,6 +13,7 @@ import {
   resolveOriginalCapturedAt,
 } from "./chronology-extraction.js";
 import { config } from "./config.js";
+import { recordMigrationEnqueued, recordMigrationOutcome } from "./migration-manifest.js";
 import { personalAlbumStore, photoObjectStore } from "./store/configured-store.js";
 import type { PersonalAlbumStore } from "./store/personal-album.js";
 import type { PhotoObjectStore } from "./store/photo-objects.js";
@@ -30,6 +31,8 @@ export interface MaintenanceWorkItem {
   userId: string;
   photoId: string;
   migrationVersion: number;
+  manifestId?: string;
+  workId?: string;
 }
 
 interface MaintenanceDeps {
@@ -140,11 +143,13 @@ export const maintenanceWorkerHandler: SQSHandler = async (event: SQSEvent): Pro
       ) {
         throw new Error("Invalid photo maintenance message");
       }
-      await maintainPhoto(item, {
+      if (item.manifestId && item.workId) await recordMigrationEnqueued(item.manifestId, item.workId);
+      const outcome = await maintainPhoto(item, {
         store: personalAlbumStore,
         photoObjects: photoObjectStore,
         now: () => new Date(),
       });
+      if (item.manifestId && item.workId) await recordMigrationOutcome(item.manifestId, item.workId, outcome);
     } catch (error) {
       console.error(JSON.stringify({
         level: "error",
@@ -153,13 +158,33 @@ export const maintenanceWorkerHandler: SQSHandler = async (event: SQSEvent): Pro
         error: error instanceof Error ? error.message : String(error),
       }));
       failures.push({ itemIdentifier: record.messageId });
+      const item = tryParseMaintenanceItem(record.body);
+      if (item?.manifestId && item.workId && Number(record.attributes?.ApproximateReceiveCount ?? "0") >= 3) {
+        try {
+          await recordMigrationOutcome(item.manifestId, item.workId, "failed");
+          await recordMigrationOutcome(item.manifestId, `${item.workId}#dlq`, "dlqEntries");
+        } catch (manifestError) {
+          console.error(JSON.stringify({ level: "error", message: "Unable to record maintenance DLQ outcome", error: manifestError instanceof Error ? manifestError.message : String(manifestError) }));
+        }
+      }
     }
   }
   return { batchItemFailures: failures };
 };
 
+const tryParseMaintenanceItem = (body: string): MaintenanceWorkItem | undefined => {
+  try {
+    const item = JSON.parse(body) as MaintenanceWorkItem;
+    return typeof item.userId === "string" && typeof item.photoId === "string" ? item : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /** Sends maintenance work only after the caller has selected the immutable target list. */
-export const enqueueMaintenanceWork = async (items: MaintenanceWorkItem[]): Promise<void> => {
+export const enqueueMaintenanceWork = async (
+  items: MaintenanceWorkItem[],
+): Promise<void> => {
   if (!config.photoMaintenanceQueueUrl) {
     throw new Error("Missing PHOTO_MAINTENANCE_QUEUE_URL");
   }

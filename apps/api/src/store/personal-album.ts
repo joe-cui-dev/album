@@ -26,6 +26,7 @@ export interface ProcessingIssueRecord {
   lastAttemptAt: string;
   /** Internal id of the retry message currently in flight, if any. */
   retryAttemptId?: string;
+  retryReservationExpiresAt?: string;
 }
 
 export interface TimelineProjection {
@@ -190,6 +191,20 @@ export interface PersonalAlbum {
     retryAttemptId: string;
     attemptedAt: string;
   }): Promise<{ retryAttemptId: string }>;
+
+  /** Reserves the sole retry attempt before its message is sent to SQS. */
+  reserveProcessingIssueRetryV2(input: {
+    photoId: string;
+    retryAttemptId: string;
+    reservedAt: string;
+    reservationExpiresAt: string;
+  }): Promise<{ retryAttemptId: string }>;
+
+  /** Releases an unsent retry reservation after an SQS send failure. */
+  releaseProcessingIssueRetryV2(input: {
+    photoId: string;
+    retryAttemptId: string;
+  }): Promise<void>;
 
   /** One newest-first page of durable Processing Issues. */
   queryProcessingIssuesV2(input: {

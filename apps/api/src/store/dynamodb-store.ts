@@ -767,7 +767,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         if (!current.Item) {
           throw new Error(`Photo ${photoId} has no open Processing Issue`);
         }
-        if (current.Item.status === "retrying" && typeof current.Item.retryAttemptId === "string") {
+        if (typeof current.Item.retryAttemptId === "string" && current.Item.retryAttemptId !== retryAttemptId) {
           return { retryAttemptId: current.Item.retryAttemptId };
         }
         try {
@@ -775,8 +775,8 @@ export const createDynamoDbPersonalAlbumStore = ({
             new UpdateCommand({
               TableName: tableName,
               Key: issueKey(userId, photoId, addedAt),
-              UpdateExpression: "SET #status = :retrying, retryAttemptId = :retryAttemptId, lastAttemptAt = :attemptedAt",
-              ConditionExpression: "#status = :failed",
+              UpdateExpression: "SET #status = :retrying, retryAttemptId = :retryAttemptId, lastAttemptAt = :attemptedAt REMOVE retryReservationExpiresAt",
+              ConditionExpression: "#status = :failed AND retryAttemptId = :retryAttemptId",
               ExpressionAttributeNames: { "#status": "status" },
               ExpressionAttributeValues: {
                 ":retrying": "retrying",
@@ -796,6 +796,49 @@ export const createDynamoDbPersonalAlbumStore = ({
             return { retryAttemptId: latest.Item.retryAttemptId };
           }
           throw error;
+        }
+      },
+
+      async reserveProcessingIssueRetryV2({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
+        const issue = await this.getProcessingIssue(photoId);
+        if (!issue) throw new Error(`Photo ${photoId} has no open Processing Issue`);
+        if (
+          issue.retryAttemptId &&
+          (issue.status === "retrying" ||
+            (issue.retryReservationExpiresAt !== undefined && issue.retryReservationExpiresAt >= reservedAt))
+        ) return { retryAttemptId: issue.retryAttemptId };
+        try {
+          await documentClient.send(new UpdateCommand({
+            TableName: tableName,
+            Key: issueKey(userId, photoId, issue.addedAt),
+            UpdateExpression: "SET retryAttemptId = :retryAttemptId, retryReservationExpiresAt = :reservationExpiresAt",
+            ConditionExpression: "#status = :failed AND (attribute_not_exists(retryAttemptId) OR retryReservationExpiresAt < :reservedAt)",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: { ":failed": "failed", ":retryAttemptId": retryAttemptId, ":reservedAt": reservedAt, ":reservationExpiresAt": reservationExpiresAt },
+          }));
+          return { retryAttemptId };
+        } catch (error) {
+          if (!isConditionalCheckFailed(error)) throw error;
+          const latest = await this.getProcessingIssue(photoId);
+          if (latest?.retryAttemptId) return { retryAttemptId: latest.retryAttemptId };
+          throw error;
+        }
+      },
+
+      async releaseProcessingIssueRetryV2({ photoId, retryAttemptId }) {
+        const issue = await this.getProcessingIssue(photoId);
+        if (!issue) return;
+        try {
+          await documentClient.send(new UpdateCommand({
+            TableName: tableName,
+            Key: issueKey(userId, photoId, issue.addedAt),
+            UpdateExpression: "REMOVE retryAttemptId, retryReservationExpiresAt",
+            ConditionExpression: "#status = :failed AND retryAttemptId = :retryAttemptId",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: { ":failed": "failed", ":retryAttemptId": retryAttemptId },
+          }));
+        } catch (error) {
+          if (!isConditionalCheckFailed(error)) throw error;
         }
       },
 
@@ -825,6 +868,22 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async claimProcessingAttempt({ photoId, attemptId, startedAt }) {
+        const photoResult = await documentClient.send(
+          new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
+        );
+        const addedAt = photoResult.Item?.uploadRequestedAt;
+        if (typeof addedAt === "string") {
+          const issueResult = await documentClient.send(
+            new GetCommand({ TableName: tableName, Key: issueKey(userId, photoId, addedAt) }),
+          );
+          if (
+            typeof issueResult.Item?.retryAttemptId === "string" &&
+            typeof issueResult.Item.retryAttemptId === "string" &&
+            issueResult.Item.retryAttemptId !== attemptId
+          ) {
+            throw new ProcessingAttemptConflictError(photoId);
+          }
+        }
         try {
           await documentClient.send(
             new UpdateCommand({

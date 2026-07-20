@@ -10,7 +10,7 @@ describe("runMaintenanceCoordinator", () => {
     }
     await expect(runMaintenanceCoordinator(
       { dryRun: true },
-      { scanPhotoRecords: records, enqueue, now: () => new Date("2026-07-20T00:00:00.000Z") },
+      { scanPhotoRecords: records, enqueue, createManifest: async () => undefined, now: () => new Date("2026-07-20T00:00:00.000Z") },
     )).resolves.toMatchObject({
       dryRun: true,
       migrationVersion: 1,

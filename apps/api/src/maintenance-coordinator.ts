@@ -2,6 +2,8 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import type { Handler } from "aws-lambda";
 import { config } from "./config.js";
+import { randomUUID } from "node:crypto";
+import { createMigrationManifest, type PersistedMigrationManifest } from "./migration-manifest.js";
 import {
   PHASE_2_MIGRATION_VERSION,
   enqueueMaintenanceWork,
@@ -13,13 +15,9 @@ export interface MaintenanceRunRequest {
   migrationVersion?: number;
 }
 
-export interface MaintenanceManifest {
-  migrationVersion: number;
-  legacyFallbackTimeZone: "Australia/Brisbane";
+export interface MaintenanceManifest extends PersistedMigrationManifest {
   dryRun: boolean;
-  startedAt: string;
   completedAt: string;
-  queued: number;
   readyPhotos: number;
   failedPhotos: number;
 }
@@ -27,6 +25,7 @@ export interface MaintenanceManifest {
 interface CoordinatorDeps {
   scanPhotoRecords: () => AsyncIterable<Record<string, unknown>>;
   enqueue: (items: MaintenanceWorkItem[]) => Promise<void>;
+  createManifest: (manifest: PersistedMigrationManifest) => Promise<void>;
   now: () => Date;
 }
 
@@ -36,6 +35,7 @@ export const handler: Handler<MaintenanceRunRequest, MaintenanceManifest> = asyn
   runMaintenanceCoordinator(event ?? {}, {
     scanPhotoRecords: scanPhotoRecords,
     enqueue: enqueueMaintenanceWork,
+    createManifest: createMigrationManifest,
     now: () => new Date(),
   });
 
@@ -52,6 +52,7 @@ export const runMaintenanceCoordinator = async (
     throw new Error("migrationVersion must be a positive integer");
   }
   const startedAt = deps.now().toISOString();
+  const manifestId = randomUUID();
   const work: MaintenanceWorkItem[] = [];
   let readyPhotos = 0;
   let failedPhotos = 0;
@@ -65,6 +66,8 @@ export const runMaintenanceCoordinator = async (
           userId: photo.userId,
           photoId: photo.photoId,
           migrationVersion,
+          manifestId,
+          workId: `backfillReadyPhoto#${photo.userId}#${photo.photoId}#${migrationVersion}`,
         });
       }
     } else if (photo.processingState === "processingFailed") {
@@ -74,20 +77,35 @@ export const runMaintenanceCoordinator = async (
         userId: photo.userId,
         photoId: photo.photoId,
         migrationVersion,
+        manifestId,
+        workId: `migrateProcessingIssue#${photo.userId}#${photo.photoId}#${migrationVersion}`,
       });
     }
   }
-  if (!request.dryRun) await deps.enqueue(work);
-  return {
+  const queued = request.dryRun ? work.length : 0;
+  const persistedManifest: PersistedMigrationManifest = {
+    manifestId,
     migrationVersion,
-    legacyFallbackTimeZone: "Australia/Brisbane",
-    dryRun: request.dryRun === true,
+    legacyFallbackTimeZone: "Australia/Brisbane" as const,
     startedAt,
+    queued,
+    completed: 0,
+    failed: 0,
+    skipped: 0,
+    dlqEntries: 0,
+  };
+  const manifest: MaintenanceManifest = {
+    ...persistedManifest,
+    dryRun: request.dryRun === true,
     completedAt: deps.now().toISOString(),
-    queued: work.length,
     readyPhotos,
     failedPhotos,
   };
+  if (!request.dryRun) {
+    await deps.createManifest(persistedManifest);
+    await deps.enqueue(work);
+  }
+  return manifest;
 };
 
 async function* scanPhotoRecords(): AsyncIterable<Record<string, unknown>> {

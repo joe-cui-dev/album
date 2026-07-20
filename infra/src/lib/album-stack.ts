@@ -584,8 +584,9 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     metadataTable.grantReadWriteData(photoMaintenanceWorker);
-    metadataTable.grantReadData(photoMaintenanceCoordinator);
-    metadataTable.grantReadData(phase2Reconciliation);
+    metadataTable.grantReadWriteData(photoMaintenanceCoordinator);
+    metadataTable.grantReadWriteData(phase2Reconciliation);
+    photosBucket.grantRead(phase2Reconciliation);
     processingQueue.grantConsumeMessages(processPhoto);
     processingQueue.grantSendMessages(retryProcessing);
     photoMaintenanceQueue.grantConsumeMessages(photoMaintenanceWorker);

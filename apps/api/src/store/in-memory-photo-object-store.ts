@@ -33,6 +33,9 @@ export const createInMemoryPhotoObjectStore = (
     async readObjectMetadata(objectKey) {
       return objects.get(objectKey)?.metadata ?? {};
     },
+    async objectExists(objectKey) {
+      return objects.has(objectKey);
+    },
     async readObjectBytes(objectKey) {
       return objects.get(objectKey)?.body ?? new Uint8Array();
     },
