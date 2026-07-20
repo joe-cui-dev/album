@@ -1,3 +1,5 @@
+import type { CapturedAtSource } from "./chronology.js";
+
 export type PhotoFormat = "jpeg" | "png" | "heic";
 
 export const maxFilesPerUploadBatch = 100;
@@ -17,6 +19,28 @@ export {
   parseOriginalObjectKey,
 } from "./photo-keys.js";
 export type { OriginalObjectKeyParts } from "./photo-keys.js";
+
+export {
+  buildChronologyKey,
+  getCapturedAtComponents,
+  isCapturedAt,
+  validateCapturedAt,
+} from "./chronology.js";
+export type {
+  CapturedAt,
+  CapturedAtComponents,
+  CapturedAtPrecision,
+  CapturedAtSource,
+  CapturedAtTimeResolution,
+  CapturedAtValidationError,
+  DateTimeCapturedAt,
+  DayCapturedAt,
+  MonthCapturedAt,
+  OriginalCapturedAtSource,
+  YearCapturedAt,
+} from "./chronology.js";
+
+export type { Dimensions, TimelineThumbnailVariant, TimelineThumbnails } from "./thumbnails.js";
 
 export const photoFormatForFile = (input: {
   fileName: string;
@@ -42,11 +66,8 @@ export const photoFormatForFile = (input: {
   return undefined;
 };
 
-export type CapturedAtSource = "exif" | "fileModifiedTime" | "uploadTime";
-
 export type ProcessingState =
   | "uploadRequested"
-  | "uploaded"
   | "processing"
   | "ready"
   | "processingFailed"

@@ -268,4 +268,4 @@ const asUploadBatch = (item: Record<string, unknown> | undefined): UploadBatch |
 const isPhotoFormat = (value: unknown): value is PhotoFormat =>
   ["jpeg", "png", "heic"].includes(value as PhotoFormat);
 const isProcessingState = (value: unknown): value is ProcessingState =>
-  ["uploadRequested", "uploaded", "processing", "ready", "processingFailed", "exactDuplicate"].includes(value as ProcessingState);
+  ["uploadRequested", "processing", "ready", "processingFailed", "exactDuplicate"].includes(value as ProcessingState);

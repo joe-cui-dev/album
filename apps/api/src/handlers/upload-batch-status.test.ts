@@ -19,7 +19,7 @@ describe("handleGetUploadBatchStatus", () => {
     const body = JSON.parse(response.body ?? "{}");
     expect(body).toEqual({
       uploadBatchId: "batch-1",
-      counts: { uploadRequested: 0, uploaded: 0, processing: 0, ready: 1, processingFailed: 1, exactDuplicate: 1 },
+      counts: { uploadRequested: 0, processing: 0, ready: 1, processingFailed: 1, exactDuplicate: 1 },
       photos: [
         { photoId: "photo-1", fileName: "ready.jpg", processingState: "ready", exactDuplicate: false },
         { photoId: "photo-2", fileName: "duplicate.jpg", processingState: "exactDuplicate", exactDuplicate: true },

@@ -15,7 +15,6 @@ import type { PersonalAlbum } from "../store/personal-album.js";
 
 const processingStates: ProcessingState[] = [
   "uploadRequested",
-  "uploaded",
   "processing",
   "ready",
   "processingFailed",

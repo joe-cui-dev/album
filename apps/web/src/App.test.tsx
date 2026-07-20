@@ -184,7 +184,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 0,
             ready: 1,
             processingFailed: 0,
@@ -283,7 +282,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 0,
             ready: 1,
             processingFailed: 0,
@@ -356,7 +354,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 1,
             ready: 0,
             processingFailed: 0,
@@ -377,7 +374,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 0,
             ready: 1,
             processingFailed: 0,
@@ -445,7 +441,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 0,
             ready: 0,
             processingFailed: 1,
@@ -482,7 +477,6 @@ describe("App", () => {
           uploadBatchId: "batch-1",
           counts: {
             uploadRequested: 0,
-            uploaded: 0,
             processing: 1,
             ready: 0,
             processingFailed: 0,

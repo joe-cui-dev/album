@@ -350,7 +350,6 @@ export function UploadPage({ destination, onAddPhotos }: UploadPageProps) {
                 <option value="processingFailed">Processing failed</option>
                 <option value="exactDuplicate">Exact duplicate</option>
                 <option value="processing">Processing</option>
-                <option value="uploaded">Uploaded</option>
                 <option value="uploadRequested">Upload requested</option>
               </select>
             </label>
@@ -647,7 +646,6 @@ function PhotoStatusRow({
 const labelProcessingState = (state: UploadBatchPhotoStatus["processingState"]) =>
   ({
     uploadRequested: "Upload requested",
-    uploaded: "Uploaded",
     processing: "Processing",
     ready: "Ready",
     processingFailed: "Processing failed",

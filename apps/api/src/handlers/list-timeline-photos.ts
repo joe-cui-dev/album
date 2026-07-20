@@ -140,7 +140,6 @@ const toTimelinePhoto = async (
 const isProcessingState = (value: unknown): value is ProcessingState => {
   return [
     "uploadRequested",
-    "uploaded",
     "processing",
     "ready",
     "processingFailed",
