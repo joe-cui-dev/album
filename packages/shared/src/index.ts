@@ -1,5 +1,5 @@
 import type { CapturedAt, CapturedAtSource, OriginalCapturedAtSource } from "./chronology.js";
-import type { TimelineThumbnails } from "./thumbnails.js";
+import type { Dimensions, TimelineThumbnails } from "./thumbnails.js";
 
 export type PhotoFormat = "jpeg" | "png" | "heic";
 
@@ -270,4 +270,56 @@ export interface ArchivePhotoResponse {
 export interface CreateTemporaryPhotoUrlResponse {
   url: string;
   expiresInSeconds: number;
+}
+
+export interface TimelineThumbnailSourceV2 {
+  url: string;
+  dimensions: Dimensions;
+}
+
+export interface TimelineThumbnailSourcesV2 {
+  large: TimelineThumbnailSourceV2;
+  /** Omitted when its actual width equals Large's (equal-width sources collapse to Large). */
+  small?: TimelineThumbnailSourceV2;
+}
+
+export interface TimelinePhotoV2 {
+  photoId: string;
+  fileName: string;
+  capturedAt: CapturedAt;
+  addedAt: string;
+  displayDimensions: Dimensions;
+  timelineThumbnailSources: TimelineThumbnailSourcesV2;
+}
+
+export interface AnchorPeriod {
+  year: number;
+  /** Absent for the year's Date Unknown group. */
+  month?: number;
+}
+
+export interface ListCollectionPhotosV2Response {
+  photos: TimelinePhotoV2[];
+  nextCursor?: string;
+  anchorPeriod?: AnchorPeriod;
+}
+
+export interface AlbumNavigationYear {
+  year: number;
+  /** Keyed by "01"-"12" or "unknown"; zero counters are omitted. */
+  counts: Record<string, number>;
+}
+
+export interface AlbumNavigationResponse {
+  timeline: { years: AlbumNavigationYear[] };
+  archive: { years: AlbumNavigationYear[] };
+  processingIssueCount: number;
+}
+
+export interface TimelineThumbnailAccessRequest {
+  photoIds: string[];
+}
+
+export interface TimelineThumbnailAccessResponse {
+  photos: Array<{ photoId: string; timelineThumbnailSources: TimelineThumbnailSourcesV2 }>;
 }

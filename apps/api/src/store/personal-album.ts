@@ -214,4 +214,30 @@ export interface PersonalAlbum {
     collection: PhotoCollection,
     year: number,
   ): Promise<DateIndexPeriodCounts>;
+
+  /**
+   * One strongly consistent, newest-first page of a collection's Timeline
+   * projections. `after` resumes strictly after a prior page's last sort
+   * key (cursor continuation); `atOrBefore` anchors the page at or below a
+   * `startAt` navigation period, mutually exclusive with `after`. Returns
+   * `lastSortKey` (for building the next cursor) only when the page was
+   * full, since fewer than `limit` results means there is nothing older.
+   */
+  queryTimelinePageV2(input: {
+    collection: PhotoCollection;
+    limit: number;
+    after?: { sortKey: string };
+    atOrBefore?: { sortKey: string };
+  }): Promise<{ projections: TimelineProjection[]; lastSortKey?: string }>;
+
+  /** Every year with a non-empty Date Index item in one collection. */
+  listDateIndexYearsV2(
+    collection: PhotoCollection,
+  ): Promise<Array<{ year: number; counts: DateIndexPeriodCounts }>>;
+
+  /** The exact count of currently open Processing Issues. */
+  getProcessingIssuesSummary(): Promise<number>;
+
+  /** Up to 100 Photos by id; missing ids are silently omitted. */
+  getPhotosByIds(photoIds: string[]): Promise<Photo[]>;
 }

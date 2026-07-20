@@ -35,9 +35,12 @@ import type {
 import {
   PROCESSING_ISSUES_SUMMARY_SORT_KEY,
   dateIndexPeriodSegment,
+  dateIndexPrefix,
   dateIndexSortKey,
   dateIndexYear,
+  omitZeroCounts,
   processingIssueSortKey,
+  timelineProjectionPrefix,
   timelineProjectionSortKey,
 } from "./v2-keys.js";
 
@@ -883,22 +886,11 @@ export const createDynamoDbPersonalAlbumStore = ({
             KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
             ExpressionAttributeValues: {
               ":pk": `USER#${userId}`,
-              ":prefix": `TIMELINE_V2#${collection === "active" ? "ACTIVE" : "ARCHIVED"}#`,
+              ":prefix": timelineProjectionPrefix(collection),
             },
           }),
         );
-        return (result.Items ?? []).map(
-          (item) =>
-            ({
-              photoId: item.photoId,
-              collection,
-              capturedAt: item.capturedAt,
-              addedAt: item.addedAt,
-              fileName: item.fileName,
-              displayDimensions: item.displayDimensions,
-              timelineThumbnails: item.timelineThumbnails,
-            }) as TimelineProjection,
-        );
+        return (result.Items ?? []).map((item) => toTimelineProjection(item, collection));
       },
 
       async getDateIndexV2(collection, year) {
@@ -906,11 +898,92 @@ export const createDynamoDbPersonalAlbumStore = ({
           new GetCommand({ TableName: tableName, Key: dateIndexKey(userId, { collection, year }) }),
         );
         const { pk: _pk, sk: _sk, ...counts } = result.Item ?? {};
-        return counts as DateIndexPeriodCounts;
+        return omitZeroCounts(counts as DateIndexPeriodCounts);
+      },
+
+      async queryTimelinePageV2({ collection, limit, after, atOrBefore }) {
+        const prefix = timelineProjectionPrefix(collection);
+        const result = await documentClient.send(
+          new QueryCommand({
+            TableName: tableName,
+            ScanIndexForward: false,
+            Limit: limit,
+            ConsistentRead: true,
+            ...(atOrBefore
+              ? {
+                  KeyConditionExpression: "pk = :pk AND sk BETWEEN :lower AND :upper",
+                  ExpressionAttributeValues: {
+                    ":pk": `USER#${userId}`,
+                    ":lower": prefix,
+                    ":upper": atOrBefore.sortKey,
+                  },
+                }
+              : {
+                  KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+                  ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": prefix },
+                  ...(after
+                    ? { ExclusiveStartKey: { pk: `USER#${userId}`, sk: after.sortKey } }
+                    : {}),
+                }),
+          }),
+        );
+        const items = result.Items ?? [];
+        const projections = items.map((item) => toTimelineProjection(item, collection));
+        return {
+          projections,
+          ...(projections.length === limit && items.length > 0
+            ? { lastSortKey: String(items[items.length - 1]!.sk) }
+            : {}),
+        };
+      },
+
+      async listDateIndexYearsV2(collection) {
+        const prefix = dateIndexPrefix(collection);
+        const result = await documentClient.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": prefix },
+          }),
+        );
+        return (result.Items ?? [])
+          .map((item) => {
+            const { pk: _pk, sk, ...counts } = item;
+            return {
+              year: Number(String(sk).slice(prefix.length)),
+              counts: omitZeroCounts(counts as DateIndexPeriodCounts),
+            };
+          })
+          .filter(({ counts }) => Object.keys(counts).length > 0);
+      },
+
+      async getProcessingIssuesSummary() {
+        const result = await documentClient.send(
+          new GetCommand({ TableName: tableName, Key: issueSummaryKey(userId) }),
+        );
+        return typeof result.Item?.openCount === "number" ? result.Item.openCount : 0;
+      },
+
+      async getPhotosByIds(photoIds) {
+        return batchGetPhotos({ documentClient, tableName, userId, photoIds });
       },
     };
   },
 });
+
+const toTimelineProjection = (
+  item: Record<string, unknown>,
+  collection: PhotoCollection,
+): TimelineProjection =>
+  ({
+    photoId: item.photoId,
+    collection,
+    capturedAt: item.capturedAt,
+    addedAt: item.addedAt,
+    fileName: item.fileName,
+    displayDimensions: item.displayDimensions,
+    timelineThumbnails: item.timelineThumbnails,
+  }) as TimelineProjection;
 
 const updatePhoto = async (
   documentClient: DynamoDBDocumentClient,

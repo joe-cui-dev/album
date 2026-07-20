@@ -10,8 +10,11 @@ import type {
 } from "./personal-album.js";
 import {
   dateIndexPeriodSegment,
+  dateIndexPrefix,
   dateIndexSortKey,
   dateIndexYear,
+  omitZeroCounts,
+  timelineProjectionPrefix,
   timelineProjectionSortKey,
 } from "./v2-keys.js";
 
@@ -535,7 +538,49 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
         },
 
         async getDateIndexV2(collection, year) {
-          return { ...(dateIndexOf(userId).get(dateIndexSortKey({ collection, year })) ?? {}) };
+          return omitZeroCounts({ ...(dateIndexOf(userId).get(dateIndexSortKey({ collection, year })) ?? {}) });
+        },
+
+        async queryTimelinePageV2({ collection, limit, after, atOrBefore }) {
+          const prefix = timelineProjectionPrefix(collection);
+          const entries = [...projectionsOf(userId).entries()]
+            .filter(([sk]) => sk.startsWith(prefix))
+            .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
+          const bounded = entries.filter(([sk]) => {
+            if (atOrBefore) {
+              return sk <= atOrBefore.sortKey;
+            }
+            if (after) {
+              return sk < after.sortKey;
+            }
+            return true;
+          });
+          const page = bounded.slice(0, limit);
+          return {
+            projections: page.map(([, projection]) => projection),
+            ...(page.length === limit && page.length > 0
+              ? { lastSortKey: page[page.length - 1]![0] }
+              : {}),
+          };
+        },
+
+        async listDateIndexYearsV2(collection) {
+          const prefix = dateIndexPrefix(collection);
+          return [...dateIndexOf(userId).entries()]
+            .filter(([sk]) => sk.startsWith(prefix))
+            .map(([sk, counts]) => ({ year: Number(sk.slice(prefix.length)), counts: omitZeroCounts(counts) }))
+            .filter(({ counts }) => Object.keys(counts).length > 0)
+            .sort((a, b) => a.year - b.year);
+        },
+
+        async getProcessingIssuesSummary() {
+          return issueSummaryByUser.get(userId) ?? 0;
+        },
+
+        async getPhotosByIds(photoIds) {
+          return photoIds
+            .map((photoId) => photosOf(userId).get(photoId))
+            .filter((candidate): candidate is Photo => candidate !== undefined);
         },
       };
     },

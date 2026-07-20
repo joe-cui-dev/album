@@ -371,6 +371,50 @@ export class AlbumStack extends Stack {
       },
     );
 
+    const timelinePhotosV2 = new NodejsFunction(this, "TimelinePhotosV2Handler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "list-collection-photos-v2.ts"),
+      handler: "timelinePhotosV2Handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "TimelinePhotosV2LogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const archivePhotosV2 = new NodejsFunction(this, "ArchivePhotosV2Handler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "list-collection-photos-v2.ts"),
+      handler: "archivePhotosV2Handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ArchivePhotosV2LogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const albumNavigation = new NodejsFunction(this, "AlbumNavigationHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "album-navigation.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "AlbumNavigationLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const timelineThumbnailAccess = new NodejsFunction(this, "TimelineThumbnailAccessHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "timeline-thumbnail-access.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "TimelineThumbnailAccessLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
     const session = new NodejsFunction(this, "SessionHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "session.ts"),
@@ -409,6 +453,9 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(listTimelinePhotos);
     photosBucket.grantRead(displayAccessUrl);
     photosBucket.grantRead(originalDownloadUrl);
+    photosBucket.grantRead(timelinePhotosV2);
+    photosBucket.grantRead(archivePhotosV2);
+    photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
     metadataTable.grantReadData(listTimelinePhotos);
@@ -417,6 +464,10 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(displayAccessUrl);
     metadataTable.grantReadData(originalDownloadUrl);
     metadataTable.grantReadData(retryProcessing);
+    metadataTable.grantReadData(timelinePhotosV2);
+    metadataTable.grantReadData(archivePhotosV2);
+    metadataTable.grantReadData(albumNavigation);
+    metadataTable.grantReadData(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
@@ -494,6 +545,10 @@ export class AlbumStack extends Stack {
       displayAccessUrl,
       originalDownloadUrl,
       retryProcessing,
+      timelinePhotosV2,
+      archivePhotosV2,
+      albumNavigation,
+      timelineThumbnailAccess,
       session,
       processPhoto,
     ]) {
@@ -627,6 +682,42 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "RetryProcessingIntegration",
         retryProcessing,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/timeline",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "TimelinePhotosV2Integration",
+        timelinePhotosV2,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/archive",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ArchivePhotosV2Integration",
+        archivePhotosV2,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/album-navigation",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "AlbumNavigationIntegration",
+        albumNavigation,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/timeline-thumbnail-access",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "TimelineThumbnailAccessIntegration",
+        timelineThumbnailAccess,
       ),
     });
 

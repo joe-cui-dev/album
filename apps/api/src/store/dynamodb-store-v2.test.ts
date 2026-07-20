@@ -1,8 +1,9 @@
-import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { CapturedAt } from "@album/shared";
 import { ConcurrentPhotoModificationError } from "./errors.js";
 import { createDynamoDbPersonalAlbumStore } from "./dynamodb-store.js";
+import { timelinePeriodUpperBoundSortKey } from "./v2-keys.js";
 
 const june15: CapturedAt = { precision: "day", localDate: "2024-06-15" };
 const thumbnails = {
@@ -27,6 +28,20 @@ const fakeClient = (
           return { Item: issueItem };
         }
         return { Item: undefined };
+      }
+      return {};
+    },
+  } as unknown as DynamoDBDocumentClient;
+  return { documentClient, commands };
+};
+
+const queryClient = (items: Array<Record<string, unknown>>) => {
+  const commands: unknown[] = [];
+  const documentClient = {
+    send: async (command: unknown) => {
+      commands.push(command);
+      if (command instanceof QueryCommand) {
+        return { Items: items };
       }
       return {};
     },
@@ -281,5 +296,166 @@ describe("DynamoDbPersonalAlbumStore v2 commands: recordProcessingIssueV2", () =
       }),
     );
     expect(items[2]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "PROCESSING_ISSUES#SUMMARY" });
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore v2 commands: queryTimelinePageV2", () => {
+  it("uses a strongly consistent, descending, begins_with query with no bound on the first page", async () => {
+    const { documentClient, commands } = queryClient([]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.queryTimelinePageV2({ collection: "active", limit: 80 });
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toEqual(
+      expect.objectContaining({
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+        ExpressionAttributeValues: { ":pk": "USER#user-1", ":prefix": "TIMELINE_V2#ACTIVE#" },
+        ScanIndexForward: false,
+        Limit: 80,
+        ConsistentRead: true,
+      }),
+    );
+    expect(query.input.ExclusiveStartKey).toBeUndefined();
+  });
+
+  it("resumes strictly after the cursor's last sort key", async () => {
+    const { documentClient, commands } = queryClient([]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.queryTimelinePageV2({
+      collection: "active",
+      limit: 80,
+      after: { sortKey: "TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-01-01T00:00:00.000Z#photo-1" },
+    });
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input.ExclusiveStartKey).toEqual({
+      pk: "USER#user-1",
+      sk: "TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-01-01T00:00:00.000Z#photo-1",
+    });
+  });
+
+  it("anchors a startAt period with an inclusive BETWEEN bound", async () => {
+    const { documentClient, commands } = queryClient([]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.queryTimelinePageV2({
+      collection: "active",
+      limit: 80,
+      atOrBefore: { sortKey: timelinePeriodUpperBoundSortKey("active", { year: 2024, month: 6 }) },
+    });
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toEqual(
+      expect.objectContaining({
+        KeyConditionExpression: "pk = :pk AND sk BETWEEN :lower AND :upper",
+        ExpressionAttributeValues: {
+          ":pk": "USER#user-1",
+          ":lower": "TIMELINE_V2#ACTIVE#",
+          ":upper": timelinePeriodUpperBoundSortKey("active", { year: 2024, month: 6 }),
+        },
+      }),
+    );
+  });
+
+  it("returns lastSortKey only when the page is exactly full", async () => {
+    const full = queryClient([
+      { photoId: "a", sk: "TIMELINE_V2#ACTIVE#a" },
+      { photoId: "b", sk: "TIMELINE_V2#ACTIVE#b" },
+    ]);
+    const album = createDynamoDbPersonalAlbumStore({
+      documentClient: full.documentClient,
+      tableName: "metadata-table",
+    }).personalAlbumOf("user-1");
+    await expect(album.queryTimelinePageV2({ collection: "active", limit: 2 })).resolves.toMatchObject({
+      lastSortKey: "TIMELINE_V2#ACTIVE#b",
+    });
+
+    const partial = queryClient([{ photoId: "a", sk: "TIMELINE_V2#ACTIVE#a" }]);
+    const albumPartial = createDynamoDbPersonalAlbumStore({
+      documentClient: partial.documentClient,
+      tableName: "metadata-table",
+    }).personalAlbumOf("user-1");
+    await expect(
+      albumPartial.queryTimelinePageV2({ collection: "active", limit: 2 }),
+    ).resolves.toEqual({ projections: expect.any(Array) });
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore v2 commands: listDateIndexYearsV2", () => {
+  it("queries by the collection's Date Index prefix and strips pk/sk from the counts", async () => {
+    const { documentClient, commands } = queryClient([
+      { pk: "USER#user-1", sk: "DATE_INDEX_V2#ACTIVE#2024", "06": 2 },
+      { pk: "USER#user-1", sk: "DATE_INDEX_V2#ACTIVE#2020", unknown: 1 },
+    ]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    const years = await album.listDateIndexYearsV2("active");
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input.ExpressionAttributeValues).toEqual({
+      ":pk": "USER#user-1",
+      ":prefix": "DATE_INDEX_V2#ACTIVE#",
+    });
+    expect(years).toEqual([
+      { year: 2024, counts: { "06": 2 } },
+      { year: 2020, counts: { unknown: 1 } },
+    ]);
+  });
+
+  it("omits a zero-valued month left over from a conditioned ADD that reached zero", async () => {
+    const { documentClient } = queryClient([
+      { pk: "USER#user-1", sk: "DATE_INDEX_V2#ACTIVE#2024", "06": 1, "07": 0 },
+      { pk: "USER#user-1", sk: "DATE_INDEX_V2#ACTIVE#2020", "01": 0 },
+    ]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    const years = await album.listDateIndexYearsV2("active");
+
+    expect(years).toEqual([{ year: 2024, counts: { "06": 1 } }]);
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore v2 commands: getDateIndexV2", () => {
+  it("omits zero-valued periods from a year that still has other nonzero periods", async () => {
+    const documentClient = {
+      send: async () => ({ Item: { pk: "USER#user-1", sk: "DATE_INDEX_V2#ACTIVE#2024", "06": 1, "07": 0 } }),
+    } as unknown as DynamoDBDocumentClient;
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await expect(album.getDateIndexV2("active", 2024)).resolves.toEqual({ "06": 1 });
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore v2 commands: getProcessingIssuesSummary", () => {
+  it("reads the singleton summary item's openCount", async () => {
+    const documentClient = {
+      send: async () => ({ Item: { openCount: 3 } }),
+    } as unknown as DynamoDBDocumentClient;
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+    await expect(album.getProcessingIssuesSummary()).resolves.toBe(3);
+  });
+
+  it("defaults to 0 when the summary item does not exist yet", async () => {
+    const documentClient = { send: async () => ({}) } as unknown as DynamoDBDocumentClient;
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+    await expect(album.getProcessingIssuesSummary()).resolves.toBe(0);
   });
 });
