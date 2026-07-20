@@ -310,6 +310,22 @@ export const validateCapturedAt = (
 export const isCapturedAt = (value: unknown): value is CapturedAt =>
   validateCapturedAt(value).length === 0;
 
+/** Structural equality without JS `Date`; ignores nothing -- an offset
+ * difference is a real difference even though it never affects ordering. */
+export const isSameCapturedAt = (a: CapturedAt, b: CapturedAt): boolean => {
+  if (a.precision !== b.precision || a.localDate !== b.localDate) {
+    return false;
+  }
+  if (a.precision === "dateTime" && b.precision === "dateTime") {
+    return (
+      a.localTime === b.localTime &&
+      a.timeResolution === b.timeResolution &&
+      a.offset === b.offset
+    );
+  }
+  return true;
+};
+
 export interface CapturedAtComponents {
   year: number;
   month?: number;

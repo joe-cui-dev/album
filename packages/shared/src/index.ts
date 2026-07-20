@@ -1,4 +1,5 @@
-import type { CapturedAtSource } from "./chronology.js";
+import type { CapturedAt, CapturedAtSource, OriginalCapturedAtSource } from "./chronology.js";
+import type { TimelineThumbnails } from "./thumbnails.js";
 
 export type PhotoFormat = "jpeg" | "png" | "heic";
 
@@ -24,6 +25,7 @@ export {
   buildChronologyKey,
   getCapturedAtComponents,
   isCapturedAt,
+  isSameCapturedAt,
   validateCapturedAt,
 } from "./chronology.js";
 export type {
@@ -114,6 +116,24 @@ export interface Photo {
   timelineThumbnailDimensions?: {
     width: number;
     height: number;
+  };
+  /** Nested alongside the legacy flat capturedAt/capturedAtSource fields, which stay untouched for the v1 reader. */
+  chronology?: PhotoChronology;
+  timelineThumbnails?: TimelineThumbnails;
+  processingAttemptId?: string;
+  processingStartedAt?: string;
+  migrationVersion?: number;
+}
+
+export interface PhotoChronology {
+  original: {
+    capturedAt: CapturedAt;
+    source: OriginalCapturedAtSource;
+  };
+  active: {
+    capturedAt: CapturedAt;
+    source: CapturedAtSource;
+    revision: number;
   };
 }
 

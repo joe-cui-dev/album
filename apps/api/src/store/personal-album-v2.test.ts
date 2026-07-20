@@ -1,0 +1,465 @@
+import type { CapturedAt } from "@album/shared";
+import { ProcessingAttemptConflictError, StaleChronologyRevisionError } from "./errors.js";
+import { createInMemoryPersonalAlbumStore } from "./in-memory-store.js";
+import type { PersonalAlbum } from "./personal-album.js";
+
+const june15: CapturedAt = { precision: "day", localDate: "2024-06-15" };
+const july04: CapturedAt = { precision: "day", localDate: "2024-07-04" };
+const dimensions = { width: 100, height: 50 };
+const thumbnails = {
+  small: { objectKey: "timeline-thumbnails/user-1/photo-1.jpg", dimensions: { width: 320, height: 160 } },
+  large: { objectKey: "timeline-thumbnails/user-1/photo-1-large.jpg", dimensions: { width: 640, height: 320 } },
+};
+
+const createReadyPhoto = async (
+  album: PersonalAlbum,
+  photoId: string,
+  input: Partial<Parameters<PersonalAlbum["publishReadyPhotoV2"]>[0]> = {},
+) => {
+  await album.createPhoto({
+    photoId,
+    uploadBatchId: "batch-1",
+    originalObjectKey: `originals/user-1/batch-1/${photoId}`,
+    fileName: `${photoId}.jpg`,
+    format: "jpeg",
+    contentType: "image/jpeg",
+    fileSizeBytes: 42,
+    uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+  });
+  await album.publishReadyPhotoV2({
+    photoId,
+    fileName: `${photoId}.jpg`,
+    sha256: `${photoId}-hash`,
+    displayObjectKey: `display/user-1/${photoId}.jpg`,
+    displayDimensions: dimensions,
+    timelineThumbnails: thumbnails,
+    metadata: {},
+    originalCapturedAt: june15,
+    originalCapturedAtSource: "exif",
+    hadOpenProcessingIssue: false,
+    ...input,
+  });
+};
+
+describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
+  it("sets original/active chronology at revision 0 and writes the Active projection and Date Index", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    const photo = await album.getPhoto("photo-1");
+    expect(photo?.chronology).toEqual({
+      original: { capturedAt: june15, source: "exif" },
+      active: { capturedAt: june15, source: "exif", revision: 0 },
+    });
+    expect(photo?.timelineThumbnails).toEqual(thumbnails);
+
+    const projections = await album.getTimelineProjectionsV2("active");
+    expect(projections).toEqual([
+      expect.objectContaining({ photoId: "photo-1", collection: "active", capturedAt: june15 }),
+    ]);
+    expect(await album.getTimelineProjectionsV2("archived")).toEqual([]);
+
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+  });
+
+  it("resolves an open Processing Issue and decrements the exact open count", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      attemptedAt: "2026-07-19T00:01:00.000Z",
+    });
+    expect(await album.getProcessingIssue("photo-1")).toBeDefined();
+
+    await createReadyPhoto(album, "photo-1", { hadOpenProcessingIssue: true });
+
+    expect(await album.getProcessingIssue("photo-1")).toBeUndefined();
+  });
+
+  it("rejects a publish from an attempt that no longer owns the Photo", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+    await album.claimProcessingAttempt({
+      photoId: "photo-1",
+      attemptId: "attempt-A",
+      startedAt: "2026-07-19T00:00:01.000Z",
+    });
+
+    await expect(
+      createReadyPhoto(album, "photo-1", { attemptId: "attempt-B" }),
+    ).rejects.toBeInstanceOf(ProcessingAttemptConflictError);
+  });
+});
+
+describe("PersonalAlbum v2 contract: publishExactDuplicateV2", () => {
+  it("marks the Photo as an Exact Duplicate without creating a projection", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-2",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-2",
+      fileName: "photo-2.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+
+    await album.publishExactDuplicateV2({
+      photoId: "photo-2",
+      sha256: "dup-hash",
+      duplicateOfPhotoId: "photo-1",
+      hadOpenProcessingIssue: false,
+    });
+
+    const photo = await album.getPhoto("photo-2");
+    expect(photo?.processingState).toBe("exactDuplicate");
+    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
+  });
+});
+
+describe("PersonalAlbum v2 contract: setArchiveMembershipV2", () => {
+  it("moves a Ready Photo between collections and transfers its Date Index count", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+
+    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
+    expect(await album.getTimelineProjectionsV2("archived")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", collection: "archived" }),
+    ]);
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({});
+    expect(await album.getDateIndexV2("archived", 2024)).toEqual({ "06": 1 });
+    expect((await album.getPhoto("photo-1"))?.archived).toBe(true);
+  });
+
+  it("is idempotent when the Photo is already in the target collection", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: false });
+
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getTimelineProjectionsV2("active")).toHaveLength(1);
+  });
+
+  it("moves Restore (Archived -> Active) symmetrically", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+
+    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: false });
+
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getDateIndexV2("archived", 2024)).toEqual({});
+    expect((await album.getPhoto("photo-1"))?.archived).toBe(false);
+  });
+});
+
+describe("PersonalAlbum v2 contract: replaceActiveChronologyV2 (Adjust Captured At)", () => {
+  it("moves the projection and Date Index count to the new period and bumps the revision", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    const result = await album.replaceActiveChronologyV2({
+      photoId: "photo-1",
+      capturedAt: july04,
+      expectedRevision: 0,
+    });
+
+    expect(result).toEqual({ revision: 1 });
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "07": 1 });
+    const photo = await album.getPhoto("photo-1");
+    expect(photo?.chronology?.active).toEqual({ capturedAt: july04, source: "userAdjusted", revision: 1 });
+    expect(photo?.chronology?.original).toEqual({ capturedAt: june15, source: "exif" });
+  });
+
+  it("does not advance the revision on an identical retry", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    const result = await album.replaceActiveChronologyV2({
+      photoId: "photo-1",
+      capturedAt: july04,
+      expectedRevision: 1,
+    });
+
+    expect(result).toEqual({ revision: 1 });
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "07": 1 });
+  });
+
+  it("throws StaleChronologyRevisionError when expectedRevision is stale", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    await expect(
+      album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: june15, expectedRevision: 0 }),
+    ).rejects.toBeInstanceOf(StaleChronologyRevisionError);
+  });
+
+  it("moves the projection within an Archived Photo without changing its collection", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+
+    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    expect(await album.getTimelineProjectionsV2("archived")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", capturedAt: july04 }),
+    ]);
+    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
+  });
+});
+
+describe("PersonalAlbum v2 contract: revertActiveChronologyV2", () => {
+  it("restores the original value, source, and Date Index period", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    const result = await album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 1 });
+
+    expect(result).toEqual({ revision: 2 });
+    const photo = await album.getPhoto("photo-1");
+    expect(photo?.chronology?.active).toEqual({ capturedAt: june15, source: "exif", revision: 2 });
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+  });
+
+  it("is a no-op that does not advance the revision when already at the original value", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    const result = await album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 0 });
+
+    expect(result).toEqual({ revision: 0 });
+  });
+
+  it("throws StaleChronologyRevisionError when expectedRevision is stale", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await expect(
+      album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 5 }),
+    ).rejects.toBeInstanceOf(StaleChronologyRevisionError);
+  });
+});
+
+describe("PersonalAlbum v2 contract: Processing Issues", () => {
+  it("creates an Issue on first failure and increments the open count", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      attemptedAt: "2026-07-19T00:01:00.000Z",
+    });
+
+    expect(await album.getProcessingIssue("photo-1")).toEqual({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      status: "failed",
+      firstOpenedAt: "2026-07-19T00:01:00.000Z",
+      attemptCount: 1,
+      lastAttemptAt: "2026-07-19T00:01:00.000Z",
+    });
+    expect((await album.getPhoto("photo-1"))?.processingState).toBe("processingFailed");
+  });
+
+  it("updates an existing Issue on repeated failure without creating a second Issue", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      attemptedAt: "2026-07-19T00:01:00.000Z",
+    });
+
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "corruptFile",
+      attemptedAt: "2026-07-19T00:02:00.000Z",
+    });
+
+    expect(await album.getProcessingIssue("photo-1")).toEqual({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "corruptFile",
+      status: "failed",
+      firstOpenedAt: "2026-07-19T00:01:00.000Z",
+      attemptCount: 2,
+      lastAttemptAt: "2026-07-19T00:02:00.000Z",
+    });
+  });
+});
+
+describe("PersonalAlbum v2 contract: claimProcessingAttempt", () => {
+  it("claims a fresh attempt, resumes the same attempt, and rejects a conflicting attempt", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+
+    await expect(
+      album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-A", startedAt: "t1" }),
+    ).resolves.toBe("claimed");
+    await expect(
+      album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-A", startedAt: "t2" }),
+    ).resolves.toBe("resumed");
+    await expect(
+      album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "attempt-B", startedAt: "t3" }),
+    ).rejects.toBeInstanceOf(ProcessingAttemptConflictError);
+  });
+});
+
+describe("PersonalAlbum v2 contract: applyMigrationVersionV2 (backfill)", () => {
+  const legacyPhoto = async (album: PersonalAlbum, photoId: string) => {
+    await album.createPhoto({
+      photoId,
+      uploadBatchId: "batch-1",
+      originalObjectKey: `originals/user-1/batch-1/${photoId}`,
+      fileName: `${photoId}.jpg`,
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await album.markReady({
+      photoId,
+      sha256: `${photoId}-hash`,
+      fileName: `${photoId}.jpg`,
+      displayObjectKey: `display/user-1/${photoId}.jpg`,
+      displayDimensions: dimensions,
+      timelineThumbnailObjectKey: `timeline-thumbnails/user-1/${photoId}.jpg`,
+      timelineThumbnailDimensions: { width: 320, height: 160 },
+      capturedAt: "2024-06-15T10:00:00.000Z",
+      capturedAtSource: "exif",
+      metadata: {},
+    });
+  };
+
+  it("initializes v2 chronology, thumbnails, projection, and Date Index for a legacy Ready Photo", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await legacyPhoto(album, "legacy-1");
+
+    await album.applyMigrationVersionV2({
+      photoId: "legacy-1",
+      migrationVersion: 1,
+      originalCapturedAt: june15,
+      originalCapturedAtSource: "exif",
+      timelineThumbnails: thumbnails,
+    });
+
+    const photo = await album.getPhoto("legacy-1");
+    expect(photo?.chronology?.active).toEqual({ capturedAt: june15, source: "exif", revision: 0 });
+    expect(photo?.migrationVersion).toBe(1);
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getTimelineProjectionsV2("active")).toHaveLength(1);
+  });
+
+  it("is a no-op when already at or above the given migrationVersion", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await legacyPhoto(album, "legacy-1");
+    await album.applyMigrationVersionV2({
+      photoId: "legacy-1",
+      migrationVersion: 1,
+      originalCapturedAt: june15,
+      originalCapturedAtSource: "exif",
+      timelineThumbnails: thumbnails,
+    });
+
+    await album.applyMigrationVersionV2({
+      photoId: "legacy-1",
+      migrationVersion: 1,
+      originalCapturedAt: july04,
+      originalCapturedAtSource: "fileModifiedTime",
+      timelineThumbnails: thumbnails,
+    });
+
+    const photo = await album.getPhoto("legacy-1");
+    expect(photo?.chronology?.active).toEqual({ capturedAt: june15, source: "exif", revision: 0 });
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+  });
+
+  it("repairs thumbnails at a higher migrationVersion without double-counting the Date Index", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await legacyPhoto(album, "legacy-1");
+    await album.applyMigrationVersionV2({
+      photoId: "legacy-1",
+      migrationVersion: 1,
+      originalCapturedAt: june15,
+      originalCapturedAtSource: "exif",
+      timelineThumbnails: thumbnails,
+    });
+    const repairedThumbnails = {
+      small: thumbnails.small,
+      large: { objectKey: "timeline-thumbnails/user-1/legacy-1-large.jpg", dimensions: { width: 640, height: 320 } },
+    };
+
+    await album.applyMigrationVersionV2({
+      photoId: "legacy-1",
+      migrationVersion: 2,
+      originalCapturedAt: june15,
+      originalCapturedAtSource: "exif",
+      timelineThumbnails: repairedThumbnails,
+    });
+
+    const photo = await album.getPhoto("legacy-1");
+    expect(photo?.timelineThumbnails).toEqual(repairedThumbnails);
+    expect(photo?.chronology?.active.revision).toBe(0);
+    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getTimelineProjectionsV2("active")).toHaveLength(1);
+  });
+});

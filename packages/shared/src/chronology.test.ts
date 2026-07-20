@@ -2,6 +2,7 @@ import {
   buildChronologyKey,
   getCapturedAtComponents,
   isCapturedAt,
+  isSameCapturedAt,
   validateCapturedAt,
   type CapturedAt,
 } from "./chronology.js";
@@ -263,6 +264,67 @@ describe("getCapturedAtComponents", () => {
       second: 45,
       subsecondDigits: "120000",
     });
+  });
+});
+
+describe("isSameCapturedAt", () => {
+  it("treats identical values as the same", () => {
+    expect(
+      isSameCapturedAt(
+        { precision: "year", localDate: "2024" },
+        { precision: "year", localDate: "2024" },
+      ),
+    ).toBe(true);
+    expect(
+      isSameCapturedAt(
+        {
+          precision: "dateTime",
+          localDate: "2024-06-15",
+          localTime: "09:00:00",
+          timeResolution: "second",
+          offset: "+10:00",
+        },
+        {
+          precision: "dateTime",
+          localDate: "2024-06-15",
+          localTime: "09:00:00",
+          timeResolution: "second",
+          offset: "+10:00",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("treats different precisions or components as different", () => {
+    expect(
+      isSameCapturedAt(
+        { precision: "year", localDate: "2024" },
+        { precision: "month", localDate: "2024-01" },
+      ),
+    ).toBe(false);
+    expect(
+      isSameCapturedAt(
+        { precision: "day", localDate: "2024-06-15" },
+        { precision: "day", localDate: "2024-06-16" },
+      ),
+    ).toBe(false);
+  });
+
+  it("treats a differing offset as different even though it never affects ordering", () => {
+    const withOffset: CapturedAt = {
+      precision: "dateTime",
+      localDate: "2024-06-15",
+      localTime: "09:00",
+      timeResolution: "minute",
+      offset: "+10:00",
+    };
+    const withoutOffset: CapturedAt = {
+      precision: "dateTime",
+      localDate: "2024-06-15",
+      localTime: "09:00",
+      timeResolution: "minute",
+    };
+    expect(isSameCapturedAt(withOffset, withoutOffset)).toBe(false);
   });
 });
 
