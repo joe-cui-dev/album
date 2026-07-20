@@ -258,6 +258,8 @@ export interface PhotoDetail {
     width: number;
     height: number;
   };
+  /** Present once the Photo has v2 chronology; the response ETag header carries chronology.active.revision. */
+  chronology?: PhotoChronology;
 }
 
 export type GetPhotoDetailResponse = PhotoDetail;
@@ -266,6 +268,18 @@ export interface ArchivePhotoResponse {
   photoId: string;
   archived: true;
 }
+
+export interface ArchiveMembershipResponse {
+  photoId: string;
+  archived: boolean;
+}
+
+export interface CapturedAtAdjustmentRequest {
+  capturedAt: CapturedAt;
+}
+
+/** Full Photo detail, including chronology; the response ETag header carries the new revision. */
+export type CapturedAtAdjustmentResponse = GetPhotoDetailResponse;
 
 export interface CreateTemporaryPhotoUrlResponse {
   url: string;

@@ -68,7 +68,9 @@ export const handleGetPhotoDetail = async ({
     return json(404, { message: "Photo not found" });
   }
 
-  return ok(toPhotoDetail(photo) satisfies GetPhotoDetailResponse);
+  return ok(toPhotoDetail(photo) satisfies GetPhotoDetailResponse, {
+    headers: chronologyETagHeader(photo),
+  });
 };
 
 export const handleArchivePhoto = async ({
@@ -145,7 +147,7 @@ export const handleCreateOriginalDownloadUrl = async ({
   );
 };
 
-const toPhotoDetail = (photo: Photo): GetPhotoDetailResponse => ({
+export const toPhotoDetail = (photo: Photo): GetPhotoDetailResponse => ({
   photoId: photo.photoId,
   fileName: photo.fileName,
   format: photo.format,
@@ -160,4 +162,9 @@ const toPhotoDetail = (photo: Photo): GetPhotoDetailResponse => ({
   ...(photo.displayDimensions
     ? { displayDimensions: photo.displayDimensions }
     : {}),
+  ...(photo.chronology ? { chronology: photo.chronology } : {}),
 });
+
+/** The ETag ties to chronology.active.revision, the precondition Adjust/Revert require via If-Match. */
+export const chronologyETagHeader = (photo: Photo): Record<string, string> | undefined =>
+  photo.chronology ? { etag: `"${photo.chronology.active.revision}"` } : undefined;

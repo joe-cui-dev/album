@@ -415,6 +415,50 @@ export class AlbumStack extends Stack {
       }),
     });
 
+    const adjustCapturedAt = new NodejsFunction(this, "AdjustCapturedAtHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "captured-at-adjustment.ts"),
+      handler: "adjustCapturedAtHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "AdjustCapturedAtLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const revertCapturedAt = new NodejsFunction(this, "RevertCapturedAtHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "captured-at-adjustment.ts"),
+      handler: "revertCapturedAtHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "RevertCapturedAtLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const archiveMembership = new NodejsFunction(this, "ArchiveMembershipHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "archive-membership.ts"),
+      handler: "archiveMembershipHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ArchiveMembershipLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const restoreMembership = new NodejsFunction(this, "RestoreMembershipHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "archive-membership.ts"),
+      handler: "restoreMembershipHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "RestoreMembershipLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
     const session = new NodejsFunction(this, "SessionHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "session.ts"),
@@ -468,6 +512,10 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(archivePhotosV2);
     metadataTable.grantReadData(albumNavigation);
     metadataTable.grantReadData(timelineThumbnailAccess);
+    metadataTable.grantReadWriteData(adjustCapturedAt);
+    metadataTable.grantReadWriteData(revertCapturedAt);
+    metadataTable.grantReadWriteData(archiveMembership);
+    metadataTable.grantReadWriteData(restoreMembership);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
@@ -549,6 +597,10 @@ export class AlbumStack extends Stack {
       archivePhotosV2,
       albumNavigation,
       timelineThumbnailAccess,
+      adjustCapturedAt,
+      revertCapturedAt,
+      archiveMembership,
+      restoreMembership,
       session,
       processPhoto,
     ]) {
@@ -718,6 +770,42 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "TimelineThumbnailAccessIntegration",
         timelineThumbnailAccess,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/captured-at-adjustment",
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration(
+        "AdjustCapturedAtIntegration",
+        adjustCapturedAt,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/captured-at-adjustment",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        "RevertCapturedAtIntegration",
+        revertCapturedAt,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/archive",
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration(
+        "ArchiveMembershipIntegration",
+        archiveMembership,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/archive",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        "RestoreMembershipIntegration",
+        restoreMembership,
       ),
     });
 
