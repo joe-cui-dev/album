@@ -1,0 +1,3 @@
+# Use Live Stable Cursor Continuation
+
+Timeline and Archive cursors will provide deterministic continuation after the last returned chronology key, not a cross-request snapshot of the whole collection. Each page will use a strongly consistent DynamoDB query, and an opaque versioned cursor will be scoped to its collection; unchanged data traverses without gaps or duplicates, while concurrent changes from another device become fully visible after refresh rather than requiring versioned projections or per-session snapshot storage. The client will reconcile its own mutations and de-duplicate by Photo ID, matching the product rule that newly Ready Photos do not unexpectedly reflow the current Timeline.

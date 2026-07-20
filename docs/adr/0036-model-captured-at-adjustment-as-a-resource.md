@@ -1,0 +1,3 @@
+# Model Captured At Adjustment as a Resource
+
+Adjust Captured At will use an authenticated `PUT /photos/{photoId}/captured-at-adjustment` that replaces the complete active structured value, and Revert Captured At will use an idempotent `DELETE` on the same resource. The contract will accept every Captured At Precision from its first version, set User adjustment as the source server-side, expose both active and immutable original chronology, and apply only to Ready Photos whether Active or Archived. Keeping this command boundary separate from a generic Photo patch makes revert semantics explicit and lets one transaction update the Photo, its collection projection, and Date Index without implying that Original Photo or arbitrary Photo Metadata is editable.

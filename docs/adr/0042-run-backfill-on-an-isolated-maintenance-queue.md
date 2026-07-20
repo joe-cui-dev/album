@@ -1,0 +1,3 @@
+# Run Backfill on an Isolated Maintenance Queue
+
+An idempotent coordinator will enqueue one Ready Photo per message onto a dedicated Photo Maintenance queue, and a batch-size-one worker Lambda with initially two reserved concurrent executions will re-extract chronology, write the Large Thumbnail, and transact v2 metadata and projections. A separate DLQ and alarm will report failures, while fixed derived keys and migration versions make reruns safe; the worker never changes Ready Processing State or repeats duplicate detection. This adds low-idle-cost infrastructure but prevents a large migration backlog or Sharp memory load from delaying the foreground upload-processing queue, and leaves a controlled path for later targeted repairs.

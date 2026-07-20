@@ -4,7 +4,7 @@ Status: Accepted design baseline, 19 July 2026
 
 Personal Light Table is the internal design direction for Personal Album. It reshapes the product as a quiet, photo-first place for one User to revisit their own memories. It does not change the ownership boundary: every User has one independent Personal Album and cannot browse another family User's Photos.
 
-The canonical product language remains in [CONTEXT.md](../CONTEXT.md). Capture-local chronology and date precision are constrained by [ADR 0022](./adr/0022-preserve-capture-local-time.md) and [ADR 0023](./adr/0023-preserve-captured-at-precision.md). Responsive Timeline Thumbnail sizes are constrained by [ADR 0024](./adr/0024-generate-two-responsive-timeline-thumbnail-sizes.md).
+The canonical product language remains in [CONTEXT.md](../CONTEXT.md). Capture-local chronology and date precision are constrained by [ADR 0022](./adr/0022-preserve-capture-local-time.md), [ADR 0023](./adr/0023-preserve-captured-at-precision.md), [ADR 0025](./adr/0025-use-a-structured-captured-at-value.md), [ADR 0026](./adr/0026-use-upload-local-calendar-for-captured-at-fallbacks.md), and [ADR 0027](./adr/0027-preserve-one-original-and-one-active-captured-at.md). Timeline reads are constrained by [ADR 0028](./adr/0028-use-denormalized-timeline-projections.md), and responsive Timeline Thumbnail sizes by [ADR 0024](./adr/0024-generate-two-responsive-timeline-thumbnail-sizes.md).
 
 ## Product Thesis
 
@@ -225,7 +225,7 @@ Permanent deletion is outside this design. If it is introduced later, it require
 
 Processing Issues is visible in navigation only while at least one Processing Issue is open. It includes a count and is also linked from Upload Tray completion when attention is needed.
 
-An issue row contains Original File Name, Added At, a User-comprehensible reason, and Retry Processing. Retrying keeps the issue open while the Photo is Processing. The issue resolves only when the Photo becomes Ready, at which point the UI may offer `View in timeline`.
+An issue row contains Original File Name, Added At, a User-comprehensible reason, and Retry Processing. Retrying keeps the issue open while the Photo is Processing. The issue resolves when the Photo becomes Ready, at which point the UI may offer `View in timeline`, or when retry identifies an Exact Duplicate, at which point the UI reports `Already in your album` and may open the matching Ready Photo.
 
 When the last issue resolves, the current view shows a completion empty state. After leaving it, Processing Issues disappears from navigation. The view never exposes queues, processors, storage services, hashes, or infrastructure terminology.
 

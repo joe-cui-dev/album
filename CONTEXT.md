@@ -65,35 +65,43 @@ A temporary grant for a signed-in User to view one of their own Display Photos. 
 _Avoid_: public image URL, static public photo, shared photo link
 
 **Captured At**:
-The capture-local calendar value used to order and group a Photo in the Timeline. Its known components are described by Captured At Precision; it does not change with the viewing browser's time zone and identifies an absolute moment only when date, time, and a reliable Capture Time Offset are available.
+The cohesive capture-local calendar value used to order and group a Photo in the Timeline. It contains only the components identified by Captured At Precision, may include a reliable Capture Time Offset for a known date and time, and identifies an absolute moment only when that offset is present.
 _Avoid_: viewer-local time, uploaded at, created at
 
 **Captured At Precision**:
 The degree of calendar detail genuinely known for Captured At: Year, Month, Day, or Date and Time. Unknown components remain absent rather than being filled with invented defaults.
 _Avoid_: approximate date, assumed January, assumed midnight
 
+**Captured At Time Resolution**:
+The degree of time-of-day detail genuinely known within Date-and-Time precision: Minute, Second, or Subsecond. It preserves finer known components without creating another Timeline calendar group or inventing zero seconds.
+_Avoid_: additional date precision, assumed zero seconds
+
 **Capture Time Offset**:
-A reliable UTC offset recorded with a Photo's Captured At value when the source provides one. A missing Capture Time Offset does not mean UTC and must not be inferred from the viewing browser's time zone.
+A reliable UTC offset explicitly paired with a Photo's Captured At value by the source metadata or the User. A missing or invalid Capture Time Offset does not mean UTC and must not be inferred from location, the viewing or uploading browser, file times, or other contextual clues.
 _Avoid_: viewer time zone, assumed UTC, upload time zone
 
 **Captured At Source**:
-The origin of a Photo's active Captured At value. Processing resolves the Original Captured At from EXIF timestamp, then file modified time, then upload time; a User adjustment can override the active value without replacing the original.
+The origin of a Photo's active Captured At value: EXIF timestamp, file modified time, upload time, or User adjustment. Processing prefers EXIF original-image time, then EXIF digitized time, before using the file and upload fallbacks; those fallbacks use the uploading browser's local calendar context without claiming that its UTC offset is the Photo's Capture Time Offset.
 _Avoid_: timestamp type, date source
 
 **Added At**:
-The moment a Photo was added to the Personal Album. It provides a stable display order when Captured At cannot order Photos precisely, but it is never presented as the time the Photo was captured.
+The moment a Photo was added to the Personal Album. It orders Photos that share the same known Captured At components or whose next calendar component is unknown, but it is never presented as the time the Photo was captured.
 _Avoid_: Captured At, photo date
 
 **Original Captured At**:
-The Captured At value first resolved during Photo processing and retained when the User later adjusts the active Captured At value.
+The immutable Captured At value and source first resolved during Photo processing. It is retained while the User adjusts the active Captured At value and provides the value restored by Revert Captured At.
 _Avoid_: current date, edited EXIF
 
 **Adjust Captured At**:
-A User action that changes the capture-local date and time used to place a Photo in the Timeline while preserving Original Captured At and leaving the Original Photo unchanged.
+A User action that replaces the active capture-local value used to place a Photo in the Timeline while preserving Original Captured At and leaving the Original Photo unchanged. A replacement may use a different Captured At Precision.
 _Avoid_: edit EXIF, change file date, re-upload
 
+**Revert Captured At**:
+A User action that replaces an adjusted Captured At with the Photo's immutable Original Captured At value and source.
+_Avoid_: undo upload, re-extract metadata, edit EXIF
+
 **Timeline**:
-The primary continuous browsing view, where Ready Photos are ordered from newest to oldest and grouped by their known Captured At calendar period. Photos with a known month are grouped by month; Year-precision Photos appear after the year's known months under Date Unknown and use Added At only for stable ordering within that group. Photos in other Processing States do not appear.
+The primary continuous browsing view, where Ready Photos are ordered from newest to oldest and grouped by their known Captured At calendar period. At every date-precision and time-resolution boundary, Photos with a known next component appear newest first before Photos whose next component is unknown; ties use Added At and then Photo ID for deterministic order. Year-precision Photos appear after the year's known months under Date Unknown, and Photos in other Processing States do not appear.
 _Avoid_: album list, gallery categories
 
 **Timeline Navigation**:
@@ -141,15 +149,15 @@ A Processing State where the Original Photo was uploaded but the Display Photo, 
 _Avoid_: broken upload, invalid photo
 
 **Processing Issue**:
-An unresolved need for User attention created when a Photo enters Processing Failed. It remains open while Retry Processing is underway and resolves only when the Photo becomes Ready.
+An independently durable, unresolved need for User attention created when a Photo first enters Processing Failed. It retains its identity while Retry Processing is underway and across failed attempts, then resolves when the Photo becomes Ready or an Exact Duplicate that needs no further User action.
 _Avoid_: Processing State, error log, upload error
 
 **Processing Issues**:
-A durable view of a User's open Processing Issues so they remain discoverable and retryable after a page refresh or on another device. It appears as a navigation destination only while at least one Processing Issue is open; it is separate from the Timeline and is not a complete Upload Batch history.
+A durable, cursor-paginated view of a User's open Processing Issues so they remain discoverable and retryable after a page refresh or on another device. An exact open count controls whether it appears as a navigation destination; it is separate from the Timeline and is not a complete Upload Batch history.
 _Avoid_: failed timeline, upload history, error log
 
 **Retry Processing**:
-A User action that tries to process a Processing Failed photo again while preserving the Original Photo. Retry Processing is only available for photos in the Processing Failed state.
+A User action that tries to process a Processing Failed Photo again while preserving the Original Photo and keeping its Processing Issue open. The Issue resolves when the attempt makes the Photo Ready or identifies it as an Exact Duplicate.
 _Avoid_: re-upload, repair
 
 **Photo Metadata**:
@@ -165,7 +173,7 @@ A Photo hidden from the Timeline by the User while its Original Photo, browsing 
 _Avoid_: deleted photo, trashed photo, removed image
 
 **Archive Photo**:
-A reversible User action that moves a Photo out of the Timeline and into the Archive without deleting or reprocessing it.
+A reversible User action that moves a Ready Photo out of the Timeline and into the Archive without deleting, reprocessing, or changing its chronology.
 _Avoid_: delete photo, remove permanently, trash photo
 
 **Archive**:
@@ -173,7 +181,7 @@ The private browsing view containing a User's Archived Photos, ordered and group
 _Avoid_: trash, recycle bin, archived filter
 
 **Restore Photo**:
-A User action that returns an Archived Photo to the default Timeline without recreating or reprocessing it.
+A User action that returns an Archived Ready Photo to the default Timeline without recreating, reprocessing, or changing it. Restoring a Photo already in the Timeline has no additional effect.
 _Avoid_: unarchive, recover deleted photo
 
 **Protective Retention**:
@@ -189,7 +197,7 @@ An upload started by the User selecting photo files in the web app.
 _Avoid_: sync, backup, camera roll import
 
 **Exact Duplicate**:
-A terminal Photo whose Original Photo has exactly the same file contents as a Ready Photo in the same User's Personal Album. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline; the Upload Tray describes this outcome to the User as “Already in your album” and may link to the matching Ready Photo.
+A terminal Photo whose Original Photo has exactly the same file contents as a Ready Photo in the same User's Personal Album. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline; this outcome resolves any open Processing Issue and is described to the User as “Already in your album,” with a link to the matching Ready Photo when available.
 _Avoid_: duplicate error, similar photo, near duplicate, duplicate-looking photo
 
 **Supported Photo Format**:
