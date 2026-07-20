@@ -1,4 +1,4 @@
-import type { SQSEvent, SQSHandler } from "aws-lambda";
+import type { SQSBatchResponse, SQSEvent, SQSHandler } from "aws-lambda";
 import type { CapturedAtSource, Dimensions, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
@@ -53,18 +53,30 @@ interface ProcessPhotoDeps {
   ) => Promise<DerivedPhotoResult>;
 }
 
-export const handler: SQSHandler = async (event: SQSEvent) => {
-  await handleProcessPhoto({
-    records: event.Records,
-    deps: {
-      store: personalAlbumStore,
-      photoObjects: photoObjectStore,
-      now: () => new Date(),
-      createDisplayPhoto,
-      createTimelineThumbnail,
-      createTimelineThumbnailLarge,
-    },
-  });
+export const handler: SQSHandler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
+  const deps: ProcessPhotoDeps = {
+    store: personalAlbumStore,
+    photoObjects: photoObjectStore,
+    now: () => new Date(),
+    createDisplayPhoto,
+    createTimelineThumbnail,
+    createTimelineThumbnailLarge,
+  };
+  const failures: Array<{ itemIdentifier: string }> = [];
+  for (const record of event.Records) {
+    try {
+      await handleProcessPhoto({ records: [record], deps });
+    } catch (error) {
+      console.error(JSON.stringify({
+        level: "error",
+        message: "Photo processing record failed; returning it for SQS redelivery",
+        messageId: record.messageId,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+      failures.push({ itemIdentifier: record.messageId });
+    }
+  }
+  return { batchItemFailures: failures };
 };
 
 export const handleProcessPhoto = async ({

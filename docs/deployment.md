@@ -1,5 +1,58 @@
 # Deployment
 
+## Phase 2 migration and rollback
+
+Phase 2 is an expand/backfill rollout. The v1 Timeline reader and the legacy
+flat chronology fields remain in place throughout this procedure. Do not delete
+Timeline items, Original Photos, Display Photos, or compatibility fields as
+part of a migration run.
+
+After deploying the Phase 2 stack, obtain the `PhotoMaintenanceCoordinatorName`
+and `Phase2ReconciliationName` CloudFormation outputs. First create and retain
+a dry-run manifest (it performs no writes):
+
+```sh
+aws lambda invoke --function-name "$PHOTO_MAINTENANCE_COORDINATOR" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"dryRun":true,"migrationVersion":1}' phase2-dry-run.json
+```
+
+Review `phase2-dry-run.json`; it records the migration version, the explicit
+`Australia/Brisbane` legacy fallback zone, selected Ready/failed counts, and
+the exact work count. Start the backfill only after approval, retaining the
+result as the production migration manifest:
+
+```sh
+aws lambda invoke --function-name "$PHOTO_MAINTENANCE_COORDINATOR" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"migrationVersion":1}' phase2-backfill-manifest.json
+```
+
+The isolated maintenance worker consumes one message at a time with reserved
+concurrency two. It is safe to rerun the coordinator after an S3-only write,
+transaction conflict, timeout, or DLQ repair: fixed thumbnail keys and the
+migration version make work idempotent. Monitor the Photo Maintenance queue,
+its DLQ, and the corresponding Lambda alarms until the queue and DLQ are empty.
+
+Run the read-only reconciliation after the queue drains and retain its output:
+
+```sh
+aws lambda invoke --function-name "$PHASE2_RECONCILIATION" \
+  --cli-binary-format raw-in-base64-out --payload '{}' phase2-reconciliation.json
+```
+
+The report must contain no discrepancies before Phase 3 starts. It checks v2
+Ready state, one-projection membership, Date Index totals, durable Processing
+Issues, their summary count, and unexpected legacy `uploaded` state. Investigate
+and rerun targeted maintenance work for every reported discrepancy; no command
+in this runbook performs implicit destructive cleanup.
+
+Rollback before Phase 3 means returning Web traffic to the retained v1 Timeline
+reader. Stop new coordinator invocations, let in-flight maintenance messages
+finish or remain safely queued, and leave all v2 fields/projections intact for
+later reconciliation. New uploads continue to write the compatibility fields,
+so this rollback does not replace Originals, Displays, or capture chronology.
+
 Personal Album uses one manually deployed production environment.
 
 ## Production Shape

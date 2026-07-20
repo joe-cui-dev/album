@@ -220,7 +220,26 @@ export interface GetUploadBatchStatusResponse {
   photos: UploadBatchPhotoStatus[];
 }
 
-export type RetryProcessingResponse = UploadBatchPhotoStatus;
+export interface RetryProcessingResponse {
+  accepted: true;
+  retryAttemptId: string;
+}
+
+export interface ProcessingIssue {
+  photoId: string;
+  fileName: string;
+  reasonCode: string;
+  status: "failed" | "retrying";
+  addedAt: string;
+  firstOpenedAt: string;
+  attemptCount: number;
+  lastAttemptAt: string;
+}
+
+export interface ListProcessingIssuesResponse {
+  issues: ProcessingIssue[];
+  nextCursor?: string;
+}
 
 export interface TimelinePhoto {
   photoId: string;

@@ -702,7 +702,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               TableName: tableName,
               Key: issueKey(userId, photoId, addedAt),
               UpdateExpression:
-                "SET #status = :status, attemptCount = attemptCount + :one, lastAttemptAt = :lastAttemptAt, reasonCode = :reasonCode",
+                "SET #status = :status, attemptCount = attemptCount + :one, lastAttemptAt = :lastAttemptAt, reasonCode = :reasonCode REMOVE retryAttemptId",
               ExpressionAttributeNames: { "#status": "status" },
               ExpressionAttributeValues: {
                 ":status": "failed",
@@ -748,7 +748,80 @@ export const createDynamoDbPersonalAlbumStore = ({
         const issueResult = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: issueKey(userId, photoId, addedAt) }),
         );
-        return issueResult.Item as ProcessingIssueRecord | undefined;
+        return issueResult.Item
+          ? ({ ...issueResult.Item, addedAt } as ProcessingIssueRecord)
+          : undefined;
+      },
+
+      async beginProcessingIssueRetryV2({ photoId, retryAttemptId, attemptedAt }) {
+        const photoResult = await documentClient.send(
+          new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
+        );
+        const addedAt = photoResult.Item?.uploadRequestedAt;
+        if (typeof addedAt !== "string" || photoResult.Item?.processingState !== "processingFailed") {
+          throw new Error(`Photo ${photoId} has no open Processing Issue`);
+        }
+        const current = await documentClient.send(
+          new GetCommand({ TableName: tableName, Key: issueKey(userId, photoId, addedAt) }),
+        );
+        if (!current.Item) {
+          throw new Error(`Photo ${photoId} has no open Processing Issue`);
+        }
+        if (current.Item.status === "retrying" && typeof current.Item.retryAttemptId === "string") {
+          return { retryAttemptId: current.Item.retryAttemptId };
+        }
+        try {
+          await documentClient.send(
+            new UpdateCommand({
+              TableName: tableName,
+              Key: issueKey(userId, photoId, addedAt),
+              UpdateExpression: "SET #status = :retrying, retryAttemptId = :retryAttemptId, lastAttemptAt = :attemptedAt",
+              ConditionExpression: "#status = :failed",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":retrying": "retrying",
+                ":failed": "failed",
+                ":retryAttemptId": retryAttemptId,
+                ":attemptedAt": attemptedAt,
+              },
+            }),
+          );
+          return { retryAttemptId };
+        } catch (error) {
+          if (!isConditionalCheckFailed(error)) throw error;
+          const latest = await documentClient.send(
+            new GetCommand({ TableName: tableName, Key: issueKey(userId, photoId, addedAt) }),
+          );
+          if (typeof latest.Item?.retryAttemptId === "string") {
+            return { retryAttemptId: latest.Item.retryAttemptId };
+          }
+          throw error;
+        }
+      },
+
+      async queryProcessingIssuesV2({ limit, after }) {
+        const prefix = "PROCESSING_ISSUE#";
+        const result = await documentClient.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": prefix },
+            ScanIndexForward: false,
+            ConsistentRead: true,
+            Limit: limit,
+            ...(after ? { ExclusiveStartKey: { pk: `USER#${userId}`, sk: after.sortKey } } : {}),
+          }),
+        );
+        const items = result.Items ?? [];
+        return {
+          issues: items.map((item) => ({
+            ...item,
+            addedAt: String(item.sk).slice(prefix.length).split("#")[0],
+          }) as ProcessingIssueRecord),
+          ...(items.length === limit && items.length > 0
+            ? { lastSortKey: String(items[items.length - 1]!.sk) }
+            : {}),
+        };
       },
 
       async claimProcessingAttempt({ photoId, attemptId, startedAt }) {

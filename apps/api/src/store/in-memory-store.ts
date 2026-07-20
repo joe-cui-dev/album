@@ -451,12 +451,14 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             existing.attemptCount += 1;
             existing.lastAttemptAt = attemptedAt;
             existing.reasonCode = reasonCode;
+            delete existing.retryAttemptId;
           } else {
             issues.set(photoId, {
               photoId,
               fileName,
               reasonCode,
               status: "failed",
+              addedAt: candidate.uploadRequestedAt!,
               firstOpenedAt: attemptedAt,
               attemptCount: 1,
               lastAttemptAt: attemptedAt,
@@ -467,6 +469,38 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
 
         async getProcessingIssue(photoId) {
           return issuesOf(userId).get(photoId);
+        },
+
+        async beginProcessingIssueRetryV2({ photoId, retryAttemptId, attemptedAt }) {
+          const candidate = requirePhoto(userId, photoId);
+          const issue = issuesOf(userId).get(photoId);
+          if (!issue || candidate.processingState !== "processingFailed") {
+            throw new Error(`Photo ${photoId} has no open Processing Issue`);
+          }
+          if (issue.status === "retrying" && issue.retryAttemptId) {
+            return { retryAttemptId: issue.retryAttemptId };
+          }
+          issue.status = "retrying";
+          issue.retryAttemptId = retryAttemptId;
+          issue.lastAttemptAt = attemptedAt;
+          return { retryAttemptId };
+        },
+
+        async queryProcessingIssuesV2({ limit, after }) {
+          const entries = [...issuesOf(userId).values()]
+            .map((issue) => ({
+              issue,
+              sortKey: `PROCESSING_ISSUE#${issue.addedAt}#${issue.photoId}`,
+            }))
+            .sort((left, right) => right.sortKey.localeCompare(left.sortKey))
+            .filter(({ sortKey }) => !after || sortKey < after.sortKey);
+          const page = entries.slice(0, limit);
+          return {
+            issues: page.map(({ issue }) => issue),
+            ...(page.length === limit && page.length > 0
+              ? { lastSortKey: page[page.length - 1]!.sortKey }
+              : {}),
+          };
         },
 
         async claimProcessingAttempt({ photoId, attemptId, startedAt }) {

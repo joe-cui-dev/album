@@ -20,9 +20,12 @@ export interface ProcessingIssueRecord {
   fileName: string;
   reasonCode: string;
   status: ProcessingIssueStatus;
+  addedAt: string;
   firstOpenedAt: string;
   attemptCount: number;
   lastAttemptAt: string;
+  /** Internal id of the retry message currently in flight, if any. */
+  retryAttemptId?: string;
 }
 
 export interface TimelineProjection {
@@ -180,6 +183,19 @@ export interface PersonalAlbum {
   }): Promise<void>;
 
   getProcessingIssue(photoId: string): Promise<ProcessingIssueRecord | undefined>;
+
+  /** Marks an open Issue retrying after its message has been accepted by SQS. */
+  beginProcessingIssueRetryV2(input: {
+    photoId: string;
+    retryAttemptId: string;
+    attemptedAt: string;
+  }): Promise<{ retryAttemptId: string }>;
+
+  /** One newest-first page of durable Processing Issues. */
+  queryProcessingIssuesV2(input: {
+    limit: number;
+    after?: { sortKey: string };
+  }): Promise<{ issues: ProcessingIssueRecord[]; lastSortKey?: string }>;
 
   /**
    * Claims a processing attempt for a Photo. Returns "claimed" for a fresh

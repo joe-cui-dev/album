@@ -3,15 +3,12 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
-import type {
-  Photo,
-  RetryProcessingResponse,
-  UploadBatchPhotoStatus,
-} from "@album/shared";
+import { randomUUID } from "node:crypto";
+import type { RetryProcessingResponse } from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { config } from "../config.js";
-import { badRequest, json, ok } from "../http.js";
+import { badRequest, json } from "../http.js";
 import type { PersonalAlbum } from "../store/personal-album.js";
 
 const sqs = new SQSClient({});
@@ -21,7 +18,10 @@ interface RetryProcessingDeps {
     userId: string;
     photoId: string;
     originalObjectKey: string;
+    retryAttemptId: string;
   }) => Promise<void>;
+  newRetryAttemptId: () => string;
+  now: () => Date;
 }
 
 export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
@@ -43,6 +43,8 @@ export const handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
           }),
         );
       },
+      newRetryAttemptId: randomUUID,
+      now: () => new Date(),
     },
   }),
 );
@@ -68,22 +70,20 @@ export const handleRetryProcessing = async ({
     return json(409, { message: "Only failed photos can be retried" });
   }
 
+  const retryAttemptId = deps.newRetryAttemptId();
   await deps.sendRetryMessage({
     userId: user.userId,
     photoId: photo.photoId,
     originalObjectKey: photo.originalObjectKey,
+    retryAttemptId,
   });
-
-  return ok(toPhotoStatus(photo) satisfies RetryProcessingResponse);
-};
-
-const toPhotoStatus = (photo: Photo): UploadBatchPhotoStatus => {
-  return {
+  const current = await album.beginProcessingIssueRetryV2({
     photoId: photo.photoId,
-    fileName: photo.fileName,
-    processingState: photo.processingState,
-    exactDuplicate: photo.processingState === "exactDuplicate",
-    ...(photo.failureCode ? { failureCode: photo.failureCode } : {}),
-    ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
-  };
+    retryAttemptId,
+    attemptedAt: deps.now().toISOString(),
+  });
+  return json(
+    202,
+    { accepted: true, retryAttemptId: current.retryAttemptId } satisfies RetryProcessingResponse,
+  );
 };
