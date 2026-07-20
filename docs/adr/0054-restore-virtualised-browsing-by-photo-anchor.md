@@ -1,0 +1,3 @@
+# Restore Virtualised Browsing by Photo Anchor
+
+Each Browsing Window history entry will restore against a content anchor consisting of the first substantially visible Photo ID and its Justified Row's offset from the content viewport, or a period anchor when a month marker owns the top position. Absolute scroll offset is only a same-layout fast path. After responsive re-layout, the client finds the new row containing that Photo and recreates the relative offset; if a mutation removed it, restoration falls back to its remembered older neighbour, then newer neighbour, then period marker. Updates are throttled into the current history entry and never create scroll-generated history entries. This remains reliable when row indices and heights change across viewport sizes.

@@ -108,9 +108,13 @@ Mobile completion of the core journeys is the quality baseline. Desktop adds den
 
 Years remain available as a compact index. Selecting a year jumps to its newest month with Photos; expanding it shows only months that contain Photos. Scrolling updates the active year without continuously adding browser history entries.
 
+Year jumping and disclosure are separate controls. At most one year is expanded, scrolling changes only the active styling, and an expanded year lists non-empty months newest first followed by Date unknown when present, with exact Photo counts.
+
 ### Mobile
 
 The Timeline is full width with compact Justified Rows. The current month marker sticks below the app bar and yields to the next month. Selecting it opens a `Jump to date` bottom sheet containing only years and months that have Photos.
+
+The bottom sheet uses the same period ordering as the desktop index: selecting a year expands its periods, while a separate `Latest in {year}` action jumps to that year's newest non-empty period.
 
 Photo Viewer is full screen with swipe navigation while unzoomed and a bottom Info sheet. Upload Tray is a bottom sheet that can minimise to a persistent progress bar. Touch targets are at least 44px.
 
@@ -128,6 +132,8 @@ Expected supporting behaviour:
 - stable restoration of month and scroll position after closing Photo Viewer;
 - limited prefetching of the next incremental page and adjacent Viewer Photos.
 
+The client initially requests 80 Photos and automatically requests one older cursor page at a time when completed layout comes within roughly two viewport heights of the visible end, requesting earlier when needed to complete a withheld row tail. It pauses speculative loading while hidden, offline, or inactive. Incremental failure exposes the retained Photo tail followed by one scoped retry; the Timeline has no permanent Load more control.
+
 ### Justified Rows
 
 Timeline uses Justified Rows that preserve each Timeline Thumbnail's aspect ratio. Photos remain in chronological order from left to right and top to bottom. The design does not use square cropping or Masonry.
@@ -139,6 +145,8 @@ Timeline contains only Ready, non-archived Photos. It does not display Processin
 ### Chronology
 
 Captured At is a capture-local calendar value and never shifts because the viewing browser changes time zone. A reliable Capture Time Offset is preserved separately when available. Missing offset does not mean UTC.
+
+All Timeline, Viewer, accessible-name, and Info copy uses one structured Captured At formatter with compact, accessible, and detail presentations. It never parses the value as a browser-local instant, displays only components supported by Captured At Precision and Captured At Time Resolution, and shows a Capture Time Offset only when one is present.
 
 Captured At supports four precision levels:
 
@@ -158,6 +166,8 @@ The target experience includes `Adjust date and time`. Adjustment changes Timeli
 Photo processing produces private Small and Large Timeline Thumbnails at approximately 320px and 640px on the long edge. Timeline exposes both through responsive image sources; Photo Viewer uses Display Photo.
 
 Correct aspect-ratio space is reserved before loading. Thumbnails use a static neutral placeholder and one 120–160ms decode fade. There is no shimmer. Reduced-motion mode removes the fade. Expired temporary access for visible thumbnails is refreshed without per-photo User retry.
+
+Timeline images use native width-descriptor `srcset` values from each source's actual dimensions and a `sizes` value from the computed Justified Row width. The first visible row receives higher fetch priority, other visible rows load eagerly, and overscan rows load lazily. The image is decorative inside a native Photo link whose accessible name combines Original File Name with only the known Captured At components. Access renewal or responsive source replacement never repeats the one-time decode fade.
 
 ## Photo Viewer
 
@@ -323,13 +333,20 @@ Personal Light Table is a cross-frontend/backend target experience. It must be d
 
 - automatically loaded, month-grouped Justified Rows;
 - desktop year index and mobile Jump to date;
+- read-only Archive browsing through the same Browsing Window;
 - private Photo Viewer route with history and scroll restoration;
 - responsive thumbnail selection, loading states, and 20,000-Photo performance validation.
+
+The tracer's Photo Viewer includes the stable private route, direct-route loading, Fit display, Close, Previous, Next, known Captured At, a Viewer Sequence Position when it can be established exactly, keyboard navigation, read-only Info, scoped failures, Darkroom presentation, and restoration to the originating Browsing Window. Swipe, zoom and pan, idle chrome transitions, More actions, and their final mobile and accessibility validation remain in the later supporting-workflow and refinement slices.
+
+Before replacing the legacy browsing UI, implementation separates its file selection, direct upload, Upload Batch polling, and Retry behaviour into a temporary Manual Upload workspace. The v2 Timeline, Archive, and Photo Viewer routes do not retain dependencies on the legacy filtered grid or detail panel. The later Upload Tray slice replaces the temporary workspace without changing the Browsing Window.
+
+Tracer performance acceptance uses a synthetic 20,000-Photo Personal Album with mixed aspect ratios, extreme panoramas, partial Captured At values, and long Original File Names. After all compact descriptors have loaded, JavaScript heap growth over the signed-in empty baseline stays within 75 MiB; at most 250 Photo links or images are mounted; cursor reads remain single-flight; and Thumbnail Access renewal retains the 100-Photo batch boundary. Under 4x CPU slowdown, responsive re-layout plus anchor restoration has a p95 below 100ms, continuous scripted scrolling introduces no application long task above 50ms, and a displayed row never changes geometry because of pagination or image decode. Browser tests cover initial loading, incremental failure, Viewer opening, and Back restoration. These values change only in response to recorded measurements on representative target hardware.
 
 ### 4. Supporting workflows
 
 - Upload Tray with local preview, minimise, recovery boundary, and completion summary;
-- Archive view, Restore, and Undo;
+- Archive Photo, Restore Photo, and Undo management flows on the existing Archive view;
 - conditional Processing Issues navigation and Retry lifecycle;
 - single-action Original Download.
 

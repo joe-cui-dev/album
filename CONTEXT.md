@@ -60,6 +60,10 @@ _Avoid_: preview image
 A responsive Small or Large photo derived from an Original Photo for fast browsing in the Timeline without downloading the Display Photo. Timeline Thumbnails are private album content, not public or long-lived thumbnail URLs.
 _Avoid_: public thumbnail, preview image
 
+**Timeline Thumbnail Access**:
+A temporary grant for a signed-in User to view responsive Timeline Thumbnails for one or more of their own Ready Photos. It may be renewed in a batch without making the underlying thumbnails public.
+_Avoid_: public thumbnail URL, permanent image URL, per-photo login
+
 **Display Access**:
 A temporary grant for a signed-in User to view one of their own Display Photos. Display Access does not make Display Photos publicly browsable.
 _Avoid_: public image URL, static public photo, shared photo link
@@ -108,9 +112,21 @@ _Avoid_: album list, gallery categories
 A way for the User to jump to a year or month in the Timeline without treating that period as a search result or separate album.
 _Avoid_: year filter, month filter, date search
 
+**Browsing Window**:
+The continuous portion of Timeline or Archive currently available to the User, beginning at the latest Photo or a Timeline Navigation anchor and extending toward older Photos. It is a view into the collection, not a filtered or saved subset.
+_Avoid_: date results, loaded page, filtered timeline
+
 **Photo Viewer**:
 A focused view for looking at one Photo from the Timeline while retaining the ability to move between neighbouring Photos. Photo Metadata and management actions are secondary to viewing the Photo itself.
 _Avoid_: photo detail panel, asset inspector, edit screen
+
+**Viewer Sequence**:
+The live chronological sequence of Ready Photos through which Photo Viewer moves, scoped to the originating Timeline or Archive. It is not a saved playlist or a snapshot, and it never crosses between Timeline and Archive.
+_Avoid_: viewer history, loaded photos, slideshow playlist
+
+**Viewer Sequence Position**:
+A non-estimated Photo position within its live Viewer Sequence, shown only when a contiguous Browsing Window and exact Date Index can establish both the ordinal and collection total without observed inconsistency. It is not a collection snapshot and disappears when the client can no longer establish it reliably.
+_Avoid_: loaded-item index, estimated position, persistent photo rank
 
 **Mobile Browsing**:
 Using the Personal Album from a phone browser to browse the Timeline, use the Photo Viewer, and perform Manual Upload.

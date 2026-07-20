@@ -1,0 +1,3 @@
+# Subscribe to Controller Instances with React Built-Ins
+
+Browsing Window and Photo Viewer modules will expose stable `getSnapshot`, `subscribe`, intent, and `dispose` interfaces consumed through React's `useSyncExternalStore`, without adding an application-wide Redux or Zustand store. A small Session and history registry composition root owns controller instances; React Router location state carries only instance keys and serialisable route context, never cursor pages or Photo descriptors. Controllers receive their owned ports at construction and do not import the global HTTP client. Stable snapshot references isolate thumbnail and viewport updates from the full descriptor set while keeping state ownership local to each browsing or viewing lifecycle.

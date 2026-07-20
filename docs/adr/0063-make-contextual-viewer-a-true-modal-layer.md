@@ -1,0 +1,3 @@
+# Make Contextual Photo Viewer a True Modal Layer
+
+Although a contextual Photo Viewer keeps its originating Album shell and Browsing Window mounted, that background will become inert and hidden from the accessibility tree while the full-screen Viewer owns focus. Opening focuses Close, focus remains within Viewer and Info controls, and Close, Escape, or Browser Back restores focus without scrolling to the originating Photo link or its mutation fallback. A directly loaded Viewer route is an ordinary standalone page whose Close navigates to the current collection and focuses its main heading. Native Photo links retain middle-click and new-tab behaviour, which loads the standalone route rather than a copied background context.

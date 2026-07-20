@@ -1,0 +1,3 @@
+# Dispose Private Client State on Session Loss
+
+Any protected-request `401` will invalidate the client Session once, dispose every Browsing Window and Photo Viewer instance, cancel their work, discard history caches and temporary Thumbnail or Display Access URLs, and only then render Sign-In. Session expiry preserves the intended application URL so successful re-authentication can load it entirely from the network; explicit Sign Out clears the same private state and navigates to the generic entry route. No private filename, date, dimensions, or image placeholder derived from the prior User remains visible, and even a Session for the same Email Address creates fresh controllers.

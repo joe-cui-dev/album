@@ -1,0 +1,3 @@
+# Hold Incomplete Justified Row Tails Across Pages
+
+The Timeline and Archive layout engine will never compose a Justified Row across month boundaries and will withhold the small incomplete row tail at a cursor-page boundary until more Photos arrive. The next page may complete that tail without changing any row already presented to the User. A tail becomes a relaxed final row when the Date Index proves the month is complete, the collection has no next page, or incremental loading fails; failure feedback then follows the visible tail. This slightly delays a few page-edge thumbnails in exchange for stable geometry and scroll position during automatic incremental loading.

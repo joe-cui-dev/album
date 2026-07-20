@@ -1,0 +1,3 @@
+# Require Explicit Viewer Collection Switches
+
+A contextual Viewer bootstrap whose requested source collection no longer contains the Photo will return a structured `photo_collection_changed` conflict rather than silently replacing the originating Viewer Sequence. The client explains whether the Photo moved to Archive or Timeline and offers an explicit switch to the current collection or a return to the source view. A direct Viewer URL without source context still infers the Photo's current collection. This preserves the rule that one Viewer Sequence never crosses collections while allowing live changes from another device to recover without a misleading neighbour change.

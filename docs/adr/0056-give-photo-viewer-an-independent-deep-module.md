@@ -1,0 +1,3 @@
+# Give Photo Viewer an Independent Deep Module
+
+Photo Viewer will be implemented as a deep module separate from the Browsing Window. It accepts a Photo ID plus optional originating collection and exact Viewer Sequence Position, then owns aggregate Viewer reads, the bounded three-item neighbour window, Display Access expiry, navigation state, and scoped failures. A direct Photo route can create it without a Browsing Window; a contextual route runs both modules concurrently and passes only opening context rather than subscribing them to each other's internals. The route layer alone coordinates Close and history. Both modules may share one HTTP implementation internally, but each depends on a narrow owned port with an in-memory test adapter.

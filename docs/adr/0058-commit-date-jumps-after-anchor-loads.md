@@ -1,0 +1,3 @@
+# Commit Date Jumps After the Anchor Loads
+
+A manual date jump will create a cancellable candidate Browsing Window and load its first anchored page while leaving the current window visible; only success commits the new URL and browser history entry. A stale empty-period conflict refreshes Album Navigation and reports the changed period without creating a broken entry, while other failures remain retryable in the Jump interaction. Selecting another period or closing the interaction cancels the candidate request. Direct anchored URLs still own their initial loading and failure state because no prior in-app window exists to preserve.

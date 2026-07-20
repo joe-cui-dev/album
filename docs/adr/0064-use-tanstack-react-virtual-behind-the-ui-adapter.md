@@ -1,0 +1,3 @@
+# Use TanStack React Virtual Behind the UI Adapter
+
+The Timeline and Archive UI adapter will use `@tanstack/react-virtual` with window scrolling to virtualise stable-keyed month markers and Justified Rows whose sizes come from the pure layout module. It will use visible-range reporting, bounded overscan, index positioning, and scroll adjustment but avoid smooth restoration and optional direct-DOM optimisations unless measured performance requires them. TanStack-specific objects do not cross the adapter seam: deep-module tests exercise browsing behaviour without mocking the library, and Playwright tests cover the real adapter. This accepts one focused dependency while keeping replacement local if its behaviour or footprint later becomes unsuitable.
