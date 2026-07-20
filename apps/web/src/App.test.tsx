@@ -1,8 +1,9 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { hashFile } from "./features/upload/hashFile.js";
+import { sessionExpiredEvent } from "./lib/apiClient.js";
 import { renderApp } from "./test/test-utils.js";
 
 vi.mock("./features/upload/hashFile.js", () => ({
@@ -22,6 +23,7 @@ describe("App", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    window.history.replaceState({}, "", "/");
   });
 
   it("shows the email sign-in form when no session is active", async () => {
@@ -35,6 +37,56 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: "Send sign-in code" }),
     ).toBeInTheDocument();
+  });
+
+  it("gives an empty signed-in album a single clear next action", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        signedIn: true,
+        user: { userId: "user-1", email: "joe@example.com" },
+      }),
+    );
+
+    renderApp(<App />);
+
+    expect(await screen.findByRole("navigation", { name: "Album" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your album is empty" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("heading", { name: "Your album is empty" }).parentElement!)
+        .getByRole("button", { name: "Add photos" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Archive behind the signed-in application route", async () => {
+    window.history.replaceState({}, "", "/album/archive");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        signedIn: true,
+        user: { userId: "user-1", email: "joe@example.com" },
+      }),
+    );
+
+    renderApp(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Your archive is empty" }),
+    ).toBeInTheDocument();
+  });
+
+  it("returns to sign-in when a protected request reports an expired session", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        signedIn: true,
+        user: { userId: "user-1", email: "joe@example.com" },
+      }),
+    );
+
+    renderApp(<App />);
+    await screen.findByRole("navigation", { name: "Album" });
+
+    fireEvent(window, new Event(sessionExpiredEvent));
+
+    expect(await screen.findByLabelText("Email address")).toBeInTheDocument();
   });
 
   it("shows an actionable error when the API responds with the Vite HTML fallback", async () => {
@@ -545,6 +597,9 @@ describe("App", () => {
 
     renderApp(<App />);
 
+    fireEvent.change(await screen.findByLabelText("Choose photos"), {
+      target: { files: [new File(["draft"], "draft.jpg", { type: "image/jpeg" })] },
+    });
     await userEvent.click(await screen.findByRole("button", { name: "Refresh timeline" }));
     expect(await screen.findByAltText("beach.jpg thumbnail")).toHaveAttribute(
       "src",

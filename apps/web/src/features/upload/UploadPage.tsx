@@ -3,7 +3,6 @@ import {
   Archive,
   Download,
   Image,
-  LogOut,
   RefreshCw,
   Trash2,
   Upload,
@@ -12,10 +11,10 @@ import type {
   GetPhotoDetailResponse,
   GetUploadBatchStatusResponse,
   TimelinePhoto,
-  SessionUser,
   UploadBatchPhotoStatus,
 } from "@album/shared";
 import { apiClient } from "../../lib/apiClient.js";
+import { uiMessages } from "../../lib/uiMessages.js";
 import {
   validatePhotoFile,
   validateUploadBatchFiles,
@@ -25,8 +24,8 @@ import { isTerminalProcessingState } from "./uploadState.js";
 import { uploadToS3 } from "./uploadToS3.js";
 
 interface UploadPageProps {
-  user: SessionUser;
-  onSignedOut: () => void;
+  destination: "archive" | "timeline";
+  onAddPhotos: () => void;
 }
 
 interface SelectedPhotoFile {
@@ -36,7 +35,7 @@ interface SelectedPhotoFile {
   reason: string | undefined;
 }
 
-export function UploadPage({ user, onSignedOut }: UploadPageProps) {
+export function UploadPage({ destination, onAddPhotos }: UploadPageProps) {
   const [selectedFiles, setSelectedFiles] = useState<SelectedPhotoFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [uploadBatchId, setUploadBatchId] = useState<string>();
@@ -48,7 +47,6 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
   const [timelineYear, setTimelineYear] = useState("");
   const [timelineMonth, setTimelineMonth] = useState("");
   const [timelineProcessingState, setTimelineProcessingState] = useState("");
-  const [showArchivedTimeline, setShowArchivedTimeline] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [retryPolling, setRetryPolling] = useState(false);
   const [warning, setWarning] = useState<string>();
@@ -115,11 +113,6 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
     setSelectedFiles((current) => current.filter((file) => file.id !== id));
   };
 
-  const signOut = async () => {
-    await apiClient.signOut();
-    onSignedOut();
-  };
-
   const refreshTimeline = async () => {
     setTimelineLoading(true);
     setError(undefined);
@@ -129,7 +122,7 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
           year: timelineYear,
           month: timelineMonth,
           processingState: timelineProcessingState,
-          archived: showArchivedTimeline ? "true" : "",
+          archived: destination === "archive" ? "true" : "",
         }),
       );
       setTimelinePhotos(response.photos);
@@ -258,35 +251,54 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
   const uploadButtonLabel =
     validFiles.length === 1 ? "Upload 1 photo" : `Upload ${validFiles.length} photos`;
 
+  const isEmptyDestination =
+    timelinePhotos.length === 0 && selectedFiles.length === 0 && !batchStatus;
+
+  if (isEmptyDestination) {
+    const emptyState =
+      destination === "archive" ? uiMessages.emptyArchive : uiMessages.emptyAlbum;
+
+    return (
+      <main className="album-content">
+        <section className="empty-album">
+          <h1>{emptyState.title}</h1>
+          <p>{emptyState.description}</p>
+          {destination === "timeline" ? (
+            <>
+              <button onClick={onAddPhotos} type="button">{uiMessages.addPhotos}</button>
+              <small>{uiMessages.emptyAlbum.formats}</small>
+              <input
+                accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif"
+                aria-label="Choose photos"
+                className="sr-only"
+                id="photo-file-input"
+                multiple
+                onChange={chooseFiles}
+                type="file"
+              />
+            </>
+          ) : null}
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-200 pb-6">
-        <div>
-          <p className="text-sm font-semibold uppercase text-emerald-700">
-            Personal Album
-          </p>
-          <h1 className="mt-2 text-4xl font-bold text-stone-950">Manual upload</h1>
-          <p className="mt-2 text-stone-600">Signed in as {user.email}</p>
-        </div>
-        <button
-          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-stone-300 bg-white px-4 font-semibold text-stone-900"
-          onClick={signOut}
-          type="button"
-        >
-          <LogOut aria-hidden="true" className="h-4 w-4" />
-          Sign out
-        </button>
-      </header>
+    <main className="album-content">
 
       <section className="grid gap-5 border-b border-stone-200 py-8 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-bold text-stone-950">Timeline</h2>
+              <h2 className="text-2xl font-bold text-stone-950">
+                {destination === "archive" ? "Archive" : "Timeline"}
+              </h2>
               <p className="mt-1 text-sm text-stone-600">
                 {timelinePhotos.length
                   ? `${timelinePhotos.length} photos`
-                  : "No timeline photos"}
+                  : destination === "archive"
+                    ? "No archived photos"
+                    : "No timeline photos"}
               </p>
             </div>
             <button
@@ -296,7 +308,7 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
               type="button"
             >
               <RefreshCw aria-hidden="true" className="h-4 w-4" />
-              Refresh timeline
+              {destination === "archive" ? "Refresh archive" : "Refresh timeline"}
             </button>
           </div>
 
@@ -341,15 +353,6 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
                 <option value="uploaded">Uploaded</option>
                 <option value="uploadRequested">Upload requested</option>
               </select>
-            </label>
-            <label className="flex min-h-10 items-center gap-2 self-end text-sm font-semibold text-stone-800">
-              <input
-                checked={showArchivedTimeline}
-                className="h-4 w-4"
-                onChange={(event) => setShowArchivedTimeline(event.target.checked)}
-                type="checkbox"
-              />
-              Archived
             </label>
           </div>
 
@@ -401,6 +404,7 @@ export function UploadPage({ user, onSignedOut }: UploadPageProps) {
             <span className="text-sm font-semibold text-stone-800">Choose photos</span>
             <input
               accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif"
+              id="photo-file-input"
               className="mt-3 block w-full text-sm"
               multiple
               onChange={chooseFiles}

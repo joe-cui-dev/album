@@ -15,6 +15,8 @@ import type {
 } from "@album/shared";
 import { apiBaseUrl } from "./config.js";
 
+export const sessionExpiredEvent = "album:session-expired";
+
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -25,6 +27,11 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     },
   });
   const contentType = response.headers.get("Content-Type") ?? "";
+
+  if (response.status === 401) {
+    window.dispatchEvent(new Event(sessionExpiredEvent));
+    throw new Error("Your session has expired.");
+  }
 
   if (!response.ok) {
     if (!contentType.includes("application/json")) {
