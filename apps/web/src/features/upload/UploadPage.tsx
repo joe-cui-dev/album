@@ -207,7 +207,10 @@ export function UploadPage({ destination, onAddPhotos }: UploadPageProps) {
         }),
       );
 
-      const batch = await apiClient.createUploadBatch({ files });
+      const batch = await apiClient.createUploadBatch({
+        files,
+        uploadContext: { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+      });
       setUploadBatchId(batch.uploadBatchId);
       setRetryPolling(false);
       await Promise.all(

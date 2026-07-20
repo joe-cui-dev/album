@@ -68,6 +68,10 @@ export interface PersonalAlbum {
     clientSha256?: string;
     uploadRequestedAt: string;
     fileModifiedAt?: string;
+    /** Upload-context-local calendar values, derived once at upload time so reads never reinterpret them. */
+    fileModifiedLocalDateTime?: string;
+    uploadLocalDateTime?: string;
+    uploadContextTimeZone?: string;
   }): Promise<void>;
   createUploadBatch(input: {
     uploadBatchId: string;

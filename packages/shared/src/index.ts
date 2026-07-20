@@ -7,6 +7,7 @@ export const maxFilesPerUploadBatch = 100;
 export const maxOriginalPhotoBytes = 50 * 1024 * 1024;
 export const displayPhotoLongestEdgePixels = 2048;
 export const timelineThumbnailLongestEdgePixels = 320;
+export const timelineThumbnailLargeLongestEdgePixels = 640;
 
 export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
 
@@ -14,6 +15,7 @@ export {
   ORIGINALS_KEY_PREFIX,
   buildDisplayObjectKey,
   buildOriginalObjectKey,
+  buildTimelineThumbnailLargeObjectKey,
   buildTimelineThumbnailObjectKey,
   matchesOriginalObjectMetadata,
   originalUploadMetadata,
@@ -123,6 +125,10 @@ export interface Photo {
   processingAttemptId?: string;
   processingStartedAt?: string;
   migrationVersion?: number;
+  /** Upload-context-local calendar values derived once at upload time so reads never reinterpret them. */
+  fileModifiedLocalDateTime?: string;
+  uploadLocalDateTime?: string;
+  uploadContextTimeZone?: string;
 }
 
 export interface PhotoChronology {
@@ -183,6 +189,10 @@ export interface CreateUploadBatchRequest {
     clientSha256?: string;
     fileModifiedAt?: string;
   }>;
+  /** Absent for old v1 clients, which stay on the explicit v1 compatibility path. */
+  uploadContext?: {
+    timeZone: string;
+  };
 }
 
 export interface CreateUploadBatchResponse {

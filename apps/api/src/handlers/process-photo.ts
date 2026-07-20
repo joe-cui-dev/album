@@ -1,15 +1,24 @@
 import type { SQSEvent, SQSHandler } from "aws-lambda";
-import type { CapturedAtSource, Photo, PhotoMetadata } from "@album/shared";
+import type { CapturedAtSource, Dimensions, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
   buildDisplayObjectKey,
+  buildTimelineThumbnailLargeObjectKey,
   buildTimelineThumbnailObjectKey,
   matchesOriginalObjectMetadata,
   parseOriginalObjectKey,
+  timelineThumbnailLargeLongestEdgePixels,
   timelineThumbnailLongestEdgePixels,
 } from "@album/shared";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import {
+  LEGACY_FALLBACK_TIME_ZONE,
+  deriveLocalDateTime,
+  resolveOriginalCapturedAt,
+  type ExifDateTimeCandidate,
+} from "../chronology-extraction.js";
+import { ProcessingAttemptConflictError } from "../store/errors.js";
 import { personalAlbumStore, photoObjectStore } from "../store/configured-store.js";
 import type { PersonalAlbumStore } from "../store/personal-album.js";
 import type { PhotoObjectStore } from "../store/photo-objects.js";
@@ -21,22 +30,25 @@ interface ProcessRecord {
 
 interface DerivedPhotoResult {
   body: Uint8Array;
-  dimensions: {
-    width: number;
-    height: number;
-  };
+  dimensions: Dimensions;
 }
 
 interface DisplayPhotoResult extends DerivedPhotoResult {
   metadata: PhotoMetadata;
   capturedAt?: string;
+  exifOriginal?: ExifDateTimeCandidate;
+  exifDigitized?: ExifDateTimeCandidate;
 }
 
 interface ProcessPhotoDeps {
   store: PersonalAlbumStore;
   photoObjects: PhotoObjectStore;
+  now: () => Date;
   createDisplayPhoto: (originalBytes: Uint8Array) => Promise<DisplayPhotoResult>;
   createTimelineThumbnail: (
+    originalBytes: Uint8Array,
+  ) => Promise<DerivedPhotoResult>;
+  createTimelineThumbnailLarge: (
     originalBytes: Uint8Array,
   ) => Promise<DerivedPhotoResult>;
 }
@@ -47,8 +59,10 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
     deps: {
       store: personalAlbumStore,
       photoObjects: photoObjectStore,
+      now: () => new Date(),
       createDisplayPhoto,
       createTimelineThumbnail,
+      createTimelineThumbnailLarge,
     },
   });
 };
@@ -61,8 +75,9 @@ export const handleProcessPhoto = async ({
   deps: ProcessPhotoDeps;
 }): Promise<void> => {
   for (const record of records) {
-    const objectKeys = extractS3ObjectKeys(record.body);
-    for (const objectKey of objectKeys) {
+    const parsedBody = parseRecordBody(record.body);
+    const attemptId = parsedBody.retryAttemptId ?? record.messageId;
+    for (const objectKey of parsedBody.objectKeys) {
       const keyParts = parseOriginalObjectKey(objectKey);
       if (!keyParts) {
         logInfo("Ignoring photo processing message with invalid object key", {
@@ -82,6 +97,12 @@ export const handleProcessPhoto = async ({
             failureCode: "metadataMismatch",
             failureMessage: "We couldn't verify this upload. Please try again.",
           });
+          await album.recordProcessingIssueV2({
+            photoId: keyParts.photoId,
+            fileName: photo.fileName ?? keyParts.photoId,
+            reasonCode: "metadataMismatch",
+            attemptedAt: deps.now().toISOString(),
+          });
         } else {
           logInfo("Ignoring photo processing message with no matching Photo", {
             messageId: record.messageId,
@@ -99,11 +120,16 @@ export const handleProcessPhoto = async ({
         });
         continue;
       }
-      if (
-        photo.processingState !== "uploadRequested" &&
-        photo.processingState !== "processingFailed"
-      ) {
-        logInfo("Ignoring photo processing message for non-processable Photo", {
+      // A Ready/Exact Duplicate Photo is only cleanly finished once its v1 and v2
+      // writes both completed and its attempt was released; a redelivery whose v2
+      // write never ran (e.g. a crash between the two) must still be able to
+      // resume and complete the v2 side. claimProcessingAttempt below still
+      // rejects a different live attempt.
+      const isCleanlyFinished =
+        (photo.processingState === "ready" || photo.processingState === "exactDuplicate") &&
+        photo.processingAttemptId === undefined;
+      if (isCleanlyFinished) {
+        logInfo("Ignoring photo processing message for a cleanly finished Photo", {
           messageId: record.messageId,
           objectKey,
           processingState: photo.processingState,
@@ -111,7 +137,25 @@ export const handleProcessPhoto = async ({
         continue;
       }
 
+      const hadOpenProcessingIssue = photo.processingState === "processingFailed";
+      try {
+        await album.claimProcessingAttempt({
+          photoId: keyParts.photoId,
+          attemptId,
+          startedAt: deps.now().toISOString(),
+        });
+      } catch (error) {
+        if (error instanceof ProcessingAttemptConflictError) {
+          logInfo("Ignoring photo processing message: another attempt owns this Photo", {
+            messageId: record.messageId,
+            objectKey,
+          });
+          continue;
+        }
+        throw error;
+      }
       await album.markProcessingStarted(keyParts.photoId);
+
       const originalBytes = await deps.photoObjects.readObjectBytes(objectKey);
       const sha256 = createHash("sha256").update(originalBytes).digest("hex");
       const duplicate = await album.findReadyPhotoBySha256({
@@ -124,14 +168,23 @@ export const handleProcessPhoto = async ({
           sha256,
           duplicateOfPhotoId: duplicate.photoId,
         });
+        await album.publishExactDuplicateV2({
+          photoId: keyParts.photoId,
+          sha256,
+          duplicateOfPhotoId: duplicate.photoId,
+          attemptId,
+          hadOpenProcessingIssue,
+        });
         continue;
       }
 
       let displayPhoto: DisplayPhotoResult;
       let timelineThumbnail: DerivedPhotoResult;
+      let timelineThumbnailLarge: DerivedPhotoResult;
       try {
         displayPhoto = await deps.createDisplayPhoto(originalBytes);
         timelineThumbnail = await deps.createTimelineThumbnail(originalBytes);
+        timelineThumbnailLarge = await deps.createTimelineThumbnailLarge(originalBytes);
       } catch (error) {
         console.error(
           JSON.stringify({
@@ -146,12 +199,29 @@ export const handleProcessPhoto = async ({
           failureCode: "unsupportedImage",
           failureMessage: "We couldn't process this photo.",
         });
+        await album.recordProcessingIssueV2({
+          photoId: keyParts.photoId,
+          fileName: photo.fileName ?? keyParts.photoId,
+          reasonCode: "unsupportedImage",
+          attemptedAt: deps.now().toISOString(),
+          attemptId,
+        });
         continue;
       }
 
       const displayObjectKey = buildDisplayObjectKey(keyParts);
       const timelineThumbnailObjectKey = buildTimelineThumbnailObjectKey(keyParts);
+      const timelineThumbnailLargeObjectKey = buildTimelineThumbnailLargeObjectKey(keyParts);
       const capturedAt = resolveCapturedAt(photo, displayPhoto);
+      const fileModifiedLocalDateTime = resolveFileModifiedLocalDateTime(photo);
+      const { capturedAt: originalCapturedAt, source: originalCapturedAtSource } =
+        resolveOriginalCapturedAt({
+          ...(displayPhoto.exifOriginal ? { exifOriginal: displayPhoto.exifOriginal } : {}),
+          ...(displayPhoto.exifDigitized ? { exifDigitized: displayPhoto.exifDigitized } : {}),
+          ...(fileModifiedLocalDateTime ? { fileModifiedLocalDateTime } : {}),
+          uploadLocalDateTime: resolveUploadLocalDateTime(photo),
+        });
+
       await deps.photoObjects.writeJpegObject({
         objectKey: displayObjectKey,
         body: displayPhoto.body,
@@ -159,6 +229,10 @@ export const handleProcessPhoto = async ({
       await deps.photoObjects.writeJpegObject({
         objectKey: timelineThumbnailObjectKey,
         body: timelineThumbnail.body,
+      });
+      await deps.photoObjects.writeJpegObject({
+        objectKey: timelineThumbnailLargeObjectKey,
+        body: timelineThumbnailLarge.body,
       });
       await album.markReady({
         photoId: keyParts.photoId,
@@ -172,17 +246,36 @@ export const handleProcessPhoto = async ({
         capturedAtSource: capturedAt.source,
         metadata: displayPhoto.metadata,
       });
+      await album.publishReadyPhotoV2({
+        photoId: keyParts.photoId,
+        fileName: photo.fileName ?? keyParts.photoId,
+        sha256,
+        displayObjectKey,
+        displayDimensions: displayPhoto.dimensions,
+        timelineThumbnails: {
+          small: { objectKey: timelineThumbnailObjectKey, dimensions: timelineThumbnail.dimensions },
+          large: { objectKey: timelineThumbnailLargeObjectKey, dimensions: timelineThumbnailLarge.dimensions },
+        },
+        metadata: displayPhoto.metadata,
+        originalCapturedAt,
+        originalCapturedAtSource,
+        attemptId,
+        hadOpenProcessingIssue,
+      });
     }
   }
 };
 
-const extractS3ObjectKeys = (body: string): string[] => {
+const parseRecordBody = (
+  body: string,
+): { objectKeys: string[]; retryAttemptId?: string } => {
   try {
     const parsed = JSON.parse(body) as {
       type?: string;
       userId?: string;
       photoId?: string;
       originalObjectKey?: string;
+      retryAttemptId?: string;
       Records?: Array<{ s3?: { object?: { key?: string } } }>;
     };
 
@@ -197,23 +290,60 @@ const extractS3ObjectKeys = (body: string): string[] => {
         keyParts?.userId === parsed.userId &&
         keyParts.photoId === parsed.photoId
       ) {
-        return [parsed.originalObjectKey];
+        return {
+          objectKeys: [parsed.originalObjectKey],
+          ...(typeof parsed.retryAttemptId === "string"
+            ? { retryAttemptId: parsed.retryAttemptId }
+            : {}),
+        };
       }
-      return [];
+      return { objectKeys: [] };
     }
 
-    return (
-      parsed.Records?.map((record) => record.s3?.object?.key)
-        .filter((key): key is string => Boolean(key))
-        .map((key) => decodeURIComponent(key.replace(/\+/g, " "))) ?? []
-    );
+    return {
+      objectKeys:
+        parsed.Records?.map((record) => record.s3?.object?.key)
+          .filter((key): key is string => Boolean(key))
+          .map((key) => decodeURIComponent(key.replace(/\+/g, " "))) ?? [],
+    };
   } catch {
-    return [];
+    return { objectKeys: [] };
   }
+};
+
+const resolveFileModifiedLocalDateTime = (
+  photo: Pick<Photo, "fileModifiedAt" | "fileModifiedLocalDateTime">,
+): { localDate: string; localTime: string } | undefined => {
+  if (photo.fileModifiedLocalDateTime) {
+    return parseLocalDateTime(photo.fileModifiedLocalDateTime);
+  }
+  if (photo.fileModifiedAt) {
+    return deriveLocalDateTime(photo.fileModifiedAt, LEGACY_FALLBACK_TIME_ZONE);
+  }
+  return undefined;
+};
+
+const resolveUploadLocalDateTime = (
+  photo: Pick<Photo, "uploadRequestedAt" | "uploadLocalDateTime">,
+): { localDate: string; localTime: string } => {
+  if (photo.uploadLocalDateTime) {
+    return parseLocalDateTime(photo.uploadLocalDateTime);
+  }
+  return deriveLocalDateTime(
+    photo.uploadRequestedAt ?? new Date(0).toISOString(),
+    LEGACY_FALLBACK_TIME_ZONE,
+  );
+};
+
+const parseLocalDateTime = (value: string): { localDate: string; localTime: string } => {
+  const [localDate, localTime] = value.split("T");
+  return { localDate: localDate ?? value, localTime: localTime ?? "00:00:00" };
 };
 
 interface ParsedExif {
   capturedAt?: string;
+  exifOriginal?: ExifDateTimeCandidate;
+  exifDigitized?: ExifDateTimeCandidate;
   cameraMake?: string;
   cameraModel?: string;
   lensModel?: string;
@@ -254,17 +384,29 @@ export const createDisplayPhoto = async (
       ...(exif.location ? { location: exif.location } : {}),
     },
     ...(exif.capturedAt ? { capturedAt: exif.capturedAt } : {}),
+    ...(exif.exifOriginal ? { exifOriginal: exif.exifOriginal } : {}),
+    ...(exif.exifDigitized ? { exifDigitized: exif.exifDigitized } : {}),
   };
 };
 
 export const createTimelineThumbnail = async (
   originalBytes: Uint8Array,
+): Promise<DerivedPhotoResult> => renderTimelineThumbnail(originalBytes, timelineThumbnailLongestEdgePixels);
+
+export const createTimelineThumbnailLarge = async (
+  originalBytes: Uint8Array,
+): Promise<DerivedPhotoResult> =>
+  renderTimelineThumbnail(originalBytes, timelineThumbnailLargeLongestEdgePixels);
+
+const renderTimelineThumbnail = async (
+  originalBytes: Uint8Array,
+  longestEdgePixels: number,
 ): Promise<DerivedPhotoResult> => {
   const rendered = await sharp(originalBytes)
     .rotate()
     .resize({
-      width: timelineThumbnailLongestEdgePixels,
-      height: timelineThumbnailLongestEdgePixels,
+      width: longestEdgePixels,
+      height: longestEdgePixels,
       fit: "inside",
       withoutEnlargement: true,
     })
@@ -378,7 +520,8 @@ const parseExif = (exif: Buffer | undefined): ParsedExif => {
       ? readIfd(readUInt32(gpsIfdOffset.valueOffset))
       : new Map();
 
-  const capturedAt = parseExifDate(readAscii(exifIfd.get(0x9003)));
+  const dateTimeOriginalRaw = readAscii(exifIfd.get(0x9003));
+  const capturedAt = parseExifDate(dateTimeOriginalRaw);
   const cameraMake = readAscii(ifd0.get(0x010f));
   const cameraModel = readAscii(ifd0.get(0x0110));
   const lensModel = readAscii(exifIfd.get(0xa434));
@@ -389,8 +532,35 @@ const parseExif = (exif: Buffer | undefined): ParsedExif => {
     longitude: readRationals(gpsIfd.get(0x0004)),
   });
 
+  const buildExifCandidate = (
+    dateTime: string | undefined,
+    offset: string | undefined,
+    subSecTime: string | undefined,
+  ): ExifDateTimeCandidate | undefined =>
+    dateTime
+      ? {
+          dateTime,
+          ...(offset ? { offset } : {}),
+          ...(subSecTime ? { subSecTime } : {}),
+        }
+      : undefined;
+
+  const exifOriginal = buildExifCandidate(
+    dateTimeOriginalRaw,
+    readAscii(exifIfd.get(0x9011)),
+    readAscii(exifIfd.get(0x9291)),
+  );
+  const dateTimeDigitizedRaw = readAscii(exifIfd.get(0x9004));
+  const exifDigitized = buildExifCandidate(
+    dateTimeDigitizedRaw,
+    readAscii(exifIfd.get(0x9012)),
+    readAscii(exifIfd.get(0x9292)),
+  );
+
   return {
     ...(capturedAt ? { capturedAt } : {}),
+    ...(exifOriginal ? { exifOriginal } : {}),
+    ...(exifDigitized ? { exifDigitized } : {}),
     ...(cameraMake ? { cameraMake } : {}),
     ...(cameraModel ? { cameraModel } : {}),
     ...(lensModel ? { lensModel } : {}),
@@ -478,12 +648,6 @@ const resolveCapturedAt = (
 
 const processAlbum = (deps: ProcessPhotoDeps, userId: string) =>
   deps.store.personalAlbumOf(userId);
-
-const removeUndefined = <T extends Record<string, unknown>>(input: T): T => {
-  return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => value !== undefined),
-  ) as T;
-};
 
 const logInfo = (message: string, detail: Record<string, unknown>): void => {
   console.log(
