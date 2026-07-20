@@ -1,6 +1,6 @@
 # Browsing Tracer Implementation
 
-Status: Proposed implementation plan, decisions confirmed 20 July 2026
+Status: Delivery Slices 1-5 implemented; Slice 6's functional Playwright coverage implemented (21 July 2026), its performance project deferred. Decisions confirmed 20 July 2026.
 
 This plan implements section 3, **Browsing tracer**, of [Personal Light Table Design](./personal-light-table-design.md). It cuts the Web client from the legacy filtered grid to automatically loaded, month-grouped Timeline and read-only Archive browsing, with a private route-driven Photo Viewer and bounded 20,000-Photo behaviour.
 
@@ -194,7 +194,7 @@ Numeric budgets change only from recorded measurements on representative hardwar
 3. **Route and migration seam** — React Router, registry, Session disposal, and temporary Manual Upload extraction.
 4. **Timeline and Archive cutover** — automatic reads, virtual rows, date navigation, responsive images, and scoped errors.
 5. **Photo Viewer tracer** — independent module, contextual/direct routes, bounded prefetch, Info, keyboard, and focus restoration.
-6. **Acceptance hardening** — Playwright coverage, performance budgets, 320px WebKit, and production JPEG/PNG/HEIC smoke.
+6. **Acceptance hardening** — Playwright coverage, performance budgets, 320px WebKit, and production JPEG/PNG/HEIC smoke. Functional Playwright coverage and the 320px WebKit smoke are implemented (`apps/web/e2e/`), against intercepted HTTP responses; the pinned-Chromium 20,000-Photo performance project and its numeric budgets, and the production-format smoke, remain deferred pending a hardware/CI decision.
 
 Each slice keeps workspace checks and tests green. Legacy read cleanup is explicitly outside this plan.
 

@@ -7,3 +7,6 @@ cdk.out/
 cdk.context.json
 infra/cdk-outputs.json
 .DS_Store
+test-results/
+playwright-report/
+blob-report/
