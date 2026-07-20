@@ -3,12 +3,13 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import { getCapturedAtComponents, type AnchorPeriod, type ListCollectionPhotosV2Response, type TimelinePhotoV2 } from "@album/shared";
+import { conservativeExpiresAt } from "../access-expiry.js";
 import { decodeTimelineCursor, encodeTimelineCursor } from "../cursor.js";
 import { buildTimelineThumbnailSources } from "../thumbnail-sources.js";
 import { parseStartAt, timelinePeriodUpperBoundSortKey, type PhotoCollection } from "../store/v2-keys.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
-import { badRequest, json, ok } from "../http.js";
+import { badRequest, conflict, ok } from "../http.js";
 import { photoObjectStore } from "../store/configured-store.js";
 import type { TimelineProjection } from "../store/personal-album.js";
 import type { PhotoObjectStore } from "../store/photo-objects.js";
@@ -84,7 +85,7 @@ export const handleListCollectionPhotosV2 = async ({
     const periodKey = period.month !== undefined ? String(period.month).padStart(2, "0") : "unknown";
     const counts = await album.getDateIndexV2(collection, period.year);
     if (!counts[periodKey]) {
-      return json(409, { message: "This period is now empty. Refresh navigation and try again." });
+      return conflict("empty_period", "This period is now empty. Refresh navigation and try again.");
     }
     atOrBefore = { sortKey: timelinePeriodUpperBoundSortKey(collection, period) };
   }
@@ -96,9 +97,10 @@ export const handleListCollectionPhotosV2 = async ({
     ...(atOrBefore ? { atOrBefore } : {}),
   });
 
-  const photos = await Promise.all(
+  const resolved = await Promise.all(
     page.projections.map((projection) => toTimelinePhotoV2(projection, deps)),
   );
+  const photos = resolved.map(({ photo }) => photo);
   const firstProjection = page.projections[0];
 
   return ok(
@@ -108,6 +110,9 @@ export const handleListCollectionPhotosV2 = async ({
         ? { nextCursor: encodeTimelineCursor({ collection, after: page.lastSortKey }) }
         : {}),
       ...(firstProjection ? { anchorPeriod: anchorPeriodOf(firstProjection) } : {}),
+      ...(resolved.length
+        ? { expiresAt: conservativeExpiresAt(resolved.map(({ expiresInSeconds }) => expiresInSeconds)) }
+        : {}),
     } satisfies ListCollectionPhotosV2Response,
     { headers: NO_STORE_HEADERS },
   );
@@ -129,20 +134,23 @@ const anchorPeriodOf = (projection: TimelineProjection): AnchorPeriod => {
 const toTimelinePhotoV2 = async (
   projection: TimelineProjection,
   deps: ListCollectionDeps,
-): Promise<TimelinePhotoV2> => {
+): Promise<{ photo: TimelinePhotoV2; expiresInSeconds: number }> => {
   const [small, large] = await Promise.all([
     deps.photoObjects.presignDownload({ objectKey: projection.timelineThumbnails.small.objectKey }),
     deps.photoObjects.presignDownload({ objectKey: projection.timelineThumbnails.large.objectKey }),
   ]);
   return {
-    photoId: projection.photoId,
-    fileName: projection.fileName,
-    capturedAt: projection.capturedAt,
-    addedAt: projection.addedAt,
-    displayDimensions: projection.displayDimensions,
-    timelineThumbnailSources: buildTimelineThumbnailSources({
-      small: { url: small.url, dimensions: projection.timelineThumbnails.small.dimensions },
-      large: { url: large.url, dimensions: projection.timelineThumbnails.large.dimensions },
-    }),
+    photo: {
+      photoId: projection.photoId,
+      fileName: projection.fileName,
+      capturedAt: projection.capturedAt,
+      addedAt: projection.addedAt,
+      displayDimensions: projection.displayDimensions,
+      timelineThumbnailSources: buildTimelineThumbnailSources({
+        small: { url: small.url, dimensions: projection.timelineThumbnails.small.dimensions },
+        large: { url: large.url, dimensions: projection.timelineThumbnails.large.dimensions },
+      }),
+    },
+    expiresInSeconds: Math.min(small.expiresInSeconds, large.expiresInSeconds),
   };
 };

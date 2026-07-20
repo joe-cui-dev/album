@@ -1069,6 +1069,25 @@ export const createDynamoDbPersonalAlbumStore = ({
         };
       },
 
+      async queryAdjacentProjectionV2({ collection, capturedAt, addedAt, photoId, direction }) {
+        const prefix = timelineProjectionPrefix(collection);
+        const sortKey = timelineProjectionSortKey({ collection, capturedAt, addedAt, photoId });
+        const scanIndexForward = direction === "newer";
+        const result = await documentClient.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": prefix },
+            ExclusiveStartKey: { pk: `USER#${userId}`, sk: sortKey },
+            ScanIndexForward: scanIndexForward,
+            ConsistentRead: true,
+            Limit: 1,
+          }),
+        );
+        const item = result.Items?.[0];
+        return item ? toTimelineProjection(item, collection) : undefined;
+      },
+
       async listDateIndexYearsV2(collection) {
         const prefix = dateIndexPrefix(collection);
         const result = await documentClient.send(

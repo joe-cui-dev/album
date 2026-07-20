@@ -193,6 +193,76 @@ describe("getProcessingIssuesSummary", () => {
   });
 });
 
+describe("queryAdjacentProjectionV2", () => {
+  it("finds the nearest newer and older neighbours in collection order", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "jan", day("2024-01-01"));
+    await createReadyPhoto(album, "jun", day("2024-06-15"));
+    await createReadyPhoto(album, "dec", day("2024-12-31"));
+
+    await expect(
+      album.queryAdjacentProjectionV2({
+        collection: "active",
+        capturedAt: day("2024-06-15"),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        photoId: "jun",
+        direction: "newer",
+      }),
+    ).resolves.toMatchObject({ photoId: "dec" });
+
+    await expect(
+      album.queryAdjacentProjectionV2({
+        collection: "active",
+        capturedAt: day("2024-06-15"),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        photoId: "jun",
+        direction: "older",
+      }),
+    ).resolves.toMatchObject({ photoId: "jan" });
+  });
+
+  it("returns undefined past either end of the sequence", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "solo", day("2024-06-15"));
+
+    await expect(
+      album.queryAdjacentProjectionV2({
+        collection: "active",
+        capturedAt: day("2024-06-15"),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        photoId: "solo",
+        direction: "newer",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      album.queryAdjacentProjectionV2({
+        collection: "active",
+        capturedAt: day("2024-06-15"),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        photoId: "solo",
+        direction: "older",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("never crosses into the other collection", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "active-1", day("2024-01-01"));
+    await createReadyPhoto(album, "archived-1", day("2024-02-01"));
+    await album.setArchiveMembershipV2({ photoId: "archived-1", archived: true });
+
+    await expect(
+      album.queryAdjacentProjectionV2({
+        collection: "active",
+        capturedAt: day("2024-01-01"),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        photoId: "active-1",
+        direction: "newer",
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("getPhotosByIds", () => {
   it("returns the matching Photos and silently omits missing ids", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");

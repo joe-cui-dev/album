@@ -3,6 +3,7 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import type { TimelineThumbnailAccessRequest, TimelineThumbnailAccessResponse } from "@album/shared";
+import { conservativeExpiresAt } from "../access-expiry.js";
 import { buildTimelineThumbnailSources } from "../thumbnail-sources.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
@@ -62,12 +63,16 @@ export const handleTimelineThumbnailAccess = async ({
           small: { url: small.url, dimensions: timelineThumbnails.small.dimensions },
           large: { url: large.url, dimensions: timelineThumbnails.large.dimensions },
         }),
+        expiresInSeconds: Math.min(small.expiresInSeconds, large.expiresInSeconds),
       };
     }),
   );
 
   return ok(
-    { photos: results } satisfies TimelineThumbnailAccessResponse,
+    {
+      photos: results.map(({ photoId, timelineThumbnailSources }) => ({ photoId, timelineThumbnailSources })),
+      expiresAt: conservativeExpiresAt(results.map(({ expiresInSeconds }) => expiresInSeconds)),
+    } satisfies TimelineThumbnailAccessResponse,
     { headers: { "cache-control": "private, no-store" } },
   );
 };

@@ -631,6 +631,18 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           };
         },
 
+        async queryAdjacentProjectionV2({ collection, capturedAt, addedAt, photoId, direction }) {
+          const sortKey = timelineProjectionSortKey({ collection, capturedAt, addedAt, photoId });
+          const prefix = timelineProjectionPrefix(collection);
+          const entries = [...projectionsOf(userId).entries()]
+            .filter(([sk]) => sk.startsWith(prefix))
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+          if (direction === "newer") {
+            return entries.find(([sk]) => sk > sortKey)?.[1];
+          }
+          return [...entries].reverse().find(([sk]) => sk < sortKey)?.[1];
+        },
+
         async listDateIndexYearsV2(collection) {
           const prefix = dateIndexPrefix(collection);
           return [...dateIndexOf(userId).entries()]

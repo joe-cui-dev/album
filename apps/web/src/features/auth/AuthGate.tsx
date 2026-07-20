@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import type { SessionUser } from "@album/shared";
-import { apiClient, sessionExpiredEvent } from "../../lib/apiClient.js";
+import { apiClient } from "../../lib/apiClient.js";
+import { sessionExpiredEvent } from "../../lib/sessionEvents.js";
 import { uiMessages } from "../../lib/uiMessages.js";
 import { SignInForm } from "./SignInForm.js";
 

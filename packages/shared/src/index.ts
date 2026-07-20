@@ -335,6 +335,8 @@ export interface ListCollectionPhotosV2Response {
   photos: TimelinePhotoV2[];
   nextCursor?: string;
   anchorPeriod?: AnchorPeriod;
+  /** Conservative expiry shared by every Thumbnail source in this page; absent when the page is empty. */
+  expiresAt?: string;
 }
 
 export interface AlbumNavigationYear {
@@ -355,4 +357,44 @@ export interface TimelineThumbnailAccessRequest {
 
 export interface TimelineThumbnailAccessResponse {
   photos: Array<{ photoId: string; timelineThumbnailSources: TimelineThumbnailSourcesV2 }>;
+  /** Conservative expiry shared by every renewed source in this response. */
+  expiresAt: string;
+}
+
+export type PhotoCollection = "active" | "archived";
+
+/** Stable, machine-readable codes carried alongside a human diagnostic message on error responses. */
+export type AlbumErrorCode =
+  | "empty_period"
+  | "photo_collection_changed"
+  | "concurrent_projection_movement";
+
+export interface AlbumErrorBody {
+  code: AlbumErrorCode;
+  message: string;
+}
+
+/** `photo_collection_changed`: the Photo's current collection differs from the one the Viewer requested. */
+export interface PhotoCollectionChangedErrorBody extends AlbumErrorBody {
+  code: "photo_collection_changed";
+  currentCollection: PhotoCollection;
+}
+
+export interface ViewerBootstrapResponse {
+  photoId: string;
+  fileName: string;
+  format: PhotoFormat;
+  fileSizeBytes: number;
+  metadata?: PhotoMetadata;
+  displayDimensions: Dimensions;
+  /** Original and active Captured At, source, and active chronology revision. */
+  chronology: PhotoChronology;
+  archived: boolean;
+  /** The resolved Viewer Sequence collection: where this Photo actually lives right now. */
+  collection: PhotoCollection;
+  displayAccess: { url: string; expiresAt: string };
+  /** Nearest newer neighbour in the resolved collection's live projection order, when present. */
+  newerPhotoId?: string;
+  /** Nearest older neighbour in the resolved collection's live projection order, when present. */
+  olderPhotoId?: string;
 }

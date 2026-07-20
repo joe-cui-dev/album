@@ -14,8 +14,7 @@ import type {
   VerifySignInCodeResponse,
 } from "@album/shared";
 import { apiBaseUrl } from "./config.js";
-
-export const sessionExpiredEvent = "album:session-expired";
+import { sessionExpiredEvent } from "./sessionEvents.js";
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${apiBaseUrl}${path}`, {

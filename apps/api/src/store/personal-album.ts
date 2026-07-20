@@ -266,6 +266,20 @@ export interface PersonalAlbum {
     collection: PhotoCollection,
   ): Promise<Array<{ year: number; counts: DateIndexPeriodCounts }>>;
 
+  /**
+   * The nearest live projection strictly newer ("newer") or older ("older")
+   * than the given projection's exact position, within the same collection.
+   * Used to derive Photo Viewer neighbours from existing v2 projection sort
+   * order without persisting any previous/next link.
+   */
+  queryAdjacentProjectionV2(input: {
+    collection: PhotoCollection;
+    capturedAt: CapturedAt;
+    addedAt: string;
+    photoId: string;
+    direction: "newer" | "older";
+  }): Promise<TimelineProjection | undefined>;
+
   /** The exact count of currently open Processing Issues. */
   getProcessingIssuesSummary(): Promise<number>;
 

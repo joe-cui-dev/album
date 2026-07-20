@@ -65,6 +65,8 @@ describe("handleTimelineThumbnailAccess", () => {
       },
     ]);
     expect(JSON.stringify(body).includes("objectKey")).toBe(false);
+    expect(typeof body.expiresAt).toBe("string");
+    expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 
   it("silently omits ids that are missing, not Ready, or belong to another user", async () => {

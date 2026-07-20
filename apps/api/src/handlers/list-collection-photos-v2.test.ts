@@ -67,6 +67,23 @@ describe("handleListCollectionPhotosV2", () => {
     });
     expect(JSON.stringify(body).includes("objectKey")).toBe(false);
     expect(response.headers?.["cache-control"]).toBe("private, no-store");
+    expect(typeof body.expiresAt).toBe("string");
+    expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("omits expiresAt when the page is empty", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+
+    const response = await handleListCollectionPhotosV2({
+      user,
+      album,
+      collection: "active",
+      query: {},
+      deps: deps(),
+    });
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.expiresAt).toBeUndefined();
   });
 
   it("collapses to Large when actual thumbnail widths match", async () => {
@@ -222,6 +239,7 @@ describe("handleListCollectionPhotosV2", () => {
       deps: deps(),
     });
     expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.body ?? "{}").code).toBe("empty_period");
   });
 
   it("rejects an invalid startAt", async () => {

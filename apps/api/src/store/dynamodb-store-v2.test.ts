@@ -389,6 +389,61 @@ describe("DynamoDbPersonalAlbumStore v2 commands: queryTimelinePageV2", () => {
   });
 });
 
+describe("DynamoDbPersonalAlbumStore v2 commands: queryAdjacentProjectionV2", () => {
+  it("queries ascending from the current key for a newer neighbour", async () => {
+    const { documentClient, commands } = queryClient([
+      { photoId: "dec", sk: "TIMELINE_V2#ACTIVE#2024.12.31.--.--.--.------#2026-01-01T00:00:00.000Z#dec" },
+    ]);
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    const neighbour = await album.queryAdjacentProjectionV2({
+      collection: "active",
+      capturedAt: june15,
+      addedAt: "2026-01-01T00:00:00.000Z",
+      photoId: "jun",
+      direction: "newer",
+    });
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toEqual(
+      expect.objectContaining({
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+        ExpressionAttributeValues: { ":pk": "USER#user-1", ":prefix": "TIMELINE_V2#ACTIVE#" },
+        ExclusiveStartKey: {
+          pk: "USER#user-1",
+          sk: "TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-01-01T00:00:00.000Z#jun",
+        },
+        ScanIndexForward: true,
+        ConsistentRead: true,
+        Limit: 1,
+      }),
+    );
+    expect(neighbour?.photoId).toBe("dec");
+  });
+
+  it("queries descending from the current key for an older neighbour, and returns undefined past the end", async () => {
+    const empty = queryClient([]);
+    const album = createDynamoDbPersonalAlbumStore({
+      documentClient: empty.documentClient,
+      tableName: "metadata-table",
+    }).personalAlbumOf("user-1");
+
+    const neighbour = await album.queryAdjacentProjectionV2({
+      collection: "active",
+      capturedAt: june15,
+      addedAt: "2026-01-01T00:00:00.000Z",
+      photoId: "jun",
+      direction: "older",
+    });
+
+    const query = empty.commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toEqual(expect.objectContaining({ ScanIndexForward: false, Limit: 1 }));
+    expect(neighbour).toBeUndefined();
+  });
+});
+
 describe("DynamoDbPersonalAlbumStore v2 commands: listDateIndexYearsV2", () => {
   it("queries by the collection's Date Index prefix and strips pk/sk from the counts", async () => {
     const { documentClient, commands } = queryClient([

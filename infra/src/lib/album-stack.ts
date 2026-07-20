@@ -438,6 +438,17 @@ export class AlbumStack extends Stack {
       }),
     });
 
+    const viewerBootstrap = new NodejsFunction(this, "ViewerBootstrapHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "viewer-bootstrap.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ViewerBootstrapLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
     const adjustCapturedAt = new NodejsFunction(this, "AdjustCapturedAtHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "captured-at-adjustment.ts"),
@@ -865,6 +876,15 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "TimelineThumbnailAccessIntegration",
         timelineThumbnailAccess,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/photos/{photoId}/viewer",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ViewerBootstrapIntegration",
+        viewerBootstrap,
       ),
     });
 
