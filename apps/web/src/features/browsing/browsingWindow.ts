@@ -67,6 +67,12 @@ export interface BrowsingWindowOptions {
   startAt?: string;
   port: AlbumBrowsingPort;
   layout: LayoutOptions;
+  /**
+   * A page already fetched for this exact `collection`/`startAt` (ADR-0058's
+   * date-Jump probe). When present, it seeds the window directly instead of
+   * issuing a second, redundant initial load for the same anchor.
+   */
+  initialPage?: { photos: TimelinePhotoV2[]; nextCursor?: string; expiresAt?: string };
 }
 
 const RENEWAL_LEAD_MS = 60_000;
@@ -256,7 +262,8 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     });
     const { items, incompleteTailPhotoIds } = computeJustifiedRows(layoutDescriptors, {
       ...layoutOptions,
-      hasMore: !isExhausted,
+      // A failed load also relaxes the withheld tail into view (implementation doc "Justified Rows and Virtualisation").
+      hasMore: !isExhausted && loadError === undefined,
     });
     cachedLayoutItems = items;
     cachedIncompleteTail = incompleteTailPhotoIds;
@@ -312,7 +319,11 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     },
   };
 
-  void runLoad("initial");
+  if (options.initialPage) {
+    applyPage(options.initialPage);
+  } else {
+    void runLoad("initial");
+  }
 
   return {
     getSnapshot,

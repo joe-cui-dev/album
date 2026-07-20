@@ -40,6 +40,22 @@ describe("createBrowsingWindow", () => {
     expect(window_.getSnapshot().isLoadingInitial).toBe(true);
   });
 
+  it("seeds from an already-fetched initialPage instead of issuing a redundant load (ADR-0058)", () => {
+    window_ = createBrowsingWindow({
+      collection: "active",
+      startAt: "2024-06",
+      port: test.port,
+      layout,
+      initialPage: { photos: [photo("a"), photo("b")], expiresAt: "2030-01-01T00:00:00.000Z" },
+    });
+
+    expect(test.loadCalls).toEqual([]);
+    const snapshot = window_.getSnapshot();
+    expect(snapshot.isLoadingInitial).toBe(false);
+    expect([...snapshot.descriptorsById.keys()]).toEqual(["a", "b"]);
+    expect(snapshot.isExhausted).toBe(true);
+  });
+
   it("applies the first page into descriptors and layout, newest first", async () => {
     window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
 
@@ -105,6 +121,9 @@ describe("createBrowsingWindow", () => {
     snapshot = window_.getSnapshot();
     expect(snapshot.loadError).toBe("network");
     expect(snapshot.isLoadingMore).toBe(false);
+    // A failed load also relaxes the withheld tail into a visible final row.
+    expect(snapshot.incompleteTailPhotoIds).toBeUndefined();
+    expect(snapshot.layoutItems.some((item) => item.kind === "row" && item.photoIds.includes("a"))).toBe(true);
   });
 
   it("retry re-issues the failed load and clears loadError once it succeeds", async () => {
