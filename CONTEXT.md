@@ -25,7 +25,7 @@ The small set of family Users who are permitted to sign in. Changing the User Al
 _Avoid_: public registration, signup form, admin user management
 
 **Removed User**:
-A User who is no longer permitted to sign in or continue using an existing Session. Removing a User from the User Allowlist revokes access without deleting that User's Personal Album or Photos.
+A User who is no longer permitted to sign in or use an existing Session. Removal stops new API access and new temporary grants, but a photo-access or upload grant already issued as a private capability remains usable only until its bounded expiry; removal does not delete the User's Personal Album or Photos.
 _Avoid_: deleted user, erased account, purged album
 
 **App Administrator**:

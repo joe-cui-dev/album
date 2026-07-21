@@ -108,7 +108,7 @@ The MVP is not accepted until this journey succeeds in production:
 6. Open a Display Photo and download its Original Photo.
 7. Upload an Exact Duplicate and confirm it is reported without entering the Timeline.
 8. Exercise Processing Failed and Retry Processing with a safe test case.
-9. Archive and, once implemented, restore a Photo.
+9. Archive and restore a Photo.
 10. Confirm another User cannot access the first User's Photos.
 11. Check the main journey on a phone browser.
 12. Confirm alarms and budget notification subscriptions are active.

@@ -1,0 +1,3 @@
+# Bound Removed-User Revocation by Temporary Grant Expiry
+
+Removing a User from the User Allowlist will invalidate their Session on the next API request and stop every new photo-access or upload grant, but it will not add a revocation registry or proxy for already issued S3 presigned URLs. Existing Thumbnail, Display, and Original Download grants therefore remain usable for at most five minutes and an existing Upload grant for at most fifteen minutes. This bounded residual window preserves direct private S3 transfer and batched upload without claiming instantaneous capability revocation; a future requirement for immediate revocation would require a different access architecture.
