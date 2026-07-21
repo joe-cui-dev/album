@@ -41,6 +41,7 @@ describe("ListTimelinePhotos handler DynamoDB query", () => {
           }),
         ],
         headers: {},
+        requestContext: { http: { method: "GET" } },
         queryStringParameters: {
           year: "2025",
           month: "02",

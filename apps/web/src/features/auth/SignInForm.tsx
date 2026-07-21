@@ -10,8 +10,9 @@ interface SignInFormProps {
 export function SignInForm({ onSignedIn }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [codeId, setCodeId] = useState<string>();
-  const [devCode, setDevCode] = useState<string>();
+  // Auth v2 (execution plan Slice 1.5) has no public code ID: the Email the code was
+  // requested for is the only context carried into verification.
+  const [codeRequestedFor, setCodeRequestedFor] = useState<string>();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,9 +21,8 @@ export function SignInForm({ onSignedIn }: SignInFormProps) {
     setSubmitting(true);
     setError(undefined);
     try {
-      const response = await apiClient.requestSignInCode({ email });
-      setCodeId(response.codeId);
-      setDevCode(response.devCode);
+      await apiClient.requestSignInCode({ email });
+      setCodeRequestedFor(email);
     } catch {
       setError(uiMessages.signIn.sendCodeFailed);
     } finally {
@@ -32,15 +32,10 @@ export function SignInForm({ onSignedIn }: SignInFormProps) {
 
   const verifyCode = async (event: FormEvent) => {
     event.preventDefault();
-    if (!codeId) {
-      setError(uiMessages.signIn.requestCodeFirst);
-      return;
-    }
-
     setSubmitting(true);
     setError(undefined);
     try {
-      const response = await apiClient.verifySignInCode({ email, codeId, code });
+      const response = await apiClient.verifySignInCode({ email: codeRequestedFor ?? email, code });
       onSignedIn(response.user);
     } catch {
       setError(uiMessages.signIn.verifyCodeFailed);
@@ -55,12 +50,12 @@ export function SignInForm({ onSignedIn }: SignInFormProps) {
         <p className="wordmark">{uiMessages.album}</p>
         <h1 id="sign-in-title">{uiMessages.signIn.title}</h1>
         <p className="sign-in-intro">{uiMessages.signIn.description}</p>
-        <form onSubmit={codeId ? verifyCode : requestCode}>
+        <form onSubmit={codeRequestedFor ? verifyCode : requestCode}>
           <label>
             {uiMessages.signIn.email}
             <input
               autoComplete="email"
-              disabled={Boolean(codeId)}
+              disabled={Boolean(codeRequestedFor)}
               name="email"
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -69,7 +64,7 @@ export function SignInForm({ onSignedIn }: SignInFormProps) {
             />
           </label>
 
-          {codeId ? (
+          {codeRequestedFor ? (
             <label>
               {uiMessages.signIn.code}
               <input
@@ -83,23 +78,17 @@ export function SignInForm({ onSignedIn }: SignInFormProps) {
             </label>
           ) : null}
 
-          {devCode ? (
-            <p className="development-code">
-              Development code: <span className="font-mono">{devCode}</span>
-            </p>
-          ) : null}
-
           {error ? <p className="form-error" role="alert">{error}</p> : null}
 
           <button
             disabled={submitting}
             type="submit"
           >
-            {codeId ? uiMessages.signIn.verifyCode : uiMessages.signIn.requestCode}
+            {codeRequestedFor ? uiMessages.signIn.verifyCode : uiMessages.signIn.requestCode}
           </button>
         </form>
-        {codeId ? (
-          <button className="text-button" onClick={() => setCodeId(undefined)} type="button">
+        {codeRequestedFor ? (
+          <button className="text-button" onClick={() => setCodeRequestedFor(undefined)} type="button">
             {uiMessages.signIn.useDifferentEmail}
           </button>
         ) : null}

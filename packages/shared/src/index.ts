@@ -184,6 +184,31 @@ export interface VerifySignInCodeResponse {
   user: SessionUser;
 }
 
+/**
+ * Auth v2 (execution plan Slice 1.3 / ADR-0071): dispatched asynchronously through a private
+ * queue, so there is no public code ID -- the response never varies by allowlist membership,
+ * and verification looks a Sign-In Code up by Email Address alone. Kept alongside the v1
+ * types above for the 24-hour compatibility observation window (Slice 1.6); v1 is removed
+ * only as a separately authorised production step.
+ */
+export interface RequestSignInCodeV2Request {
+  email: string;
+}
+
+export interface RequestSignInCodeV2Response {
+  accepted: true;
+}
+
+export interface VerifySignInCodeV2Request {
+  email: string;
+  code: string;
+}
+
+export interface VerifySignInCodeV2Response {
+  signedIn: true;
+  user: SessionUser;
+}
+
 export interface CreateUploadBatchRequest {
   files: Array<{
     fileName: string;

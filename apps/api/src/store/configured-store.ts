@@ -3,6 +3,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { config } from "../config.js";
 import { createDynamoDbPersonalAlbumStore } from "./dynamodb-store.js";
 import { createDynamoDbSignInCodeStore } from "./dynamodb-sign-in-code-store.js";
+import { createDynamoDbSignInDispatchStore } from "./dynamodb-sign-in-dispatch-store.js";
 import { createS3PhotoObjectStore } from "./s3-photo-object-store.js";
 
 const documentClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -13,6 +14,11 @@ export const personalAlbumStore = createDynamoDbPersonalAlbumStore({
 });
 
 export const signInCodeStore = createDynamoDbSignInCodeStore({
+  documentClient,
+  tableName: config.metadataTableName,
+});
+
+export const signInDispatchStore = createDynamoDbSignInDispatchStore({
   documentClient,
   tableName: config.metadataTableName,
 });

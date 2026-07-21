@@ -11,10 +11,11 @@ import type {
   VerifySignInCodeResponse,
 } from "@album/shared";
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
-import { findAllowedUserByEmail, normalizeEmail } from "../allowlist.js";
+import { findAllowedUserByEmail, getAllowedUsers, normalizeEmail } from "../allowlist.js";
 import { clearSessionCookie, createSessionCookie, getAuthenticatedUser } from "../auth.js";
 import { config } from "../config.js";
 import { badRequest, forbidden, json, ok } from "../http.js";
+import { guardMutationOrigin } from "../origin.js";
 import { signInCodeStore } from "../store/configured-store.js";
 import type { SignInCodeStore } from "../store/sign-in-codes.js";
 
@@ -34,9 +35,21 @@ interface VerifySignInCodeDeps {
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+  const originError = guardMutationOrigin(event, config.webOrigins);
+  if (originError) return originError;
+
   if (event.routeKey === "GET /session") {
     const user = getAuthenticatedUser(event);
-    return ok(user ? ({ signedIn: true, user } satisfies GetSessionResponse) : ({ signedIn: false } satisfies GetSessionResponse));
+    if (!user) return ok({ signedIn: false } satisfies GetSessionResponse);
+
+    const stillAllowed = getAllowedUsers().some(
+      (allowedUser) => allowedUser.userId === user.userId && allowedUser.email === normalizeEmail(user.email),
+    );
+    if (!stillAllowed) {
+      return ok({ signedIn: false } satisfies GetSessionResponse, { cookies: [clearSessionCookie()] });
+    }
+
+    return ok({ signedIn: true, user } satisfies GetSessionResponse);
   }
   if (event.routeKey === "DELETE /session") {
     return ok({ signedIn: false } satisfies GetSessionResponse, { cookies: [clearSessionCookie()] });

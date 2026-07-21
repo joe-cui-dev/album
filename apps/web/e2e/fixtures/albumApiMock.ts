@@ -11,11 +11,11 @@ import type {
   ListCollectionPhotosV2Response,
   ListProcessingIssuesResponse,
   ProcessingIssue,
-  RequestSignInCodeResponse,
+  RequestSignInCodeV2Response,
   RetryProcessingResponse,
   TimelinePhotoV2,
   TimelineThumbnailAccessResponse,
-  VerifySignInCodeResponse,
+  VerifySignInCodeV2Response,
   ViewerBootstrapResponse,
 } from "@album/shared";
 
@@ -39,12 +39,12 @@ export const defaultSession = (): GetSessionResponse => ({
 export const signedOutSession = (): GetSessionResponse => ({ signedIn: false });
 
 export const requestSignInCodeAccepted = (
-  overrides: Partial<RequestSignInCodeResponse> = {},
-): RequestSignInCodeResponse => ({ accepted: true, codeId: "code-1", ...overrides });
+  overrides: Partial<RequestSignInCodeV2Response> = {},
+): RequestSignInCodeV2Response => ({ accepted: true, ...overrides });
 
 export const verifySignInCodeAccepted = (
-  overrides: Partial<VerifySignInCodeResponse> = {},
-): VerifySignInCodeResponse => ({
+  overrides: Partial<VerifySignInCodeV2Response> = {},
+): VerifySignInCodeV2Response => ({
   signedIn: true,
   user: { userId: "user-1", email: "joe@example.com" },
   ...overrides,
@@ -336,10 +336,10 @@ export class AlbumApiMock {
       if (url.pathname === "/session" && method === "DELETE") {
         return this.signOut.handle(route, request);
       }
-      if (url.pathname === "/session/sign-in-code" && method === "POST") {
+      if (url.pathname === "/v2/session/sign-in-code" && method === "POST") {
         return this.requestSignInCode.handle(route, request);
       }
-      if (url.pathname === "/session/verify" && method === "POST") {
+      if (url.pathname === "/v2/session/verify" && method === "POST") {
         return this.verifySignInCode.handle(route, request);
       }
       if (url.pathname === "/album-navigation" && method === "GET") {

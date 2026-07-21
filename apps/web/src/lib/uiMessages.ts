@@ -11,7 +11,6 @@ export const uiMessages = {
     verifyCode: "Verify code",
     code: "Sign-in code",
     useDifferentEmail: "Use a different email",
-    requestCodeFirst: "Request a sign-in code first.",
     sendCodeFailed: "Could not send a sign-in code. Try again.",
     verifyCodeFailed: "Could not sign in. Check the code and try again.",
   },

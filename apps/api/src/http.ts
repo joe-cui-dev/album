@@ -32,14 +32,21 @@ export const badRequest = (
 
 export const unauthorized = (
   message = "Unauthorized",
+  extra?: Omit<APIGatewayProxyStructuredResultV2, "statusCode" | "body">,
 ): APIGatewayProxyStructuredResultV2 => {
-  return json(401, { message });
+  return json(401, { message }, extra);
 };
 
 export const forbidden = (
   message = "Forbidden",
 ): APIGatewayProxyStructuredResultV2 => {
   return json(403, { message });
+};
+
+/** The generic 403 for a rejected `Origin` (execution plan Slice 1.1) -- deliberately free
+ * of any detail about why, so a probe can't learn which Origins are close to allowed. */
+export const originRejected = (): APIGatewayProxyStructuredResultV2 => {
+  return json(403, { code: "origin_rejected", message: "Forbidden" });
 };
 
 /** A structured 409 carrying a stable machine-readable code alongside its diagnostic message. */

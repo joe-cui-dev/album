@@ -193,13 +193,11 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("requests a sign-in code on the same page and shows a development code hint", async () => {
+  it("requests a sign-in code on the same page and reveals the code field", async () => {
     const fetch = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ signedIn: false }))
-      .mockResolvedValueOnce(
-        Response.json({ accepted: true, codeId: "code-1", devCode: "123456" }),
-      );
+      .mockResolvedValueOnce(Response.json({ accepted: true }));
 
     renderApp(<App />);
 
@@ -210,9 +208,8 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send sign-in code" }));
 
     expect(await screen.findByLabelText("Sign-in code")).toBeInTheDocument();
-    expect(screen.getByText(/Development code:/)).toHaveTextContent("123456");
     expect(fetch).toHaveBeenLastCalledWith(
-      `${apiBaseUrl}/session/sign-in-code`,
+      `${apiBaseUrl}/v2/session/sign-in-code`,
       {
         method: "POST",
         body: JSON.stringify({ email: "joe@example.com" }),

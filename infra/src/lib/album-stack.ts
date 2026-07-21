@@ -6,6 +6,7 @@ import {
   type StackProps,
 } from "aws-cdk-lib";
 import {
+  CfnStage,
   CorsHttpMethod,
   HttpApi,
   HttpMethod,
@@ -46,7 +47,7 @@ import { SqsDestination } from "aws-cdk-lib/aws-s3-notifications";
 import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { Queue } from "aws-cdk-lib/aws-sqs";
+import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { ORIGINALS_KEY_PREFIX } from "@album/shared";
 import { dirname, join } from "path";
@@ -232,8 +233,26 @@ export class AlbumStack extends Stack {
       { prefix: ORIGINALS_KEY_PREFIX },
     );
 
+    // Auth v2's asynchronous dispatch queue (execution plan Slice 1.4 / ADR-0071): the
+    // admission handler only ever enqueues a request identity + Email, never a Code, and
+    // the allowlist check happens solely in the worker below.
+    const signInDispatchDlq = new Queue(this, "SignInDispatchDlq", {
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.SQS_MANAGED,
+    });
+    const signInDispatchQueue = new Queue(this, "SignInDispatchQueue", {
+      visibilityTimeout: Duration.minutes(1),
+      encryption: QueueEncryption.SQS_MANAGED,
+      deadLetterQueue: {
+        queue: signInDispatchDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
     const commonEnvironment = {
       USER_ALLOWLIST: userAllowlist,
+      WEB_ORIGINS: webOrigins.join(","),
+      SIGN_IN_DISPATCH_QUEUE_URL: signInDispatchQueue.queueUrl,
       PHOTOS_BUCKET_NAME: photosBucket.bucketName,
       METADATA_TABLE_NAME: metadataTable.tableName,
       PROCESSING_QUEUE_URL: processingQueue.queueUrl,
@@ -504,6 +523,35 @@ export class AlbumStack extends Stack {
       }),
     });
 
+    const sessionV2 = new NodejsFunction(this, "SessionV2Handler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "session-v2.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "SessionV2LogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const dispatchSignInCode = new NodejsFunction(this, "DispatchSignInCodeHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "dispatch-sign-in-code.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 2,
+      timeout: Duration.seconds(30),
+      logGroup: new LogGroup(this, "DispatchSignInCodeLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+    dispatchSignInCode.addEventSource(
+      new SqsEventSource(signInDispatchQueue, {
+        batchSize: 5,
+        reportBatchItemFailures: true,
+      }),
+    );
+
     const processPhoto = new NodejsFunction(this, "ProcessPhotoHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "process-photo.ts"),
@@ -609,6 +657,17 @@ export class AlbumStack extends Stack {
         resources: ["*"],
       }),
     );
+    dispatchSignInCode.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: ["*"],
+      }),
+    );
+    metadataTable.grantReadWriteData(sessionV2);
+    metadataTable.grantReadWriteData(dispatchSignInCode);
+    // Least privilege: the admission handler only ever sends; the worker only ever consumes.
+    signInDispatchQueue.grantSendMessages(sessionV2);
+    signInDispatchQueue.grantConsumeMessages(dispatchSignInCode);
 
     const alarmTopic = new Topic(this, "AlarmTopic");
     alarmTopic.addSubscription(new EmailSubscription(budgetAlertEmail));
@@ -676,6 +735,15 @@ export class AlbumStack extends Stack {
     });
     maintenanceDlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
 
+    const signInDispatchDlqVisibleMessagesAlarm = new Alarm(this, "SignInDispatchDlqVisibleMessagesAlarm", {
+      metric: signInDispatchDlq.metricApproximateNumberOfMessagesVisible({ period: Duration.minutes(5) }),
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+    signInDispatchDlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
+
     for (const lambda of [
       createUploadBatch,
       uploadBatchStatus,
@@ -695,6 +763,8 @@ export class AlbumStack extends Stack {
       archiveMembership,
       restoreMembership,
       session,
+      sessionV2,
+      dispatchSignInCode,
       processPhoto,
       photoMaintenanceWorker,
       photoMaintenanceCoordinator,
@@ -761,6 +831,29 @@ export class AlbumStack extends Stack {
         session,
       ),
     });
+
+    api.addRoutes({
+      path: "/v2/session/sign-in-code",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration("SessionV2CodeIntegration", sessionV2),
+    });
+
+    api.addRoutes({
+      path: "/v2/session/verify",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration("SessionV2VerifyIntegration", sessionV2),
+    });
+
+    // Per-route throttles for the two public, unauthenticated auth v2 endpoints (execution
+    // plan Slice 1.4: request ~1/s burst 5, verify ~5/s burst 10). The L2 HttpApi construct
+    // has no per-route throttle API, so this reaches the default stage's L1 escape hatch.
+    // This assignment overwrites the whole map -- if a later route needs its own throttle,
+    // add its key here rather than setting `.routeSettings` again elsewhere.
+    const defaultStage = api.defaultStage!.node.defaultChild as CfnStage;
+    defaultStage.routeSettings = {
+      "POST /v2/session/sign-in-code": { throttlingRateLimit: 1, throttlingBurstLimit: 5 },
+      "POST /v2/session/verify": { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
+    };
 
     api.addRoutes({
       path: "/upload-batches",
