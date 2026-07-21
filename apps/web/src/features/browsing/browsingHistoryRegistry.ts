@@ -19,6 +19,13 @@ export interface BrowsingHistoryRegistry {
   applyMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
   /** Reverses a mounted-window withhold applied by `applyMembershipChange` (rollback on mutation failure). */
   revertMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
+  /**
+   * New Photos from a completed Upload Batch always arrive in `active`. Per
+   * ADR-0067, a mounted Timeline is deliberately left alone so it does not
+   * reflow or jump; a non-mounted Timeline slot is invalidated so the next
+   * activation refetches and picks the new Photos up.
+   */
+  notifyPhotosArrived(): void;
   /** Disposes every retained window (Session loss or explicit Sign Out; ADR-0062). */
   disposeAll(): void;
 }
@@ -75,6 +82,9 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
     },
     revertMembershipChange: ({ photoId, leftCollection }) => {
       withholdInMountedWindow(photoId, leftCollection, false);
+    },
+    notifyPhotosArrived: () => {
+      invalidateIfNotMounted("active");
     },
     disposeAll: () => {
       active?.window.dispose();

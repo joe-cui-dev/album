@@ -1,5 +1,5 @@
 import { test as base } from "@playwright/test";
-import { AlbumApiMock, resetPhotoCounter, resetProcessingIssueCounter } from "./albumApiMock.js";
+import { AlbumApiMock, resetPhotoCounter, resetProcessingIssueCounter, resetUploadPhotoCounter } from "./albumApiMock.js";
 
 /**
  * One `AlbumApiMock` installed on `page` before every test, with the photo-id counter
@@ -10,6 +10,7 @@ export const test = base.extend<{ mock: AlbumApiMock }>({
   mock: async ({ page }, use) => {
     resetPhotoCounter();
     resetProcessingIssueCounter();
+    resetUploadPhotoCounter();
     const mock = new AlbumApiMock(page);
     await mock.install();
 

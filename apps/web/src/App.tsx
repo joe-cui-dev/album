@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import {
-  Link,
   Route,
   Routes,
   createBrowserRouter,
@@ -22,7 +21,8 @@ import { createHttpProcessingIssuesPort } from "./features/processing-issues/pro
 import { ProcessingIssuesView } from "./features/processing-issues/ProcessingIssuesView.js";
 import { ALBUM_BACKGROUND_ROOT_ID } from "./features/shell/albumBackgroundRoot.js";
 import { AlbumShell } from "./features/shell/AlbumShell.js";
-import { ManualUploadWorkspace } from "./features/upload/ManualUploadWorkspace.js";
+import { createUploadTray, type UploadTray } from "./features/upload/uploadTray.js";
+import { createHttpUploadTrayPort } from "./features/upload/uploadTrayPort.js";
 import { PhotoViewerRoute } from "./features/viewer/PhotoViewerRoute.js";
 import { apiClient } from "./lib/apiClient.js";
 import { sessionExpiredEvent } from "./lib/sessionEvents.js";
@@ -66,6 +66,19 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
   }
 
   const routerRef = useRef<ReturnType<typeof createBrowserRouter> | undefined>(undefined);
+
+  // Created once per signed-in User alongside the other above-the-router modules (implementation doc "Upload Tray").
+  const uploadTrayRef = useRef<UploadTray | undefined>(undefined);
+  if (!uploadTrayRef.current) {
+    uploadTrayRef.current = createUploadTray({
+      port: createHttpUploadTrayPort(),
+      registry: registryRef.current,
+      userId: user.userId,
+      navigate: (path) => routerRef.current?.navigate(path),
+      onBatchTerminal: () => processingIssuesNavCountRef.current?.intents.refresh(),
+    });
+  }
+
   if (!routerRef.current) {
     routerRef.current = createBrowserRouter([
       {
@@ -75,12 +88,14 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
             mutations={mutationsRef.current}
             navCount={processingIssuesNavCountRef.current}
             onSignedOut={() => void handleSignOut({ registry: registryRef.current!, onSignedOut })}
+            uploadTray={uploadTrayRef.current}
             user={user}
           >
             <AlbumRoutes
               mutations={mutationsRef.current}
               navCount={processingIssuesNavCountRef.current}
               registry={registryRef.current}
+              uploadTray={uploadTrayRef.current}
             />
           </AlbumShell>
         ),
@@ -101,6 +116,7 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
       registryRef.current?.disposeAll();
       mutationsRef.current?.dispose();
       processingIssuesNavCountRef.current?.dispose();
+      uploadTrayRef.current?.dispose();
     };
     window.addEventListener(sessionExpiredEvent, disposeOnSessionLoss);
     return () => window.removeEventListener(sessionExpiredEvent, disposeOnSessionLoss);
@@ -111,6 +127,7 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
       registryRef.current?.disposeAll();
       mutationsRef.current?.dispose();
       processingIssuesNavCountRef.current?.dispose();
+      uploadTrayRef.current?.dispose();
     },
     [],
   );
@@ -122,6 +139,7 @@ interface AlbumRoutesProps {
   registry: BrowsingHistoryRegistry;
   mutations: AlbumMutations;
   navCount: ProcessingIssuesNavCount;
+  uploadTray: UploadTray;
 }
 
 /**
@@ -131,7 +149,7 @@ interface AlbumRoutesProps {
  * location for the modal. A direct load or refresh carries no background
  * state, so the first block renders the Viewer itself as an ordinary page.
  */
-function AlbumRoutes({ registry, mutations, navCount }: AlbumRoutesProps) {
+function AlbumRoutes({ registry, mutations, navCount, uploadTray }: AlbumRoutesProps) {
   const location = useLocation();
   const state = location.state as { background?: Location } | null;
   const backgroundLocation = state?.background;
@@ -149,12 +167,13 @@ function AlbumRoutes({ registry, mutations, navCount }: AlbumRoutesProps) {
                   description: uiMessages.emptyAlbum.description,
                   action: (
                     <>
-                      <Link
+                      <button
                         className="inline-flex min-h-10 items-center justify-center rounded-md bg-emerald-800 px-4 font-bold text-white"
-                        to="/album/upload"
+                        onClick={uploadTray.intents.open}
+                        type="button"
                       >
                         {uiMessages.addPhotos}
-                      </Link>
+                      </button>
                       <small>{uiMessages.emptyAlbum.formats}</small>
                     </>
                   ),
@@ -178,12 +197,12 @@ function AlbumRoutes({ registry, mutations, navCount }: AlbumRoutesProps) {
             }
             path="archive"
           />
-          <Route element={<ManualUploadWorkspace />} path="upload" />
           <Route
             element={<ProcessingIssuesView mutations={mutations} navCount={navCount} />}
             path="processing-issues"
           />
           <Route element={<PhotoViewerRoute mode="direct" mutations={mutations} />} path="photos/:photoId" />
+          <Route element={<Navigate replace to="/album" />} path="*" />
         </Routes>
       </div>
       {backgroundLocation ? (

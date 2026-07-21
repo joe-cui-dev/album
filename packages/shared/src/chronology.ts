@@ -391,6 +391,13 @@ export const getCapturedAtComponents = (
   };
 };
 
+/** Navigation anchor for a Captured At: "YYYY-MM" for a known month, or "YYYY-unknown" for that year's Date Unknown group. */
+export const timelineAnchorOf = (capturedAt: CapturedAt): string => {
+  const { year, month } = getCapturedAtComponents(capturedAt);
+  const paddedYear = String(year).padStart(4, "0");
+  return month !== undefined ? `${paddedYear}-${String(month).padStart(2, "0")}` : `${paddedYear}-unknown`;
+};
+
 const UNKNOWN_SEGMENT = "--";
 const UNKNOWN_SUBSECOND_SEGMENT = "------";
 

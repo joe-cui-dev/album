@@ -4,8 +4,10 @@ import type {
   AlbumNavigationYear,
   ArchiveMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
+  CreateUploadBatchResponse,
   GetProcessingIssuesSummaryResponse,
   GetSessionResponse,
+  GetUploadBatchStatusResponse,
   ListCollectionPhotosV2Response,
   ListProcessingIssuesResponse,
   ProcessingIssue,
@@ -14,6 +16,9 @@ import type {
   TimelineThumbnailAccessResponse,
   ViewerBootstrapResponse,
 } from "@album/shared";
+
+/** Fake host for direct S3 PUT uploads; Playwright intercepts these separately from `apiBaseUrl`. */
+export const uploadHost = "http://album-uploads.e2e.test";
 
 /** Fake host: Playwright intercepts every request before it reaches the network, so this never needs to resolve. */
 export const apiBaseUrl = "http://album-api.e2e.test";
@@ -137,6 +142,49 @@ export const processingIssuesPage = (
   overrides: Partial<ListProcessingIssuesResponse> = {},
 ): ListProcessingIssuesResponse => ({ issues, ...overrides });
 
+let uploadPhotoCounter = 0;
+/** Resets the auto-incrementing Upload Tray photo-id counter between tests. */
+export const resetUploadPhotoCounter = (): void => {
+  uploadPhotoCounter = 0;
+};
+
+/** Builds one `CreateUploadBatchResponse` upload entry per requested file, each PUT-able at `uploadHost`. */
+export const createUploadBatchResponse = (
+  fileCount: number,
+  overrides: Partial<CreateUploadBatchResponse> = {},
+): CreateUploadBatchResponse => ({
+  uploadBatchId: overrides.uploadBatchId ?? "batch-1",
+  uploads:
+    overrides.uploads ??
+    Array.from({ length: fileCount }, () => {
+      uploadPhotoCounter += 1;
+      const photoId = `photo-upload-${uploadPhotoCounter}`;
+      return {
+        photoId,
+        objectKey: `originals/user-1/batch-1/${photoId}`,
+        uploadUrl: `${uploadHost}/${photoId}`,
+        duplicate: false,
+      };
+    }),
+});
+
+export const uploadBatchStatus = (
+  uploadBatchId: string,
+  photos: GetUploadBatchStatusResponse["photos"],
+): GetUploadBatchStatusResponse => {
+  const counts: GetUploadBatchStatusResponse["counts"] = {
+    uploadRequested: 0,
+    processing: 0,
+    ready: 0,
+    processingFailed: 0,
+    exactDuplicate: 0,
+  };
+  for (const photo of photos) {
+    counts[photo.processingState] += 1;
+  }
+  return { uploadBatchId, counts, photos };
+};
+
 type Responder = (route: Route, request: Request) => Promise<void> | void;
 
 export const respondJson = (route: Route, body: unknown, status = 200): Promise<void> =>
@@ -215,12 +263,26 @@ export class AlbumApiMock {
   readonly retryProcessing = new EndpointQueue((route) =>
     respondJson(route, { accepted: true, retryAttemptId: "retry-1" } satisfies RetryProcessingResponse),
   );
+  readonly createUploadBatch = new EndpointQueue((route, request) => {
+    const body = request.postDataJSON() as { files: unknown[] };
+    return respondJson(route, createUploadBatchResponse(body.files.length));
+  });
+  readonly uploadBatchStatus = new EndpointQueue((route) =>
+    respondJson(route, uploadBatchStatus("batch-1", [])),
+  );
+  /** Every direct-to-S3 PUT the Tray issues; defaults to a bare 200 like a real presigned PUT response. */
+  readonly s3Upload = new EndpointQueue((route) => route.fulfill({ status: 200, body: "" }));
 
   readonly requests: Request[] = [];
 
   constructor(private readonly page: Page) {}
 
   async install(): Promise<void> {
+    await this.page.route(`${uploadHost}/**`, async (route) => {
+      this.requests.push(route.request());
+      return this.s3Upload.handle(route, route.request());
+    });
+
     await this.page.route(`${apiBaseUrl}/**`, async (route) => {
       const request = route.request();
       this.requests.push(request);
@@ -265,6 +327,12 @@ export class AlbumApiMock {
       }
       if (url.pathname === "/processing-issues" && method === "GET") {
         return this.processingIssues.handle(route, request);
+      }
+      if (url.pathname === "/upload-batches" && method === "POST") {
+        return this.createUploadBatch.handle(route, request);
+      }
+      if (/^\/upload-batches\/[^/]+$/.test(url.pathname) && method === "GET") {
+        return this.uploadBatchStatus.handle(route, request);
       }
 
       await respondAlbumError(route, 404, "not_found", `Unmocked ${method} ${url.pathname}`);

@@ -28,6 +28,7 @@ export {
   getCapturedAtComponents,
   isCapturedAt,
   isSameCapturedAt,
+  timelineAnchorOf,
   validateCapturedAt,
 } from "./chronology.js";
 export type {
@@ -109,6 +110,8 @@ export interface Photo {
   processingState: ProcessingState;
   failureCode?: string;
   failureMessage?: string;
+  /** Set when this Photo was identified as an Exact Duplicate of another; the matching Photo may since have been archived or removed. */
+  duplicateOfPhotoId?: string;
   archived: boolean;
   metadata?: PhotoMetadata;
   displayDimensions?: {
@@ -218,6 +221,10 @@ export interface UploadBatchPhotoStatus {
   exactDuplicate: boolean;
   failureCode?: ProcessingIssueReasonCode;
   failureMessage?: string;
+  /** The "YYYY-MM" / "YYYY-unknown" navigation key for a Ready Photo, derived server-side from its active chronology. */
+  timelineAnchor?: string;
+  /** Present when this Photo is an Exact Duplicate and the matching Photo has been identified; may be absent if that Photo has since been archived. */
+  duplicateOfPhotoId?: string;
 }
 
 export interface GetUploadBatchStatusResponse {

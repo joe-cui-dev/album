@@ -6,6 +6,8 @@ import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import type { ProcessingIssuesNavCount } from "../processing-issues/processingIssuesNavCount.js";
 import { useProcessingIssuesNavCountSnapshot } from "../processing-issues/useProcessingIssuesNavCount.js";
+import { UploadTrayPanel } from "../upload/UploadTrayPanel.js";
+import type { UploadTray as UploadTrayModule } from "../upload/uploadTray.js";
 import { uiMessages } from "../../lib/uiMessages.js";
 
 interface AlbumShellProps {
@@ -14,9 +16,10 @@ interface AlbumShellProps {
   user: SessionUser;
   mutations: AlbumMutations;
   navCount: ProcessingIssuesNavCount;
+  uploadTray: UploadTrayModule;
 }
 
-export function AlbumShell({ children, onSignedOut, user, mutations, navCount }: AlbumShellProps) {
+export function AlbumShell({ children, onSignedOut, user, mutations, navCount, uploadTray }: AlbumShellProps) {
   const { openCount } = useProcessingIssuesNavCountSnapshot(navCount);
   // The destination stays put while standing on it, even after the count drops to zero
   // mid-visit, and only disappears once the User navigates elsewhere (implementation doc
@@ -42,10 +45,10 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount }:
               {openCount ? ` (${openCount})` : ""}
             </Link>
           ) : null}
-          <Link className="album-add-button" to="/album/upload">
+          <button className="album-add-button" onClick={uploadTray.intents.open} type="button">
             <Plus aria-hidden="true" size={17} />
             {uiMessages.addPhotos}
-          </Link>
+          </button>
         </nav>
         <details className="album-user-menu">
           <summary aria-label={`Account menu for ${user.email}`}>
@@ -57,6 +60,7 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount }:
       </header>
       {children}
       <FeedbackRegion mutations={mutations} />
+      <UploadTrayPanel tray={uploadTray} />
     </div>
   );
 }

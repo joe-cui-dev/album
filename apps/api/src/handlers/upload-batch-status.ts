@@ -2,11 +2,12 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type {
-  GetUploadBatchStatusResponse,
-  ProcessingIssueReasonCode,
-  ProcessingState,
-  UploadBatchPhotoStatus,
+import {
+  timelineAnchorOf,
+  type GetUploadBatchStatusResponse,
+  type ProcessingIssueReasonCode,
+  type ProcessingState,
+  type UploadBatchPhotoStatus,
 } from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
@@ -76,5 +77,9 @@ const toPhotoStatus = (photo: import("@album/shared").Photo): UploadBatchPhotoSt
     exactDuplicate: photo.processingState === "exactDuplicate",
     ...(photo.failureCode ? { failureCode: photo.failureCode as ProcessingIssueReasonCode } : {}),
     ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
+    ...(photo.processingState === "ready" && photo.chronology
+      ? { timelineAnchor: timelineAnchorOf(photo.chronology.active.capturedAt) }
+      : {}),
+    ...(photo.duplicateOfPhotoId ? { duplicateOfPhotoId: photo.duplicateOfPhotoId } : {}),
   };
 };

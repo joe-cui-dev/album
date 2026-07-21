@@ -122,7 +122,7 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("gives an empty signed-in album a single clear next action that links to Add Photos", async () => {
+  it("gives an empty signed-in album a single clear next action that opens the Upload Tray", async () => {
     mockSignedInFetch();
 
     renderApp(<App />);
@@ -131,8 +131,8 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Your album is empty" })).toBeInTheDocument();
     expect(
       within(screen.getByRole("heading", { name: "Your album is empty" }).parentElement!)
-        .getByRole("link", { name: "Add photos" }),
-    ).toHaveAttribute("href", "/album/upload");
+        .getByRole("button", { name: "Add photos" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps Archive behind the signed-in application route", async () => {
@@ -146,15 +146,24 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("navigates from the shell's Add Photos link to the Manual Upload workspace", async () => {
+  it("redirects an unknown /album/* path back to the album (the Tray has no route of its own)", async () => {
+    window.history.replaceState({}, "", "/album/upload");
+    mockSignedInFetch();
+
+    renderApp(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Your album is empty" })).toBeInTheDocument();
+  });
+
+  it("opens the Upload Tray from the shell's Add Photos button", async () => {
     mockSignedInFetch();
 
     renderApp(<App />);
     const nav = await screen.findByRole("navigation", { name: "Album" });
-    await userEvent.click(within(nav).getByRole("link", { name: "Add photos" }));
+    await userEvent.click(within(nav).getByRole("button", { name: "Add photos" }));
 
     expect(await screen.findByLabelText("Choose photos")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Add photos" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Add photos" })).toBeInTheDocument();
   });
 
   it("returns to sign-in when a protected request reports an expired session", async () => {

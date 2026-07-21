@@ -147,3 +147,37 @@ describe("revertMembershipChange", () => {
     expect(archive.intents.setWithheld).not.toHaveBeenCalled();
   });
 });
+
+describe("notifyPhotosArrived", () => {
+  it("leaves a mounted Timeline alone (no reflow or jump)", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    registry.activate("active:latest", () => timeline);
+
+    registry.notifyPhotosArrived();
+
+    expect(timeline.intents.setWithheld).not.toHaveBeenCalled();
+    expect(timeline.dispose).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a retained-inactive Timeline slot so the next activation refetches", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const archive = fakeWindow();
+    const timeline = fakeWindow();
+    registry.activate("active:latest", () => timeline);
+    registry.activate("archived:latest", () => archive);
+
+    registry.notifyPhotosArrived();
+
+    expect(timeline.dispose).toHaveBeenCalledTimes(1);
+    const recreatedTimeline = fakeWindow();
+    const create = vi.fn(() => recreatedTimeline);
+    expect(registry.activate("active:latest", create)).toBe(recreatedTimeline);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op with no mounted or retained Timeline windows", () => {
+    const registry = createBrowsingHistoryRegistry();
+    expect(() => registry.notifyPhotosArrived()).not.toThrow();
+  });
+});

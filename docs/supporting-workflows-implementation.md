@@ -1,12 +1,12 @@
 # Supporting Workflows Implementation
 
-Status: Decisions confirmed 21 July 2026. Not implemented.
+Status: Decisions confirmed 21 July 2026. Delivery Slices 1-3 implemented.
 
 This plan implements section 4, **Supporting workflows**, of [Personal Light Table Design](./personal-light-table-design.md). It adds the four management flows that the browsing tracer deliberately left out: Archive Photo, Restore Photo and Undo; conditional Processing Issues navigation with a Retry lifecycle; single-action Original Download; and the Upload Tray that replaces the temporary Manual Upload workspace.
 
 It is constrained by [ADR 0067](./adr/0067-withhold-photos-locally-for-membership-changes.md), [ADR 0068](./adr/0068-own-album-mutations-in-a-shell-level-module.md), and [ADR 0069](./adr/0069-recover-the-upload-tray-from-a-session-scoped-batch-id.md), and it must preserve the browsing constraints already accepted in ADR 0038, ADR 0039, ADR 0045, ADR 0055–0058, and ADR 0062.
 
-It does not implement the plan. Implementation begins from Delivery Slice 1.
+All three Delivery Slices below are implemented.
 
 `CONTEXT.md` requires no changes. Every decision here landed inside existing glossary terms — `Archive Photo`, `Restore Photo`, `Upload Tray`, `Processing Issue`, `Processing Issues`, `Retry Processing`, `Original Download`, and `Exact Duplicate` already say what was decided. Withholding, the recovery boundary, and the feedback region are implementation concepts and belong in the ADRs above.
 
