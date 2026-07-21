@@ -86,10 +86,10 @@ test("traps Tab focus within the contextual Viewer", async ({ mock, page }) => {
   const closeButton = page.getByRole("button", { name: "Close" });
   await expect(closeButton).toBeFocused();
 
-  // No Previous/Next neighbours are present, so Close and Info are the only two focusable
-  // elements in the trap; Shift+Tab from the first must wrap to the last.
+  // No Previous/Next neighbours are present, so Close, Info, and More are the only
+  // focusable elements in the trap; Shift+Tab from the first must wrap to the last.
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("button", { name: "Photo information" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "More" })).toBeFocused();
 
   await page.keyboard.press("Tab");
   await expect(closeButton).toBeFocused();

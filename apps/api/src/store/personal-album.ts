@@ -105,6 +105,11 @@ export interface PersonalAlbum {
     capturedAtSource: CapturedAtSource;
     metadata: PhotoMetadata;
   }): Promise<void>;
+  /**
+   * v1-only, non-idempotent `archived` flag flip. No handler calls this anymore (the legacy
+   * `POST /photos/{photoId}/archive` route is gone); it is retained solely because the v1
+   * `/timeline` read path's tests need a way to fixture an archived Photo without v2 chronology.
+   */
   archivePhoto(photoId: string): Promise<void>;
 
   // --- v2 store transaction model (Phase 2 WP2) ---

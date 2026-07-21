@@ -2,6 +2,8 @@ import type { Page, Request, Route } from "@playwright/test";
 import type {
   AlbumNavigationResponse,
   AlbumNavigationYear,
+  ArchiveMembershipResponse,
+  CreateTemporaryPhotoUrlResponse,
   GetSessionResponse,
   ListCollectionPhotosV2Response,
   TimelinePhotoV2,
@@ -100,6 +102,11 @@ export const thumbnailAccessResponse = (
   ...overrides,
 });
 
+const photoIdFromArchivePath = (url: string): string => {
+  const match = /\/photos\/([^/]+)\/(?:archive|original-download)$/.exec(new URL(url).pathname);
+  return match?.[1] ?? "unknown";
+};
+
 type Responder = (route: Route, request: Request) => Promise<void> | void;
 
 export const respondJson = (route: Route, body: unknown, status = 200): Promise<void> =>
@@ -160,6 +167,15 @@ export class AlbumApiMock {
   readonly viewer = new EndpointQueue((route) =>
     respondAlbumError(route, 404, "not_found", "No viewer bootstrap mock queued for this Photo ID"),
   );
+  readonly archiveMembership = new EndpointQueue((route, request) =>
+    respondJson(route, { photoId: photoIdFromArchivePath(request.url()), archived: true } satisfies ArchiveMembershipResponse),
+  );
+  readonly restoreMembership = new EndpointQueue((route, request) =>
+    respondJson(route, { photoId: photoIdFromArchivePath(request.url()), archived: false } satisfies ArchiveMembershipResponse),
+  );
+  readonly originalDownload = new EndpointQueue((route) =>
+    respondJson(route, { url: TRANSPARENT_PIXEL, expiresInSeconds: 300 } satisfies CreateTemporaryPhotoUrlResponse),
+  );
 
   readonly requests: Request[] = [];
 
@@ -192,6 +208,15 @@ export class AlbumApiMock {
       }
       if (/^\/v2\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET") {
         return this.viewer.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/archive$/.test(url.pathname) && method === "PUT") {
+        return this.archiveMembership.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/archive$/.test(url.pathname) && method === "DELETE") {
+        return this.restoreMembership.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/original-download$/.test(url.pathname) && method === "POST") {
+        return this.originalDownload.handle(route, request);
       }
 
       await respondAlbumError(route, 404, "not_found", `Unmocked ${method} ${url.pathname}`);

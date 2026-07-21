@@ -4,6 +4,7 @@ import type {
 } from "aws-lambda";
 import type {
   GetUploadBatchStatusResponse,
+  ProcessingIssueReasonCode,
   ProcessingState,
   UploadBatchPhotoStatus,
 } from "@album/shared";
@@ -73,7 +74,7 @@ const toPhotoStatus = (photo: import("@album/shared").Photo): UploadBatchPhotoSt
     fileName: photo.fileName,
     processingState: photo.processingState,
     exactDuplicate: photo.processingState === "exactDuplicate",
-    ...(photo.failureCode ? { failureCode: photo.failureCode } : {}),
+    ...(photo.failureCode ? { failureCode: photo.failureCode as ProcessingIssueReasonCode } : {}),
     ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
   };
 };

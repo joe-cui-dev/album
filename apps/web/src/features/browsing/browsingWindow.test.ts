@@ -274,6 +274,48 @@ describe("createBrowsingWindow", () => {
       expect(signal.aborted).toBe(true);
     });
   });
+
+  describe("setWithheld", () => {
+    it("marks a descriptor withheld without removing it from layout, so no row's shape or geometry changes; reversal restores the identical index", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a"), photo("b"), photo("c")], expiresAt: "2030-01-01T00:00:00.000Z" });
+      await flush();
+      const rowsBefore = window_.getSnapshot().layoutItems.filter((item) => item.kind === "row");
+
+      window_.intents.setWithheld("b", true);
+      const withheldSnapshot = window_.getSnapshot();
+      expect(withheldSnapshot.descriptorsById.has("b")).toBe(true);
+      expect(withheldSnapshot.withheldPhotoIds.has("b")).toBe(true);
+      const withheldRows = withheldSnapshot.layoutItems.filter((item) => item.kind === "row");
+      // Same photo ids, same widths/height as before withholding -- only rendering skips "b".
+      expect(withheldRows).toEqual(rowsBefore);
+      expect(window_.getSequencePosition("b")).toEqual({ index: 1, total: 3 });
+
+      window_.intents.setWithheld("b", false);
+      const restoredSnapshot = window_.getSnapshot();
+      expect(restoredSnapshot.withheldPhotoIds.has("b")).toBe(false);
+      const restoredRows = restoredSnapshot.layoutItems.filter((item) => item.kind === "row");
+      expect(restoredRows).toEqual(rowsBefore);
+      expect(window_.getSequencePosition("b")).toEqual({ index: 1, total: 3 });
+    });
+
+    it("is a no-op for an unknown Photo id and for a redundant call", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a")], expiresAt: "2030-01-01T00:00:00.000Z" });
+      await flush();
+
+      const listener = vi.fn();
+      window_.subscribe(listener);
+
+      window_.intents.setWithheld("missing", true);
+      expect(listener).not.toHaveBeenCalled();
+
+      window_.intents.setWithheld("a", true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      window_.intents.setWithheld("a", true);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 const flush = async (): Promise<void> => {

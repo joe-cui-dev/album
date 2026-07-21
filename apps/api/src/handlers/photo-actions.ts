@@ -3,7 +3,6 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import type {
-  ArchivePhotoResponse,
   CreateTemporaryPhotoUrlResponse,
   GetPhotoDetailResponse,
   Photo,
@@ -21,13 +20,6 @@ interface TemporaryUrlDeps {
 
 export const getPhotoDetailHandler: APIGatewayProxyHandlerV2 = withAuth(
   (context, event) => handleGetPhotoDetail({
-    ...context,
-    photoId: event.pathParameters?.photoId,
-  }),
-);
-
-export const archivePhotoHandler: APIGatewayProxyHandlerV2 = withAuth(
-  (context, event) => handleArchivePhoto({
     ...context,
     photoId: event.pathParameters?.photoId,
   }),
@@ -71,26 +63,6 @@ export const handleGetPhotoDetail = async ({
   return ok(toPhotoDetail(photo) satisfies GetPhotoDetailResponse, {
     headers: chronologyETagHeader(photo),
   });
-};
-
-export const handleArchivePhoto = async ({
-  album,
-  photoId,
-}: AuthedContext & {
-  photoId: string | undefined;
-}): Promise<APIGatewayProxyStructuredResultV2> => {
-  if (!photoId) {
-    return badRequest("photoId is required");
-  }
-
-  const photo = await album.getPhoto(photoId);
-  if (!photo) {
-    return json(404, { message: "Photo not found" });
-  }
-
-  await album.archivePhoto(photoId);
-
-  return ok({ photoId, archived: true } satisfies ArchivePhotoResponse);
 };
 
 export const handleCreateDisplayAccessUrl = async ({

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import type { ListCollectionPhotosV2Response, PhotoCollection } from "@album/shared";
+import type { AlbumMutations } from "../album/albumMutations.js";
+import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { createHttpAlbumBrowsingPort } from "./httpAlbumBrowsingPort.js";
 import { BrowsingGrid } from "./BrowsingGrid.js";
 import { BROWSING_ROW_SPACING, BROWSING_TARGET_ROW_HEIGHT } from "./browsingLayoutConstants.js";
@@ -14,12 +16,13 @@ import { useAlbumNavigation } from "./useAlbumNavigation.js";
 interface BrowsingPageProps {
   collection: PhotoCollection;
   registry: BrowsingHistoryRegistry;
+  mutations: AlbumMutations;
   title: string;
   emptyState: { title: string; description: string; action?: ReactNode };
 }
 
 /** Assembles one history entry's Browsing Window with Album Navigation and manual date Jump (implementation doc "Date Navigation and History"). */
-export function BrowsingPage({ collection, registry, title, emptyState }: BrowsingPageProps) {
+export function BrowsingPage({ collection, registry, mutations, title, emptyState }: BrowsingPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const startAt = searchParams.get("startAt") ?? undefined;
   const key = `${collection}:${startAt ?? "latest"}`;
@@ -54,7 +57,8 @@ export function BrowsingPage({ collection, registry, title, emptyState }: Browsi
   }
   const browsingWindow = windowRef.current.window;
 
-  const navigation = useAlbumNavigation();
+  const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
+  const navigation = useAlbumNavigation(mutationsSnapshot.navigationRevision);
   const years = (collection === "active" ? navigation.data?.timeline.years : navigation.data?.archive.years) ?? [];
 
   const [jumpState, setJumpState] = useState<JumpState>({ status: "idle" });

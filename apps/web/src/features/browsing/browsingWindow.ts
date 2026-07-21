@@ -24,6 +24,8 @@ export interface BrowsingWindowSnapshot {
   /** The last loaded period's withheld tail; see `computeJustifiedRows`. */
   incompleteTailPhotoIds?: string[];
   descriptorsById: ReadonlyMap<string, PhotoDescriptor>;
+  /** Photo ids withheld by a membership change; still present in `descriptorsById` and laid out, but not renderable (ADR-0067). */
+  withheldPhotoIds: ReadonlySet<string>;
   photoCount: number;
   isLoadingInitial: boolean;
   isLoadingMore: boolean;
@@ -43,6 +45,12 @@ export interface BrowsingWindowIntents {
   recordRestorationAnchor(anchor: RestorationAnchor | undefined): void;
   /** Coalesced renewal demand: renews only the ids nearing expiry, batched under the port's limit. */
   requestThumbnailAccess(photoIds: string[]): void;
+  /**
+   * Marks a loaded descriptor as not present in this window's collection without
+   * removing it, so a matching `false` call restores the identical index and no
+   * displayed row changes geometry (ADR-0067).
+   */
+  setWithheld(photoId: string, withheld: boolean): void;
 }
 
 export interface SequencePosition {
@@ -88,6 +96,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
 
   const descriptorsById = new Map<string, PhotoDescriptor>();
   const descriptorOrder: string[] = [];
+  const withheldPhotoIds = new Set<string>();
   const sequenceIndexByPhotoId = new Map<string, number>();
   const leaseExpiresAtMsByPhotoId = new Map<string, number>();
   const renewalInFlight = new Set<string>();
@@ -256,6 +265,8 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     if (!dirty) {
       return;
     }
+    // A withheld descriptor stays in the layout input so its row/period never changes shape
+    // or count (ADR-0067); only the rendering layer skips drawing it, using `withheldPhotoIds`.
     const layoutDescriptors = descriptorOrder.map((photoId) => {
       const descriptor = descriptorsById.get(photoId)!;
       return { photoId: descriptor.photoId, aspectRatio: descriptor.aspectRatio, periodKey: descriptor.periodKey };
@@ -279,6 +290,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
         layoutItems: cachedLayoutItems,
         ...(cachedIncompleteTail ? { incompleteTailPhotoIds: cachedIncompleteTail } : {}),
         descriptorsById,
+        withheldPhotoIds,
         photoCount: descriptorOrder.length,
         isLoadingInitial,
         isLoadingMore,
@@ -316,6 +328,22 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     },
     requestThumbnailAccess: (photoIds) => {
       void renewThumbnailAccess(photoIds);
+    },
+    setWithheld: (photoId, withheld) => {
+      if (!descriptorsById.has(photoId)) {
+        return;
+      }
+      const isWithheld = withheldPhotoIds.has(photoId);
+      if (isWithheld === withheld) {
+        return;
+      }
+      if (withheld) {
+        withheldPhotoIds.add(photoId);
+      } else {
+        withheldPhotoIds.delete(photoId);
+      }
+      markDirty();
+      notify();
     },
   };
 

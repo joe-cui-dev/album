@@ -205,12 +205,18 @@ export interface CreateUploadBatchResponse {
   }>;
 }
 
+export type ProcessingIssueReasonCode =
+  | "finalProcessingFailure"
+  | "metadataMismatch"
+  | "unsupportedImage"
+  | "legacyProcessingFailure";
+
 export interface UploadBatchPhotoStatus {
   photoId: string;
   fileName: string;
   processingState: ProcessingState;
   exactDuplicate: boolean;
-  failureCode?: string;
+  failureCode?: ProcessingIssueReasonCode;
   failureMessage?: string;
 }
 
@@ -228,7 +234,7 @@ export interface RetryProcessingResponse {
 export interface ProcessingIssue {
   photoId: string;
   fileName: string;
-  reasonCode: string;
+  reasonCode: ProcessingIssueReasonCode;
   status: "failed" | "retrying";
   addedAt: string;
   firstOpenedAt: string;
@@ -239,6 +245,10 @@ export interface ProcessingIssue {
 export interface ListProcessingIssuesResponse {
   issues: ProcessingIssue[];
   nextCursor?: string;
+}
+
+export interface GetProcessingIssuesSummaryResponse {
+  openCount: number;
 }
 
 export interface TimelinePhoto {
@@ -282,11 +292,6 @@ export interface PhotoDetail {
 }
 
 export type GetPhotoDetailResponse = PhotoDetail;
-
-export interface ArchivePhotoResponse {
-  photoId: string;
-  archived: true;
-}
 
 export interface ArchiveMembershipResponse {
   photoId: string;

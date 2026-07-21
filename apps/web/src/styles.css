@@ -99,6 +99,42 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .album-content { width: min(100%, 78rem); margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
 
+.album-feedback-region {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.album-feedback-entry {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 0.4rem;
+  background: var(--darkroom);
+  color: var(--print-white);
+  font-size: 0.9rem;
+  box-shadow: 0 .5rem 1.5rem rgb(21 36 43 / 25%);
+  pointer-events: auto;
+}
+
+.album-feedback-entry--failure { border: 1px solid var(--danger); }
+
+.album-feedback-entry button {
+  min-height: 2.75rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .album-content > section { border-color: var(--line); }
 .album-content h1, .album-content h2 { font-family: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif; color: var(--album-ink); letter-spacing: -0.035em; }
 .album-content h2 { font-size: clamp(1.65rem, 3vw, 2.3rem); font-weight: 650; }

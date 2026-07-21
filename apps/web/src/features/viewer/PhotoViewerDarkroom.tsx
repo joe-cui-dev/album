@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Info, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, MoreVertical, X } from "lucide-react";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
+import type { AlbumMutations } from "../album/albumMutations.js";
+import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { ALBUM_BACKGROUND_ROOT_ID } from "../shell/albumBackgroundRoot.js";
 import type { PhotoViewer } from "./photoViewer.js";
 import { usePhotoViewerSnapshot } from "./usePhotoViewer.js";
 
 interface PhotoViewerDarkroomProps {
   viewer: PhotoViewer;
+  mutations: AlbumMutations;
   mode: "contextual" | "direct";
   onClose: () => void;
 }
 
 /** The tracer Viewer's Darkroom presentation (implementation doc "Photo Viewer"). */
-export function PhotoViewerDarkroom({ viewer, mode, onClose }: PhotoViewerDarkroomProps) {
+export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoViewerDarkroomProps) {
   const snapshot = usePhotoViewerSnapshot(viewer);
+  const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -46,6 +51,10 @@ export function PhotoViewerDarkroom({ viewer, mode, onClose }: PhotoViewerDarkro
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (moreOpen) {
+          setMoreOpen(false);
+          return;
+        }
         onClose();
       } else if (event.key === "ArrowLeft") {
         viewer.intents.showPrevious();
@@ -57,9 +66,37 @@ export function PhotoViewerDarkroom({ viewer, mode, onClose }: PhotoViewerDarkro
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, viewer]);
+  }, [onClose, viewer, moreOpen]);
 
   const bootstrap = snapshot.bootstrap;
+
+  const advanceOrClose = (): void => {
+    if (bootstrap?.olderPhotoId !== undefined) {
+      viewer.intents.showNext();
+    } else if (bootstrap?.newerPhotoId !== undefined) {
+      viewer.intents.showPrevious();
+    } else {
+      onClose();
+    }
+  };
+
+  const handleArchiveOrRestore = (): void => {
+    if (!bootstrap) {
+      return;
+    }
+    setMoreOpen(false);
+    mutations.intents.setMembership({ photoId: bootstrap.photoId, collection: bootstrap.collection });
+    advanceOrClose();
+  };
+
+  const handleDownloadOriginal = (): void => {
+    if (!bootstrap) {
+      return;
+    }
+    mutations.intents.downloadOriginal({ photoId: bootstrap.photoId, fileName: bootstrap.fileName });
+  };
+
+  const downloadInFlight = bootstrap ? mutationsSnapshot.downloadsInFlight.has(bootstrap.photoId) : false;
 
   return (
     <div
@@ -87,15 +124,55 @@ export function PhotoViewerDarkroom({ viewer, mode, onClose }: PhotoViewerDarkro
             </span>
           ) : null}
         </div>
-        <button
-          aria-expanded={infoOpen}
-          aria-label="Photo information"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
-          onClick={() => setInfoOpen((open) => !open)}
-          type="button"
-        >
-          <Info aria-hidden="true" className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            aria-expanded={infoOpen}
+            aria-label="Photo information"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+            onClick={() => setInfoOpen((open) => !open)}
+            type="button"
+          >
+            <Info aria-hidden="true" className="h-5 w-5" />
+          </button>
+          {bootstrap ? (
+            <div className="relative">
+              <button
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                aria-label="More"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+                onClick={() => setMoreOpen((open) => !open)}
+                type="button"
+              >
+                <MoreVertical aria-hidden="true" className="h-5 w-5" />
+              </button>
+              {moreOpen ? (
+                <div
+                  className="absolute right-0 top-full z-10 mt-1 min-w-48 rounded-md border border-white/10 bg-stone-900 py-1 text-sm shadow-lg"
+                  role="menu"
+                >
+                  <button
+                    className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10"
+                    onClick={handleArchiveOrRestore}
+                    role="menuitem"
+                    type="button"
+                  >
+                    {bootstrap.collection === "active" ? "Archive photo" : "Restore to timeline"}
+                  </button>
+                  <button
+                    className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10 disabled:opacity-50"
+                    disabled={downloadInFlight}
+                    onClick={handleDownloadOriginal}
+                    role="menuitem"
+                    type="button"
+                  >
+                    {downloadInFlight ? "Preparing download…" : "Download original"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">

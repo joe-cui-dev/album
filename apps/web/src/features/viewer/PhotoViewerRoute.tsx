@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import type { PhotoCollection } from "@album/shared";
+import type { AlbumMutations } from "../album/albumMutations.js";
 import { PhotoViewerDarkroom } from "./PhotoViewerDarkroom.js";
 import { createPhotoViewer, type PhotoViewer, type SequencePosition } from "./photoViewer.js";
 import { createHttpPhotoViewerPort } from "./photoViewerPort.js";
@@ -8,6 +9,7 @@ import { createHttpPhotoViewerPort } from "./photoViewerPort.js";
 interface PhotoViewerRouteProps {
   /** "contextual" keeps the originating Timeline/Archive route mounted and inert beneath a modal layer (ADR-0063); "direct" is a standalone page. */
   mode: "contextual" | "direct";
+  mutations: AlbumMutations;
 }
 
 interface LocationState {
@@ -17,7 +19,7 @@ interface LocationState {
   sourceCollection?: PhotoCollection;
 }
 
-export function PhotoViewerRoute({ mode }: PhotoViewerRouteProps) {
+export function PhotoViewerRoute({ mode, mutations }: PhotoViewerRouteProps) {
   const { photoId } = useParams<{ photoId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,5 +59,5 @@ export function PhotoViewerRoute({ mode }: PhotoViewerRouteProps) {
     });
   };
 
-  return <PhotoViewerDarkroom mode={mode} onClose={handleClose} viewer={viewerRef.current.viewer} />;
+  return <PhotoViewerDarkroom mode={mode} mutations={mutations} onClose={handleClose} viewer={viewerRef.current.viewer} />;
 }

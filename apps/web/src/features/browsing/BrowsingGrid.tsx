@@ -236,7 +236,8 @@ function PhotoRow({
       {item.photoIds.map((photoId, index) => {
         const descriptor = snapshot.descriptorsById.get(photoId);
         const width = item.itemWidths[index] ?? item.height;
-        if (!descriptor) {
+        // A withheld Photo (membership change) keeps its row slot's exact geometry but renders nothing (ADR-0067).
+        if (!descriptor || snapshot.withheldPhotoIds.has(photoId)) {
           return <span key={photoId} style={{ height: item.height, width }} />;
         }
         return (

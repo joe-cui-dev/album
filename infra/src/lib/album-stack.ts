@@ -320,17 +320,6 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const archivePhoto = new NodejsFunction(this, "ArchivePhotoHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
-      handler: "archivePhotoHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ArchivePhotoLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
-
     const displayAccessUrl = new NodejsFunction(
       this,
       "DisplayAccessUrlHandler",
@@ -390,6 +379,17 @@ export class AlbumStack extends Stack {
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
       logGroup: new LogGroup(this, "ProcessingIssuesLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const processingIssuesSummary = new NodejsFunction(this, "ProcessingIssuesSummaryHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "processing-issues.ts"),
+      handler: "summaryHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ProcessingIssuesSummaryLogGroup", {
         retention: RetentionDays.ONE_WEEK,
       }),
     });
@@ -579,11 +579,11 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(uploadBatchStatus);
     metadataTable.grantReadData(listTimelinePhotos);
     metadataTable.grantReadData(getPhotoDetail);
-    metadataTable.grantReadWriteData(archivePhoto);
     metadataTable.grantReadData(displayAccessUrl);
     metadataTable.grantReadData(originalDownloadUrl);
     metadataTable.grantReadData(retryProcessing);
     metadataTable.grantReadData(processingIssues);
+    metadataTable.grantReadData(processingIssuesSummary);
     metadataTable.grantReadData(timelinePhotosV2);
     metadataTable.grantReadData(archivePhotosV2);
     metadataTable.grantReadData(albumNavigation);
@@ -681,11 +681,11 @@ export class AlbumStack extends Stack {
       uploadBatchStatus,
       listTimelinePhotos,
       getPhotoDetail,
-      archivePhoto,
       displayAccessUrl,
       originalDownloadUrl,
       retryProcessing,
       processingIssues,
+      processingIssuesSummary,
       timelinePhotosV2,
       archivePhotosV2,
       albumNavigation,
@@ -799,15 +799,6 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/photos/{photoId}/archive",
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration(
-        "ArchivePhotoIntegration",
-        archivePhoto,
-      ),
-    });
-
-    api.addRoutes({
       path: "/photos/{photoId}/display-access",
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration(
@@ -840,6 +831,15 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "ProcessingIssuesIntegration",
         processingIssues,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/processing-issues/summary",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ProcessingIssuesSummaryIntegration",
+        processingIssuesSummary,
       ),
     });
 

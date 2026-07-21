@@ -9,7 +9,10 @@ export interface UseAlbumNavigationResult {
   refresh(): void;
 }
 
-export const useAlbumNavigation = (): UseAlbumNavigationResult => {
+export const useAlbumNavigation = (
+  /** An external revision (e.g. `albumMutations`' `navigationRevision`) that eagerly refetches on change, alongside `refresh()`. */
+  externalRefreshToken = 0,
+): UseAlbumNavigationResult => {
   const [data, setData] = useState<AlbumNavigationResponse>();
   const [error, setError] = useState<AlbumTransportErrorCode>();
   const portRef = useRef(createHttpAlbumNavigationPort());
@@ -31,7 +34,7 @@ export const useAlbumNavigation = (): UseAlbumNavigationResult => {
         }
       });
     return () => controller.abort();
-  }, [refreshToken]);
+  }, [refreshToken, externalRefreshToken]);
 
   const refresh = useCallback(() => setRefreshToken((current) => current + 1), []);
 

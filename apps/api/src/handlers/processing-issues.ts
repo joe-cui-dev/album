@@ -2,7 +2,12 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type { ListProcessingIssuesResponse, ProcessingIssue } from "@album/shared";
+import type {
+  GetProcessingIssuesSummaryResponse,
+  ListProcessingIssuesResponse,
+  ProcessingIssue,
+  ProcessingIssueReasonCode,
+} from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, ok } from "../http.js";
@@ -71,10 +76,23 @@ export const handleListProcessingIssues = async ({
 const toResponse = (issue: ProcessingIssueRecord): ProcessingIssue => ({
   photoId: issue.photoId,
   fileName: issue.fileName,
-  reasonCode: issue.reasonCode,
+  reasonCode: issue.reasonCode as ProcessingIssueReasonCode,
   status: issue.status,
   addedAt: issue.addedAt,
   firstOpenedAt: issue.firstOpenedAt,
   attemptCount: issue.attemptCount,
   lastAttemptAt: issue.lastAttemptAt,
 });
+
+export const summaryHandler: APIGatewayProxyHandlerV2 = withAuth((context) =>
+  handleGetProcessingIssuesSummary(context),
+);
+
+export const handleGetProcessingIssuesSummary = async ({
+  album,
+}: AuthedContext): Promise<APIGatewayProxyStructuredResultV2> => {
+  const openCount = await album.getProcessingIssuesSummary();
+  return ok({ openCount } satisfies GetProcessingIssuesSummaryResponse, {
+    headers: NO_STORE_HEADERS,
+  });
+};

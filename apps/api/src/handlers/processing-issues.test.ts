@@ -1,5 +1,5 @@
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
-import { handleListProcessingIssues } from "./processing-issues.js";
+import { handleGetProcessingIssuesSummary, handleListProcessingIssues } from "./processing-issues.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
 
@@ -44,5 +44,40 @@ describe("handleListProcessingIssues", () => {
     expect(JSON.parse(second.body ?? "{}")).toMatchObject({
       issues: [expect.objectContaining({ photoId: "older" })],
     });
+  });
+});
+
+describe("handleGetProcessingIssuesSummary", () => {
+  it("returns the exact open count", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await album.recordProcessingIssueV2({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      attemptedAt: "2026-01-01T00:01:00.000Z",
+    });
+
+    const response = await handleGetProcessingIssuesSummary({ user, album });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers?.["cache-control"]).toBe("private, no-store");
+    expect(JSON.parse(response.body ?? "{}")).toEqual({ openCount: 1 });
+  });
+
+  it("returns zero for a brand new album", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    const response = await handleGetProcessingIssuesSummary({ user, album });
+    expect(JSON.parse(response.body ?? "{}")).toEqual({ openCount: 0 });
   });
 });

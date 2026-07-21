@@ -9,6 +9,8 @@ import {
   useLocation,
 } from "react-router";
 import type { SessionUser } from "@album/shared";
+import { createAlbumMutations, type AlbumMutations } from "./features/album/albumMutations.js";
+import { createHttpAlbumMutationsPort } from "./features/album/albumMutationsPort.js";
 import { createBrowsingHistoryRegistry, type BrowsingHistoryRegistry } from "./features/browsing/browsingHistoryRegistry.js";
 import { BrowsingPage } from "./features/browsing/BrowsingPage.js";
 import { AuthGate } from "./features/auth/AuthGate.js";
@@ -42,6 +44,15 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
     registryRef.current = createBrowsingHistoryRegistry();
   }
 
+  // Created once per signed-in User alongside the history registry, above the router (ADR-0068).
+  const mutationsRef = useRef<AlbumMutations | undefined>(undefined);
+  if (!mutationsRef.current) {
+    mutationsRef.current = createAlbumMutations({
+      port: createHttpAlbumMutationsPort(),
+      registry: registryRef.current,
+    });
+  }
+
   const routerRef = useRef<ReturnType<typeof createBrowserRouter> | undefined>(undefined);
   if (!routerRef.current) {
     routerRef.current = createBrowserRouter([
@@ -49,10 +60,11 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
         path: "/album/*",
         element: (
           <AlbumShell
+            mutations={mutationsRef.current}
             onSignedOut={() => void handleSignOut({ registry: registryRef.current!, onSignedOut })}
             user={user}
           >
-            <AlbumRoutes registry={registryRef.current} />
+            <AlbumRoutes mutations={mutationsRef.current} registry={registryRef.current} />
           </AlbumShell>
         ),
       },
@@ -63,18 +75,28 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
 
   useEffect(() => {
     // Session expiry disposes private state in place and preserves the current URL; explicit Sign Out (above) also navigates away (ADR-0062).
-    const disposeOnSessionLoss = () => registryRef.current?.disposeAll();
+    const disposeOnSessionLoss = () => {
+      registryRef.current?.disposeAll();
+      mutationsRef.current?.dispose();
+    };
     window.addEventListener(sessionExpiredEvent, disposeOnSessionLoss);
     return () => window.removeEventListener(sessionExpiredEvent, disposeOnSessionLoss);
   }, []);
 
-  useEffect(() => () => registryRef.current?.disposeAll(), []);
+  useEffect(
+    () => () => {
+      registryRef.current?.disposeAll();
+      mutationsRef.current?.dispose();
+    },
+    [],
+  );
 
   return <RouterProvider router={routerRef.current} />;
 }
 
 interface AlbumRoutesProps {
   registry: BrowsingHistoryRegistry;
+  mutations: AlbumMutations;
 }
 
 /**
@@ -84,7 +106,7 @@ interface AlbumRoutesProps {
  * location for the modal. A direct load or refresh carries no background
  * state, so the first block renders the Viewer itself as an ordinary page.
  */
-function AlbumRoutes({ registry }: AlbumRoutesProps) {
+function AlbumRoutes({ registry, mutations }: AlbumRoutesProps) {
   const location = useLocation();
   const state = location.state as { background?: Location } | null;
   const backgroundLocation = state?.background;
@@ -112,6 +134,7 @@ function AlbumRoutes({ registry }: AlbumRoutesProps) {
                     </>
                   ),
                 }}
+                mutations={mutations}
                 registry={registry}
                 title={uiMessages.album}
               />
@@ -123,6 +146,7 @@ function AlbumRoutes({ registry }: AlbumRoutesProps) {
               <BrowsingPage
                 collection="archived"
                 emptyState={{ title: uiMessages.emptyArchive.title, description: uiMessages.emptyArchive.description }}
+                mutations={mutations}
                 registry={registry}
                 title={uiMessages.archive}
               />
@@ -130,12 +154,12 @@ function AlbumRoutes({ registry }: AlbumRoutesProps) {
             path="archive"
           />
           <Route element={<ManualUploadWorkspace />} path="upload" />
-          <Route element={<PhotoViewerRoute mode="direct" />} path="photos/:photoId" />
+          <Route element={<PhotoViewerRoute mode="direct" mutations={mutations} />} path="photos/:photoId" />
         </Routes>
       </div>
       {backgroundLocation ? (
         <Routes>
-          <Route element={<PhotoViewerRoute mode="contextual" />} path="photos/:photoId" />
+          <Route element={<PhotoViewerRoute mode="contextual" mutations={mutations} />} path="photos/:photoId" />
         </Routes>
       ) : null}
     </>
