@@ -29,4 +29,22 @@ export const uiMessages = {
     title: "Your archive is empty",
     description: "Archived photos will appear here.",
   },
+  processingIssues: {
+    navLabel: "Needs attention",
+    title: "Processing issues",
+    addedAt: "Added",
+    retry: "Retry processing",
+    retrying: "Retrying…",
+    emptyTitle: "No processing issues",
+    emptyDescription: "Every photo you've added has been processed.",
+    loadFailed: "Couldn't load processing issues — try again",
+  },
+  /** One shared reason-code map, read by both Upload Tray and Processing Issues (implementation doc "Shared reason codes"). */
+  processingReason: {
+    finalProcessingFailure: "This photo couldn't be processed.",
+    metadataMismatch: "This photo's details didn't match what we expected.",
+    unsupportedImage: "This file isn't a supported image format.",
+    legacyProcessingFailure: "This photo couldn't be processed.",
+    unknown: "This photo needs attention.",
+  },
 } as const;

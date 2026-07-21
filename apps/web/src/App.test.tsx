@@ -1,7 +1,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AlbumNavigationResponse, ListCollectionPhotosV2Response, ViewerBootstrapResponse } from "@album/shared";
+import type {
+  AlbumNavigationResponse,
+  GetProcessingIssuesSummaryResponse,
+  ListCollectionPhotosV2Response,
+  ViewerBootstrapResponse,
+} from "@album/shared";
 import { App } from "./App.js";
 import { sessionExpiredEvent } from "./lib/sessionEvents.js";
 import { renderApp } from "./test/test-utils.js";
@@ -16,6 +21,8 @@ const emptyNavigation: AlbumNavigationResponse = {
   archive: { years: [] },
   processingIssueCount: 0,
 };
+
+const emptySummary: GetProcessingIssuesSummaryResponse = { openCount: 0 };
 
 const emptyCollectionPage: ListCollectionPhotosV2Response = { photos: [] };
 
@@ -52,6 +59,49 @@ const viewerBootstrap: ViewerBootstrapResponse = {
   displayAccess: { url: "https://temporary.example/display.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
 };
 
+/**
+ * The signed-in album mounts several independent, concurrently-firing reads
+ * (Timeline/Archive page, Album Navigation, Processing Issues summary); their
+ * relative fetch order isn't a contract worth pinning down in a component
+ * test, so this dispatches by pathname/method instead of a positional
+ * `mockResolvedValueOnce` chain.
+ */
+const mockSignedInFetch = (overrides: {
+  timeline?: ListCollectionPhotosV2Response;
+  archive?: ListCollectionPhotosV2Response;
+  navigation?: AlbumNavigationResponse;
+  summary?: GetProcessingIssuesSummaryResponse;
+  viewer?: ViewerBootstrapResponse;
+} = {}) =>
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+
+    if (url.pathname === "/session" && method === "GET") {
+      return Response.json(session);
+    }
+    if (url.pathname === "/session" && method === "DELETE") {
+      return Response.json({ signedIn: false });
+    }
+    if (url.pathname === "/v2/timeline" && method === "GET") {
+      return Response.json(overrides.timeline ?? emptyCollectionPage);
+    }
+    if (url.pathname === "/v2/archive" && method === "GET") {
+      return Response.json(overrides.archive ?? emptyCollectionPage);
+    }
+    if (url.pathname === "/album-navigation" && method === "GET") {
+      return Response.json(overrides.navigation ?? emptyNavigation);
+    }
+    if (url.pathname === "/processing-issues/summary" && method === "GET") {
+      return Response.json(overrides.summary ?? emptySummary);
+    }
+    if (/^\/v2\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET" && overrides.viewer) {
+      return Response.json(overrides.viewer);
+    }
+
+    throw new Error(`Unmocked fetch: ${method} ${url.pathname}`);
+  });
+
 describe("App", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -73,10 +123,7 @@ describe("App", () => {
   });
 
   it("gives an empty signed-in album a single clear next action that links to Add Photos", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(emptyCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation));
+    mockSignedInFetch();
 
     renderApp(<App />);
 
@@ -90,10 +137,7 @@ describe("App", () => {
 
   it("keeps Archive behind the signed-in application route", async () => {
     window.history.replaceState({}, "", "/album/archive");
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(emptyCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation));
+    mockSignedInFetch();
 
     renderApp(<App />);
 
@@ -103,10 +147,7 @@ describe("App", () => {
   });
 
   it("navigates from the shell's Add Photos link to the Manual Upload workspace", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(emptyCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation));
+    mockSignedInFetch();
 
     renderApp(<App />);
     const nav = await screen.findByRole("navigation", { name: "Album" });
@@ -117,10 +158,7 @@ describe("App", () => {
   });
 
   it("returns to sign-in when a protected request reports an expired session", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(emptyCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation));
+    mockSignedInFetch();
 
     renderApp(<App />);
     await screen.findByRole("navigation", { name: "Album" });
@@ -177,12 +215,7 @@ describe("App", () => {
 
   it("signs out, returns to the email sign-in form, and resets the URL to the generic entry route", async () => {
     window.history.replaceState({}, "", "/album/archive");
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(emptyCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation))
-      .mockResolvedValueOnce(Response.json({ signedIn: false }));
+    const fetch = mockSignedInFetch();
 
     renderApp(<App />);
 
@@ -198,11 +231,7 @@ describe("App", () => {
   });
 
   it("browses Timeline photos and opens the contextual Photo Viewer", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(session))
-      .mockResolvedValueOnce(Response.json(onePhotoCollectionPage))
-      .mockResolvedValueOnce(Response.json(emptyNavigation))
-      .mockResolvedValueOnce(Response.json(viewerBootstrap));
+    mockSignedInFetch({ timeline: onePhotoCollectionPage, viewer: viewerBootstrap });
 
     renderApp(<App />);
 

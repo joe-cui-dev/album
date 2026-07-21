@@ -4,8 +4,12 @@ import type {
   AlbumNavigationYear,
   ArchiveMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
+  GetProcessingIssuesSummaryResponse,
   GetSessionResponse,
   ListCollectionPhotosV2Response,
+  ListProcessingIssuesResponse,
+  ProcessingIssue,
+  RetryProcessingResponse,
   TimelinePhotoV2,
   TimelineThumbnailAccessResponse,
   ViewerBootstrapResponse,
@@ -103,9 +107,35 @@ export const thumbnailAccessResponse = (
 });
 
 const photoIdFromArchivePath = (url: string): string => {
-  const match = /\/photos\/([^/]+)\/(?:archive|original-download)$/.exec(new URL(url).pathname);
+  const match = /\/photos\/([^/]+)\/(?:archive|original-download|retry-processing)$/.exec(new URL(url).pathname);
   return match?.[1] ?? "unknown";
 };
+
+let processingIssueCounter = 0;
+/** Resets the auto-incrementing Processing Issue counter between tests. */
+export const resetProcessingIssueCounter = (): void => {
+  processingIssueCounter = 0;
+};
+
+export const buildProcessingIssue = (overrides: Partial<ProcessingIssue> = {}): ProcessingIssue => {
+  processingIssueCounter += 1;
+  const photoId = overrides.photoId ?? `photo-issue-${processingIssueCounter}`;
+  return {
+    photoId,
+    fileName: overrides.fileName ?? `${photoId}.jpg`,
+    reasonCode: overrides.reasonCode ?? "finalProcessingFailure",
+    status: overrides.status ?? "failed",
+    addedAt: overrides.addedAt ?? "2025-01-02T10:00:00.000Z",
+    firstOpenedAt: overrides.firstOpenedAt ?? "2025-01-02T10:00:00.000Z",
+    attemptCount: overrides.attemptCount ?? 0,
+    lastAttemptAt: overrides.lastAttemptAt ?? "2025-01-02T10:00:00.000Z",
+  };
+};
+
+export const processingIssuesPage = (
+  issues: ProcessingIssue[],
+  overrides: Partial<ListProcessingIssuesResponse> = {},
+): ListProcessingIssuesResponse => ({ issues, ...overrides });
 
 type Responder = (route: Route, request: Request) => Promise<void> | void;
 
@@ -176,6 +206,15 @@ export class AlbumApiMock {
   readonly originalDownload = new EndpointQueue((route) =>
     respondJson(route, { url: TRANSPARENT_PIXEL, expiresInSeconds: 300 } satisfies CreateTemporaryPhotoUrlResponse),
   );
+  readonly processingIssues = new EndpointQueue((route) =>
+    respondJson(route, processingIssuesPage([])),
+  );
+  readonly processingIssuesSummary = new EndpointQueue((route) =>
+    respondJson(route, { openCount: 0 } satisfies GetProcessingIssuesSummaryResponse),
+  );
+  readonly retryProcessing = new EndpointQueue((route) =>
+    respondJson(route, { accepted: true, retryAttemptId: "retry-1" } satisfies RetryProcessingResponse),
+  );
 
   readonly requests: Request[] = [];
 
@@ -217,6 +256,15 @@ export class AlbumApiMock {
       }
       if (/^\/photos\/[^/]+\/original-download$/.test(url.pathname) && method === "POST") {
         return this.originalDownload.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/retry-processing$/.test(url.pathname) && method === "POST") {
+        return this.retryProcessing.handle(route, request);
+      }
+      if (url.pathname === "/processing-issues/summary" && method === "GET") {
+        return this.processingIssuesSummary.handle(route, request);
+      }
+      if (url.pathname === "/processing-issues" && method === "GET") {
+        return this.processingIssues.handle(route, request);
       }
 
       await respondAlbumError(route, 404, "not_found", `Unmocked ${method} ${url.pathname}`);

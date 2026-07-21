@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import { Archive, ChevronDown, Plus } from "lucide-react";
-import { Link } from "react-router";
+import { AlertTriangle, Archive, ChevronDown, Plus } from "lucide-react";
+import { Link, useLocation } from "react-router";
 import type { SessionUser } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
+import type { ProcessingIssuesNavCount } from "../processing-issues/processingIssuesNavCount.js";
+import { useProcessingIssuesNavCountSnapshot } from "../processing-issues/useProcessingIssuesNavCount.js";
 import { uiMessages } from "../../lib/uiMessages.js";
 
 interface AlbumShellProps {
@@ -11,9 +13,17 @@ interface AlbumShellProps {
   onSignedOut: () => void | Promise<void>;
   user: SessionUser;
   mutations: AlbumMutations;
+  navCount: ProcessingIssuesNavCount;
 }
 
-export function AlbumShell({ children, onSignedOut, user, mutations }: AlbumShellProps) {
+export function AlbumShell({ children, onSignedOut, user, mutations, navCount }: AlbumShellProps) {
+  const { openCount } = useProcessingIssuesNavCountSnapshot(navCount);
+  // The destination stays put while standing on it, even after the count drops to zero
+  // mid-visit, and only disappears once the User navigates elsewhere (implementation doc
+  // "Navigation count").
+  const onProcessingIssuesView = useLocation().pathname === "/album/processing-issues";
+  const showProcessingIssuesNav = onProcessingIssuesView || (openCount !== undefined && openCount > 0);
+
   return (
     <div className="album-shell">
       <header className="album-bar">
@@ -25,6 +35,13 @@ export function AlbumShell({ children, onSignedOut, user, mutations }: AlbumShel
             <Archive aria-hidden="true" size={16} />
             {uiMessages.archive}
           </Link>
+          {showProcessingIssuesNav ? (
+            <Link to="/album/processing-issues">
+              <AlertTriangle aria-hidden="true" size={16} />
+              {uiMessages.processingIssues.navLabel}
+              {openCount ? ` (${openCount})` : ""}
+            </Link>
+          ) : null}
           <Link className="album-add-button" to="/album/upload">
             <Plus aria-hidden="true" size={17} />
             {uiMessages.addPhotos}

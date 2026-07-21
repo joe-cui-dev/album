@@ -14,6 +14,12 @@ import { createHttpAlbumMutationsPort } from "./features/album/albumMutationsPor
 import { createBrowsingHistoryRegistry, type BrowsingHistoryRegistry } from "./features/browsing/browsingHistoryRegistry.js";
 import { BrowsingPage } from "./features/browsing/BrowsingPage.js";
 import { AuthGate } from "./features/auth/AuthGate.js";
+import {
+  createProcessingIssuesNavCount,
+  type ProcessingIssuesNavCount,
+} from "./features/processing-issues/processingIssuesNavCount.js";
+import { createHttpProcessingIssuesPort } from "./features/processing-issues/processingIssuesPort.js";
+import { ProcessingIssuesView } from "./features/processing-issues/ProcessingIssuesView.js";
 import { ALBUM_BACKGROUND_ROOT_ID } from "./features/shell/albumBackgroundRoot.js";
 import { AlbumShell } from "./features/shell/AlbumShell.js";
 import { ManualUploadWorkspace } from "./features/upload/ManualUploadWorkspace.js";
@@ -53,6 +59,12 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
     });
   }
 
+  // Seeded once per signed-in User alongside the other above-the-router modules (implementation doc "Navigation count").
+  const processingIssuesNavCountRef = useRef<ProcessingIssuesNavCount | undefined>(undefined);
+  if (!processingIssuesNavCountRef.current) {
+    processingIssuesNavCountRef.current = createProcessingIssuesNavCount({ port: createHttpProcessingIssuesPort() });
+  }
+
   const routerRef = useRef<ReturnType<typeof createBrowserRouter> | undefined>(undefined);
   if (!routerRef.current) {
     routerRef.current = createBrowserRouter([
@@ -61,10 +73,15 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
         element: (
           <AlbumShell
             mutations={mutationsRef.current}
+            navCount={processingIssuesNavCountRef.current}
             onSignedOut={() => void handleSignOut({ registry: registryRef.current!, onSignedOut })}
             user={user}
           >
-            <AlbumRoutes mutations={mutationsRef.current} registry={registryRef.current} />
+            <AlbumRoutes
+              mutations={mutationsRef.current}
+              navCount={processingIssuesNavCountRef.current}
+              registry={registryRef.current}
+            />
           </AlbumShell>
         ),
       },
@@ -74,10 +91,16 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
   }
 
   useEffect(() => {
+    // Seeded once per signed-in User (implementation doc "Navigation count").
+    processingIssuesNavCountRef.current?.intents.refresh();
+  }, []);
+
+  useEffect(() => {
     // Session expiry disposes private state in place and preserves the current URL; explicit Sign Out (above) also navigates away (ADR-0062).
     const disposeOnSessionLoss = () => {
       registryRef.current?.disposeAll();
       mutationsRef.current?.dispose();
+      processingIssuesNavCountRef.current?.dispose();
     };
     window.addEventListener(sessionExpiredEvent, disposeOnSessionLoss);
     return () => window.removeEventListener(sessionExpiredEvent, disposeOnSessionLoss);
@@ -87,6 +110,7 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
     () => () => {
       registryRef.current?.disposeAll();
       mutationsRef.current?.dispose();
+      processingIssuesNavCountRef.current?.dispose();
     },
     [],
   );
@@ -97,6 +121,7 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
 interface AlbumRoutesProps {
   registry: BrowsingHistoryRegistry;
   mutations: AlbumMutations;
+  navCount: ProcessingIssuesNavCount;
 }
 
 /**
@@ -106,7 +131,7 @@ interface AlbumRoutesProps {
  * location for the modal. A direct load or refresh carries no background
  * state, so the first block renders the Viewer itself as an ordinary page.
  */
-function AlbumRoutes({ registry, mutations }: AlbumRoutesProps) {
+function AlbumRoutes({ registry, mutations, navCount }: AlbumRoutesProps) {
   const location = useLocation();
   const state = location.state as { background?: Location } | null;
   const backgroundLocation = state?.background;
@@ -154,6 +179,10 @@ function AlbumRoutes({ registry, mutations }: AlbumRoutesProps) {
             path="archive"
           />
           <Route element={<ManualUploadWorkspace />} path="upload" />
+          <Route
+            element={<ProcessingIssuesView mutations={mutations} navCount={navCount} />}
+            path="processing-issues"
+          />
           <Route element={<PhotoViewerRoute mode="direct" mutations={mutations} />} path="photos/:photoId" />
         </Routes>
       </div>
