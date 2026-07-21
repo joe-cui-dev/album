@@ -11,9 +11,11 @@ import type {
   ListCollectionPhotosV2Response,
   ListProcessingIssuesResponse,
   ProcessingIssue,
+  RequestSignInCodeResponse,
   RetryProcessingResponse,
   TimelinePhotoV2,
   TimelineThumbnailAccessResponse,
+  VerifySignInCodeResponse,
   ViewerBootstrapResponse,
 } from "@album/shared";
 
@@ -35,6 +37,18 @@ export const defaultSession = (): GetSessionResponse => ({
 });
 
 export const signedOutSession = (): GetSessionResponse => ({ signedIn: false });
+
+export const requestSignInCodeAccepted = (
+  overrides: Partial<RequestSignInCodeResponse> = {},
+): RequestSignInCodeResponse => ({ accepted: true, codeId: "code-1", ...overrides });
+
+export const verifySignInCodeAccepted = (
+  overrides: Partial<VerifySignInCodeResponse> = {},
+): VerifySignInCodeResponse => ({
+  signedIn: true,
+  user: { userId: "user-1", email: "joe@example.com" },
+  ...overrides,
+});
 
 export const emptyNavigation = (): AlbumNavigationResponse => ({
   timeline: { years: [] },
@@ -201,6 +215,23 @@ export const respondAlbumError = (
 export const respondUnauthorized = (route: Route): Promise<void> =>
   respondJson(route, { code: "auth_lost", message: "Session expired" }, 401);
 
+/**
+ * Stable machine-readable 412 for a stale `If-Match` on the captured-at adjustment/revert
+ * routes (execution plan Slice 2.2: "Add a stable `chronology_changed` transport code for
+ * 412 rather than reading its message"). Not yet consumed by the Web client -- the Chronology
+ * editor lands in Slice 2 -- but scripted here now per Slice 0.3's failure-matrix scaffolding.
+ */
+export const respondChronologyConflict = (route: Route): Promise<void> =>
+  respondAlbumError(route, 412, "chronology_changed", "Captured At changed since it was loaded");
+
+/** Delays fulfilling `route` by `ms`, for scripting slow/pending states (Slice 0.3). */
+export const respondAfterDelay = (route: Route, ms: number, body: unknown, status = 200): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(respondJson(route, body, status));
+    }, ms);
+  });
+
 /** One endpoint's queued one-shot responders, falling back to a default once the queue is empty. */
 class EndpointQueue {
   private readonly queue: Responder[] = [];
@@ -236,6 +267,8 @@ class EndpointQueue {
 export class AlbumApiMock {
   readonly session = new EndpointQueue((route) => respondJson(route, defaultSession()));
   readonly signOut = new EndpointQueue((route) => respondJson(route, {}));
+  readonly requestSignInCode = new EndpointQueue((route) => respondJson(route, requestSignInCodeAccepted()));
+  readonly verifySignInCode = new EndpointQueue((route) => respondJson(route, verifySignInCodeAccepted()));
   readonly navigation = new EndpointQueue((route) => respondJson(route, emptyNavigation()));
   readonly timeline = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
   readonly archive = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
@@ -262,6 +295,14 @@ export class AlbumApiMock {
   );
   readonly retryProcessing = new EndpointQueue((route) =>
     respondJson(route, { accepted: true, retryAttemptId: "retry-1" } satisfies RetryProcessingResponse),
+  );
+  /**
+   * PUT (adjust)/DELETE (revert) `/photos/{photoId}/captured-at-adjustment` (execution plan
+   * Slice 0.3). Not yet called by the Web client -- the Chronology editor lands in Slice 2 --
+   * so the default 404s until a test queues a response, matching `viewer`'s pattern above.
+   */
+  readonly capturedAtAdjustment = new EndpointQueue((route) =>
+    respondAlbumError(route, 404, "not_found", "No captured-at adjustment mock queued for this Photo ID"),
   );
   readonly createUploadBatch = new EndpointQueue((route, request) => {
     const body = request.postDataJSON() as { files: unknown[] };
@@ -295,6 +336,12 @@ export class AlbumApiMock {
       if (url.pathname === "/session" && method === "DELETE") {
         return this.signOut.handle(route, request);
       }
+      if (url.pathname === "/session/sign-in-code" && method === "POST") {
+        return this.requestSignInCode.handle(route, request);
+      }
+      if (url.pathname === "/session/verify" && method === "POST") {
+        return this.verifySignInCode.handle(route, request);
+      }
       if (url.pathname === "/album-navigation" && method === "GET") {
         return this.navigation.handle(route, request);
       }
@@ -321,6 +368,9 @@ export class AlbumApiMock {
       }
       if (/^\/photos\/[^/]+\/retry-processing$/.test(url.pathname) && method === "POST") {
         return this.retryProcessing.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/captured-at-adjustment$/.test(url.pathname) && (method === "PUT" || method === "DELETE")) {
+        return this.capturedAtAdjustment.handle(route, request);
       }
       if (url.pathname === "/processing-issues/summary" && method === "GET") {
         return this.processingIssuesSummary.handle(route, request);

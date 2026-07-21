@@ -1,14 +1,20 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Slice 6 functional/WebKit coverage (implementation doc "Verification"). Every spec
+ * Slice 0 acceptance harness (execution plan "Slice 0 — Acceptance Harness"). Every spec
  * intercepts the Personal Album HTTP contracts via `AlbumApiMock` — no real backend
  * is involved, so `webServer` only needs the Vite dev server itself.
+ *
+ * Timing/heap thresholds live in `playwright.performance.config.ts`, not here — these
+ * blocking functional projects must stay independent of hardware-specific measurements.
  */
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "**/performance/**",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
+  // One CI retry is permitted to absorb infra flake; the acceptance record itself
+  // must still come from a clean, retry-free passing run (execution plan Delivery Rules).
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
   use: {
@@ -26,8 +32,19 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: "**/webkit-mobile-smoke.spec.ts",
+      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts"],
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "firefox",
+      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts"],
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      // 360px mobile Chromium functional smoke (execution plan Slice 0.1).
+      name: "mobile-chromium",
+      testMatch: "**/mobile-chromium-smoke.spec.ts",
+      use: { browserName: "chromium", viewport: { width: 360, height: 740 } },
     },
     {
       // 320px WebKit functional smoke (implementation doc "Verification").

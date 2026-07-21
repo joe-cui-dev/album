@@ -13,7 +13,8 @@
     "check": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:performance": "playwright test --config=playwright.performance.config.ts"
   },
   "dependencies": {
     "@album/shared": "0.1.0",
@@ -26,6 +27,7 @@
     "vite": "^6.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
