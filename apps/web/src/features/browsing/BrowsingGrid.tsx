@@ -93,11 +93,27 @@ export function BrowsingGrid({
       return;
     }
     browsingWindow.intents.requestThumbnailAccess(visiblePhotoIds);
+    // The interval is the "retry-window" resume point once a bounded backoff (owned by the
+    // Browsing Window) elapses on its own; `online`/`visibilitychange` force an immediate
+    // resume instead of waiting out the rest of that window (implementation doc
+    // "Temporary-access recovery").
     const intervalId = window.setInterval(
       () => browsingWindow.intents.requestThumbnailAccess(visiblePhotoIds),
       RENEWAL_POLL_MS,
     );
-    return () => window.clearInterval(intervalId);
+    const onResumeSignal = (): void => browsingWindow.intents.requestThumbnailAccess(visiblePhotoIds, { force: true });
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "visible") {
+        onResumeSignal();
+      }
+    };
+    window.addEventListener("online", onResumeSignal);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", onResumeSignal);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
     // Re-runs only when the visible index set actually changes (visibleIndexRangeKey), not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browsingWindow, visibleIndexRangeKey]);
@@ -243,7 +259,7 @@ function PhotoRow({
         return (
           <Link
             aria-label={photoLinkName(descriptor.fileName, descriptor.capturedAt)}
-            className="block overflow-hidden rounded-sm focus:outline-none focus:ring-2 focus:ring-emerald-800"
+            className="block overflow-hidden rounded-sm focus:outline-none focus:ring-2 focus:ring-[var(--emulsion-blue)]"
             key={photoId}
             state={{
               background: location,

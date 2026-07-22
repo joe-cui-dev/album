@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { PhotoChronology } from "@album/shared";
 import { capturedAtSourceLabel } from "../../lib/capturedAtSource.js";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
+import { trapTab } from "../../lib/focusTrap.js";
 import { createCapturedAtEditor, type CapturedAtEditor } from "./capturedAtEditor.js";
 import type { CapturedAtEditorPort } from "./capturedAtEditorPort.js";
 import { useCapturedAtEditorSnapshot } from "./useCapturedAtEditor.js";
@@ -127,12 +128,3 @@ function RevertState({ chronology, editor, saving }: { chronology: PhotoChronolo
 function FieldError({ id, error }: { id: string; error?: string }) { return error ? <p className="text-sm text-red-700" id={id}>{error}</p> : null; }
 const canRevert = (chronology: PhotoChronology) => chronology.active.source === "userAdjusted" && JSON.stringify(chronology.active.capturedAt) !== JSON.stringify(chronology.original.capturedAt);
 
-const trapTab = (event: KeyboardEvent, container: HTMLElement | null): void => {
-  if (!container) return;
-  const focusable = container.querySelectorAll<HTMLElement>('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])');
-  if (!focusable.length) return;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-};

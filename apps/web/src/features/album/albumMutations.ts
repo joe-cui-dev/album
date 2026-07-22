@@ -84,7 +84,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
   const publishFeedback = (entry: Omit<FeedbackEntry, "id">): void => {
     clearFeedbackTimer();
     feedback = { ...entry, id: String(nextFeedbackId++) };
-    if (entry.kind === "success") {
+    if (entry.kind === "success" && !entry.action) {
       feedbackTimer = setTimeout(() => {
         feedbackTimer = undefined;
         feedback = undefined;

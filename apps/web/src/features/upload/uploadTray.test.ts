@@ -293,7 +293,7 @@ describe("createUploadTray", () => {
       port.resolveNextProbeDateJump({ outcome: "committed", page: { photos: [] } });
       await flush();
 
-      expect(navigate).toHaveBeenCalledWith("/album?startAt=2026-03");
+      expect(navigate).toHaveBeenCalledWith("/album?startAt=2026-03", { state: { focusMainHeading: true } });
       expect(tray!.getSnapshot().minimized).toBe(true);
       expect(tray!.getSnapshot().jumping).toBe(false);
     });

@@ -43,8 +43,13 @@ export interface BrowsingWindowIntents {
   retry(): void;
   setLayout(options: LayoutOptions): void;
   recordRestorationAnchor(anchor: RestorationAnchor | undefined): void;
-  /** Coalesced renewal demand: renews only the ids nearing expiry, batched under the port's limit. */
-  requestThumbnailAccess(photoIds: string[]): void;
+  /**
+   * Coalesced renewal demand: renews only the ids nearing expiry, batched under the port's
+   * limit. A failure starts a bounded backoff window that silently skips subsequent demand
+   * calls until it elapses; pass `force` (an online/visibility/retry-window resume signal) to
+   * bypass that window and retry immediately.
+   */
+  requestThumbnailAccess(photoIds: string[], options?: { force?: boolean }): void;
   /**
    * Marks a loaded descriptor as not present in this window's collection without
    * removing it, so a matching `false` call restores the identical index and no
@@ -85,6 +90,8 @@ export interface BrowsingWindowOptions {
 
 const RENEWAL_LEAD_MS = 60_000;
 const MAX_RENEWAL_BATCH = 100;
+const RENEWAL_BACKOFF_BASE_MS = 5_000;
+const RENEWAL_BACKOFF_MAX_MS = 5 * 60_000;
 
 /** ADR-0055: one deep module per history entry's Browsing Window; see `docs/browsing-tracer-implementation.md`. */
 export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWindow => {
@@ -101,6 +108,11 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
   const leaseExpiresAtMsByPhotoId = new Map<string, number>();
   const renewalInFlight = new Set<string>();
   const renewalAbortControllers = new Set<AbortController>();
+  let renewalBackoffMs = 0;
+  let renewalBlockedUntilMs = 0;
+  // A 401 invalidates the Session globally (albumTransport's `sessionExpiredEvent`); this window
+  // just needs to stop asking once that's happened, not run its own parallel sign-out.
+  let renewalAuthLost = false;
 
   let nextCursor: string | undefined;
   let isExhausted = false;
@@ -212,11 +224,14 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     }
   };
 
-  const renewThumbnailAccess = async (photoIds: string[]): Promise<void> => {
-    if (disposed) {
+  const renewThumbnailAccess = async (photoIds: string[], options?: { force?: boolean }): Promise<void> => {
+    if (disposed || renewalAuthLost) {
       return;
     }
     const now = Date.now();
+    if (!options?.force && now < renewalBlockedUntilMs) {
+      return;
+    }
     const due = photoIds
       .filter((photoId) => descriptorsById.has(photoId) && !renewalInFlight.has(photoId))
       .filter((photoId) => {
@@ -249,10 +264,21 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
         });
         leaseExpiresAtMsByPhotoId.set(renewed.photoId, expiresAtMs);
       }
+      renewalBackoffMs = 0;
+      renewalBlockedUntilMs = 0;
       markDirty();
       notify();
-    } catch {
-      // A failed renewal leaves the existing (possibly expiring) sources in place; the next demand call retries.
+    } catch (error) {
+      // A failed renewal leaves the existing (possibly expiring) sources in place; a bounded,
+      // doubling backoff window silently absorbs the next few demand calls so a persistent
+      // failure doesn't hammer the API, and an online/visibility/retry-window resume (`force`)
+      // bypasses it. A 401 leaves the loop entirely instead -- the Session is already gone.
+      if (classifyError(error) === "auth_lost") {
+        renewalAuthLost = true;
+      } else {
+        renewalBackoffMs = renewalBackoffMs === 0 ? RENEWAL_BACKOFF_BASE_MS : Math.min(renewalBackoffMs * 2, RENEWAL_BACKOFF_MAX_MS);
+        renewalBlockedUntilMs = Date.now() + renewalBackoffMs;
+      }
     } finally {
       renewalAbortControllers.delete(controller);
       for (const photoId of due) {
@@ -326,8 +352,8 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
       cachedSnapshot = undefined;
       notify();
     },
-    requestThumbnailAccess: (photoIds) => {
-      void renewThumbnailAccess(photoIds);
+    requestThumbnailAccess: (photoIds, options) => {
+      void renewThumbnailAccess(photoIds, options);
     },
     setWithheld: (photoId, withheld) => {
       if (!descriptorsById.has(photoId)) {

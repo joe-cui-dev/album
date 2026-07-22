@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import type { AlbumNavigationYear } from "@album/shared";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
+import { trapTab } from "../../lib/focusTrap.js";
 
 export type JumpState =
   | { status: "idle" }
@@ -13,19 +14,63 @@ interface DateNavigationProps {
   years: AlbumNavigationYear[];
   jumpState: JumpState;
   onJump: (anchor: string) => void;
+  /** Aborts the in-flight candidate and returns to idle -- Escape, backdrop, and Close all route through this. */
+  onCancelJump: () => void;
+  /** Called once the sheet closes itself after a successful commit, so the caller can focus the destination heading. */
+  onJumpCommitted: () => void;
   /** The topmost visible period; changes its active styling only, never the disclosure state (design doc "Date Navigation and History"). */
   visiblePeriodKey?: string;
 }
 
 /** Desktop year index plus a mobile "Jump to date" bottom sheet, sharing one year/month hierarchy. */
-export function DateNavigation({ years, jumpState, onJump, visiblePeriodKey }: DateNavigationProps) {
+export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpCommitted, visiblePeriodKey }: DateNavigationProps) {
   const [expandedYear, setExpandedYear] = useState<number>();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const previousJumpStatusRef = useRef(jumpState.status);
 
-  const closeAndJump = (anchor: string) => {
+  // Retains the sheet while a candidate loads; closes it -- and hands focus to the destination
+  // collection heading -- only once that candidate actually commits (design doc "Date Navigation
+  // and History"). Empty-period and failed outcomes leave the sheet open so their status can be
+  // shown and announced in place.
+  useEffect(() => {
+    if (sheetOpen && previousJumpStatusRef.current === "pending" && jumpState.status === "idle") {
+      setSheetOpen(false);
+      onJumpCommitted();
+    }
+    previousJumpStatusRef.current = jumpState.status;
+  }, [jumpState.status, sheetOpen, onJumpCommitted]);
+
+  useEffect(() => {
+    if (sheetOpen) {
+      headingRef.current?.focus();
+    }
+  }, [sheetOpen]);
+
+  const cancelAndClose = (): void => {
     setSheetOpen(false);
-    onJump(anchor);
+    onCancelJump();
+    triggerRef.current?.focus();
   };
+
+  useEffect(() => {
+    if (!sheetOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelAndClose();
+      } else if (event.key === "Tab") {
+        trapTab(event, dialogRef.current);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetOpen]);
 
   return (
     <>
@@ -38,12 +83,14 @@ export function DateNavigation({ years, jumpState, onJump, visiblePeriodKey }: D
           {...(visiblePeriodKey !== undefined ? { visiblePeriodKey } : {})}
           years={years}
         />
+        <JumpStatus jumpState={jumpState} onRetry={onJump} />
       </nav>
 
       <div className="md:hidden">
         <button
           className="inline-flex min-h-10 items-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900"
           onClick={() => setSheetOpen(true)}
+          ref={triggerRef}
           type="button"
         >
           Jump to date
@@ -53,47 +100,65 @@ export function DateNavigation({ years, jumpState, onJump, visiblePeriodKey }: D
             aria-label="Jump to date"
             aria-modal="true"
             className="fixed inset-0 z-30 flex items-end bg-stone-950/40"
-            onClick={() => setSheetOpen(false)}
+            onClick={cancelAndClose}
             role="dialog"
           >
             <div
               className="max-h-[70vh] w-full overflow-y-auto rounded-t-xl bg-white p-4"
               onClick={(event) => event.stopPropagation()}
+              ref={dialogRef}
             >
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-stone-950">Jump to date</h2>
-                <button aria-label="Close" onClick={() => setSheetOpen(false)} type="button">
+                <h2 className="text-lg font-bold text-stone-950" ref={headingRef} tabIndex={-1}>
+                  Jump to date
+                </h2>
+                <button aria-label="Close" onClick={cancelAndClose} type="button">
                   <X aria-hidden="true" className="h-5 w-5" />
                 </button>
               </div>
               <YearList
                 expandedYear={expandedYear}
                 jumpState={jumpState}
-                onJump={closeAndJump}
+                onJump={onJump}
                 onToggleYear={(year) => setExpandedYear((current) => (current === year ? undefined : year))}
                 showLatestInYear
                 years={years}
               />
+              <JumpStatus jumpState={jumpState} onRetry={onJump} />
             </div>
           </div>
         ) : null}
       </div>
-
-      {jumpState.status === "empty_period" ? (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" role="status">
-          That period is now empty.
-        </p>
-      ) : null}
-      {jumpState.status === "failed" ? (
-        <p className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-          Couldn&apos;t jump to that date.
-          <button className="underline" onClick={() => onJump(jumpState.anchor)} type="button">
-            Retry
-          </button>
-        </p>
-      ) : null}
     </>
   );
+}
+
+function JumpStatus({ jumpState, onRetry }: { jumpState: JumpState; onRetry: (anchor: string) => void }) {
+  if (jumpState.status === "pending") {
+    return (
+      <p className="mt-3 text-sm text-stone-600" role="status">
+        Loading that period…
+      </p>
+    );
+  }
+  if (jumpState.status === "empty_period") {
+    return (
+      <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" role="status">
+        That period is now empty.
+      </p>
+    );
+  }
+  if (jumpState.status === "failed") {
+    return (
+      <p className="mt-3 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+        Couldn&apos;t jump to that date.
+        <button className="underline" onClick={() => onRetry(jumpState.anchor)} type="button">
+          Retry
+        </button>
+      </p>
+    );
+  }
+  return null;
 }
 
 function YearList({

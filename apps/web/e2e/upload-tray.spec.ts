@@ -56,7 +56,7 @@ test("uploads a photo, survives a route change, and 'View new photos' jumps to i
     ),
   );
 
-  await expect(page.getByText("1 added")).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("dialog", { name: "Add photos" }).getByText("1 added")).toBeVisible({ timeout: 8_000 });
 
   // The Tray's own probe and the eventual Timeline refetch (after the URL change lands) both
   // hit this endpoint, so this is a `setDefault`, not a `queueOnce`.
@@ -105,5 +105,5 @@ test("recovers an in-progress batch after reload and hides once it settles", asy
   );
 
   await page.getByRole("button", { name: "Show upload progress" }).click();
-  await expect(page.getByText("1 added")).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("dialog", { name: "Add photos" }).getByText("1 added")).toBeVisible({ timeout: 8_000 });
 });

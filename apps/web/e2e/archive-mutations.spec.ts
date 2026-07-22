@@ -110,6 +110,6 @@ test("a failed archive returns the Photo to the Timeline and shows a persistent 
   // No older/newer neighbour, so the Viewer advances by closing immediately -- the design
   // deliberately does not yank it backwards once the later failure arrives (ADR-0068).
   await expect(page).toHaveURL("/album");
-  await expect(page.getByRole("status")).toContainText(/couldn't archive/i);
+  await expect(page.getByRole("alert")).toContainText(/couldn't archive/i);
   await expect(page.getByRole("link", { name: /beach\.jpg/ })).toBeVisible();
 });

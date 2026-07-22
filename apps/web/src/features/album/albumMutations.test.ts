@@ -99,14 +99,14 @@ describe("createAlbumMutations", () => {
     expect(mutations.getSnapshot().feedback?.kind).toBe("success");
   });
 
-  it("auto-dismisses success feedback after 8 seconds and leaves failure feedback persistent", () => {
+  it("does not auto-dismiss action-bearing success feedback (Undo persists until acted on, dismissed, or replaced)", () => {
     vi.useFakeTimers();
     mutations = createAlbumMutations({ port: test.port, registry });
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
-    expect(mutations.getSnapshot().feedback).toBeDefined();
+    expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "success", action: { label: "Undo" } });
 
     vi.advanceTimersByTime(8_000);
-    expect(mutations.getSnapshot().feedback).toBeUndefined();
+    expect(mutations.getSnapshot().feedback).toBeDefined();
   });
 
   it("downloadOriginal opens the presigned URL and tracks in-flight state", async () => {

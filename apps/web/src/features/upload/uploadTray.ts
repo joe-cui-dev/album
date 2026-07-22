@@ -89,7 +89,7 @@ export interface UploadTrayOptions {
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   now?: () => number;
   /** Performs the actual URL change for "View new photos"; production wires this to the router. */
-  navigate?: (path: string) => void;
+  navigate?: (path: string, options?: { state?: unknown }) => void;
   /** Signals the Processing Issues nav count to refresh (implementation doc "Navigation count"). */
   onBatchTerminal?: () => void;
   maxConcurrentTransfers?: number;
@@ -527,7 +527,8 @@ export const createUploadTray = (options: UploadTrayOptions): UploadTray => {
       }
       if (result.outcome === "committed") {
         minimized = true;
-        options.navigate?.(`/album?startAt=${encodeURIComponent(targetAnchor)}`);
+        // Lets the destination collection heading own focus rather than leaving it on the Tray's now-hidden button.
+        options.navigate?.(`/album?startAt=${encodeURIComponent(targetAnchor)}`, { state: { focusMainHeading: true } });
       }
     } catch {
       // The probe failed or was cancelled; the button stays available to try again.

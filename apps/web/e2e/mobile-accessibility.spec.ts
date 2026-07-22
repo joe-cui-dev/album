@@ -1,4 +1,4 @@
-import { buildPhoto, collectionPage, navigationWithYears, respondAlbumError, respondJson } from "./fixtures/albumApiMock.js";
+import { buildPhoto, collectionPage, navigationWithYears, respondAfterDelay, respondAlbumError, respondJson } from "./fixtures/albumApiMock.js";
 import { expectNoAxeViolations } from "./fixtures/axeHelpers.js";
 import { expect, test } from "./fixtures/test.js";
 
@@ -21,13 +21,26 @@ test("mobile Jump to date default sheet renders without axe violations", async (
   await expectNoAxeViolations(page);
 });
 
-// Gap: the sheet does not yet retain itself while a candidate loads (execution plan
-// Slice 4.2), so a pending Jump closes the sheet immediately and leaves no visible
-// mobile-scoped pending affordance to scan. Traceable to that slice, not scanned here.
-test.fixme("mobile Jump to date pending state renders without axe violations", async () => {});
+// The sheet retains itself while a candidate loads (Slice 4.2), so the pending status is a
+// scannable mobile-scoped state in its own right.
+test("mobile Jump to date pending state renders without axe violations", async ({ mock, page }) => {
+  const photo = buildPhoto({ fileName: "june.jpg", capturedAt: { precision: "day", localDate: "2025-06-15" } });
+  mock.timeline
+    .queueOnce((route) => respondJson(route, collectionPage([photo])))
+    .queueOnce((route) => respondAfterDelay(route, 2_000, collectionPage([photo])));
+  mock.navigation.queueOnce((route) => respondJson(route, withYears()));
+  await page.goto("/album");
+  await page.getByRole("button", { name: "Jump to date" }).click();
+  const sheet = page.getByRole("dialog", { name: "Jump to date" });
+  await sheet.getByRole("button", { name: "Expand 2025" }).click();
+  await sheet.getByRole("button", { name: "May 2025" }).click();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("status")).toHaveText("Loading that period…");
+  await expectNoAxeViolations(page);
+});
 
-// Gap: closing on jump (Slice 4.2) means these status messages render on the main page,
-// not inside the sheet -- scanning the page still exercises the state honestly.
+// The sheet stays open (Slice 4.2) and shows/announces the outcome in place, rather than
+// closing immediately and leaving the status on the main page.
 test("mobile Jump to date empty-period notice renders without axe violations", async ({ mock, page }) => {
   const photo = buildPhoto({ fileName: "june.jpg", capturedAt: { precision: "day", localDate: "2025-06-15" } });
   mock.timeline
@@ -39,8 +52,8 @@ test("mobile Jump to date empty-period notice renders without axe violations", a
   const sheet = page.getByRole("dialog", { name: "Jump to date" });
   await sheet.getByRole("button", { name: "Expand 2025" }).click();
   await sheet.getByRole("button", { name: "May 2025" }).click();
-  await expect(sheet).toHaveCount(0);
-  await expect(page.getByText("That period is now empty.")).toBeVisible();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("status")).toHaveText("That period is now empty.");
   await expectNoAxeViolations(page);
 });
 
@@ -55,7 +68,7 @@ test("mobile Jump to date retryable failure notice renders without axe violation
   const sheet = page.getByRole("dialog", { name: "Jump to date" });
   await sheet.getByRole("button", { name: "Expand 2025" }).click();
   await sheet.getByRole("button", { name: "May 2025" }).click();
-  await expect(sheet).toHaveCount(0);
-  await expect(page.getByText("Couldn't jump to that date.")).toBeVisible();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("alert")).toContainText("Couldn't jump to that date.");
   await expectNoAxeViolations(page);
 });

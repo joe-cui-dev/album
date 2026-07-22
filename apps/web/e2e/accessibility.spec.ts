@@ -232,7 +232,7 @@ test("Upload Tray completion renders without axe violations", async ({ mock, pag
     ),
   );
   await page.getByRole("button", { name: "Upload 1 photo" }).click();
-  await expect(page.getByText("1 added")).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("dialog", { name: "Add photos" }).getByText("1 added")).toBeVisible({ timeout: 8_000 });
   await expectNoAxeViolations(page);
 });
 

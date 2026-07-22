@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { AlertTriangle, Archive, ChevronDown, Plus } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import type { SessionUser } from "@album/shared";
@@ -45,7 +46,12 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount, u
               {openCount ? ` (${openCount})` : ""}
             </Link>
           ) : null}
-          <button className="album-add-button" onClick={uploadTray.intents.open} type="button">
+          <button
+            className="album-add-button"
+            id="album-add-photos-button"
+            onClick={uploadTray.intents.open}
+            type="button"
+          >
             <Plus aria-hidden="true" size={17} />
             {uiMessages.addPhotos}
           </button>
@@ -67,32 +73,68 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount, u
 
 /**
  * A single-slot, time-bound outcome region (implementation doc "Feedback region"):
- * success entries auto-dismiss on `albumMutations`' own timer, failures persist
- * until dismissed or retried, and the newest entry always replaces the last.
+ * success-without-action entries auto-dismiss on `albumMutations`' own timer, failures
+ * and action-bearing successes (Undo/Retry) persist until acted on, dismissed, or
+ * replaced, and the newest entry always replaces the last. Success and failure each get
+ * their own statically-live-region container so their politeness (`polite`/`assertive`)
+ * is fixed, not toggled -- screen readers pick up dynamic `aria-live` values inconsistently.
  */
 function FeedbackRegion({ mutations }: { mutations: AlbumMutations }) {
   const snapshot = useAlbumMutationsSnapshot(mutations);
   const feedback = snapshot.feedback;
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const hadFocusRef = useRef(false);
+  const primaryRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) {
+      return;
+    }
+    const onFocusIn = () => {
+      hadFocusRef.current = true;
+    };
+    wrapper.addEventListener("focusin", onFocusIn);
+    return () => wrapper.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // If focus was inside the region when the entry it belonged to was replaced (e.g. Undo
+  // publishing the reversing entry), move focus onto the new entry's primary control
+  // instead of letting it fall back to <body>.
+  useLayoutEffect(() => {
+    if (hadFocusRef.current) {
+      hadFocusRef.current = false;
+      primaryRef.current?.focus();
+    }
+  }, [feedback?.id]);
+
+  const entry = feedback ? (
+    <div className={`album-feedback-entry album-feedback-entry--${feedback.kind}`}>
+      <span>{feedback.message}</span>
+      {feedback.action ? (
+        <button onClick={feedback.action.onInvoke} ref={primaryRef} type="button">
+          {feedback.action.label}
+        </button>
+      ) : null}
+      <button
+        aria-label="Dismiss"
+        onClick={mutations.intents.dismissFeedback}
+        ref={feedback.action ? undefined : primaryRef}
+        type="button"
+      >
+        Dismiss
+      </button>
+    </div>
+  ) : null;
 
   return (
-    <div aria-live="polite" className="album-feedback-region">
-      {feedback ? (
-        <div className={`album-feedback-entry album-feedback-entry--${feedback.kind}`} role="status">
-          <span>{feedback.message}</span>
-          {feedback.action ? (
-            <button onClick={feedback.action.onInvoke} type="button">
-              {feedback.action.label}
-            </button>
-          ) : null}
-          <button
-            aria-label="Dismiss"
-            onClick={mutations.intents.dismissFeedback}
-            type="button"
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
+    <div ref={wrapperRef}>
+      <div aria-live="polite" className="album-feedback-region">
+        {feedback?.kind === "success" ? <div role="status">{entry}</div> : null}
+      </div>
+      <div aria-live="assertive" className="album-feedback-region">
+        {feedback?.kind === "failure" ? <div role="alert">{entry}</div> : null}
+      </div>
     </div>
   );
 }

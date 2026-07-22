@@ -65,5 +65,5 @@ test("a retry failure shows a persistent error naming the retry action, without 
   mock.retryProcessing.queueOnce((route) => respondAlbumError(route, 500, "unexpected", "Internal error"));
   await page.getByRole("button", { name: "Retry processing" }).click();
 
-  await expect(page.getByRole("status")).toContainText(/couldn't start retry processing/i);
+  await expect(page.getByRole("alert")).toContainText(/couldn't start retry processing/i);
 });

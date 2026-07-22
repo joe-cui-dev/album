@@ -92,6 +92,13 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
     }
   };
 
+  // Closing the mobile sheet (Escape/backdrop/Close) cancels whatever candidate is in flight
+  // and returns to idle without committing a URL/history entry (ADR-0058).
+  const onCancelJump = (): void => {
+    jumpControllerRef.current?.abort();
+    setJumpState({ status: "idle" });
+  };
+
   const photoHrefFor = (photoId: string): string => `/album/photos/${photoId}`;
   const [visiblePeriodKey, setVisiblePeriodKey] = useState<string>();
 
@@ -110,7 +117,9 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
     <main className="album-content flex gap-6 py-6">
       <DateNavigation
         jumpState={jumpState}
+        onCancelJump={onCancelJump}
         onJump={(anchor) => void onJump(anchor)}
+        onJumpCommitted={() => headingRef.current?.focus()}
         {...(visiblePeriodKey !== undefined ? { visiblePeriodKey } : {})}
         years={years}
       />

@@ -261,6 +261,66 @@ describe("createBrowsingWindow", () => {
       expect(test.renewalCalls).toEqual([]);
     });
 
+    it("silently skips further demand calls after a failure, within a bounded backoff window", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a")], expiresAt: new Date(Date.now() + 30_000).toISOString() });
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      test.rejectNextRenewal(new Error("boom"));
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      expect(test.renewalCalls).toHaveLength(1);
+    });
+
+    it("a force call bypasses the backoff window (online/visibility/retry-window resume)", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a")], expiresAt: new Date(Date.now() + 30_000).toISOString() });
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      test.rejectNextRenewal(new Error("boom"));
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"], { force: true });
+      expect(test.renewalCalls).toHaveLength(2);
+    });
+
+    it("a successful renewal clears the backoff window so the next plain demand call isn't skipped", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a")], expiresAt: new Date(Date.now() + 30_000).toISOString() });
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      test.rejectNextRenewal(new Error("boom"));
+      await flush();
+
+      // Forced past the backoff window; still near-expiry so it's issued and stays due for the next call too.
+      window_.intents.requestThumbnailAccess(["a"], { force: true });
+      test.resolveNextRenewal({
+        photos: [{ photoId: "a", timelineThumbnailSources: photo("a").timelineThumbnailSources }],
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      });
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      expect(test.renewalCalls).toHaveLength(3);
+    });
+
+    it("leaves the recovery loop entirely on a 401, instead of backing off and retrying", async () => {
+      window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
+      test.resolveNextLoad({ photos: [photo("a")], expiresAt: new Date(Date.now() + 30_000).toISOString() });
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"]);
+      test.rejectNextRenewal(new AlbumTransportError("auth_lost", "Session expired"));
+      await flush();
+
+      window_.intents.requestThumbnailAccess(["a"], { force: true });
+      expect(test.renewalCalls).toHaveLength(1);
+    });
+
     it("aborts an in-flight renewal request on dispose", async () => {
       window_ = createBrowsingWindow({ collection: "active", port: test.port, layout });
       test.resolveNextLoad({ photos: [photo("a")], expiresAt: new Date(Date.now() + 30_000).toISOString() });

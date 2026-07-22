@@ -74,7 +74,7 @@ function AlbumRoot({ onSignedOut, user }: AlbumRootProps) {
       port: createHttpUploadTrayPort(),
       registry: registryRef.current,
       userId: user.userId,
-      navigate: (path) => routerRef.current?.navigate(path),
+      navigate: (path, opts) => routerRef.current?.navigate(path, opts),
       onBatchTerminal: () => processingIssuesNavCountRef.current?.intents.refresh(),
     });
   }

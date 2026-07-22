@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { ChevronLeft, ChevronRight, Info, MoreVertical, X } from "lucide-react";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
+import { trapTab } from "../../lib/focusTrap.js";
 import { capturedAtSourceLabel } from "../../lib/capturedAtSource.js";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
@@ -195,7 +196,9 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       role={mode === "contextual" ? "dialog" : undefined}
       onFocusCapture={revealChrome}
     >
-      <header className={`flex items-center justify-between gap-3 p-3 transition-opacity ${chromeVisible ? "" : "pointer-events-none opacity-0"}`} onFocus={revealChrome}>
+      {/* A plain div, not <header>: nested inside the dialog it would register as a second
+          "banner" landmark alongside the shell's own <header> (axe landmark-unique). */}
+      <div className={`flex items-center justify-between gap-3 p-3 transition-opacity ${chromeVisible ? "" : "pointer-events-none opacity-0"}`} onFocus={revealChrome}>
         <button
           aria-label="Close"
           className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
@@ -281,7 +284,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
             </div>
           ) : null}
         </div>
-      </header>
+      </div>
 
       {snapshot.collectionChanged ? (
           <CollectionChangedNotice
@@ -390,13 +393,13 @@ function InfoPanel({ bootstrap }: { bootstrap: NonNullable<ReturnType<typeof use
         {bootstrap.metadata?.cameraMake ? (
           <>
             <dt className="font-semibold text-white/70">Camera</dt>
-            <dd>{[bootstrap.metadata.cameraMake, bootstrap.metadata.cameraModel].filter(Boolean).join(" ")}</dd>
+            <dd className="break-words">{[bootstrap.metadata.cameraMake, bootstrap.metadata.cameraModel].filter(Boolean).join(" ")}</dd>
           </>
         ) : null}
         {bootstrap.metadata?.lensModel ? (
           <>
             <dt className="font-semibold text-white/70">Lens</dt>
-            <dd>{bootstrap.metadata.lensModel}</dd>
+            <dd className="break-words">{bootstrap.metadata.lensModel}</dd>
           </>
         ) : null}
         <dt className="font-semibold text-white/70">Dimensions</dt>
@@ -432,23 +435,3 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
 
-const trapTab = (event: KeyboardEvent, container: HTMLElement | null): void => {
-  if (!container) {
-    return;
-  }
-  const focusable = container.querySelectorAll<HTMLElement>(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-  );
-  if (focusable.length === 0) {
-    return;
-  }
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-};
