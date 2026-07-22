@@ -1,7 +1,7 @@
 import { getCapturedAtComponents, type CapturedAt, type PhotoCollection, type TimelinePhotoV2 } from "@album/shared";
 import { AlbumTransportError, type AlbumTransportErrorCode } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
-import { computeJustifiedRows, type JustifiedLayoutItem, type JustifiedRowsOptions } from "./justifiedRows.js";
+import { createIncrementalJustifiedRows, type JustifiedLayoutItem, type JustifiedRowsOptions } from "./justifiedRows.js";
 
 export interface PhotoDescriptor {
   photoId: string;
@@ -124,6 +124,9 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
   let restorationAnchor: RestorationAnchor | undefined;
 
   let dirty = true;
+  let layoutOptionsDirty = true;
+  let consumedDescriptorCount = 0;
+  const incrementalLayout = createIncrementalJustifiedRows();
   let cachedLayoutItems: JustifiedLayoutItem[] = [];
   let cachedIncompleteTail: string[] | undefined;
   let cachedSnapshot: BrowsingWindowSnapshot | undefined;
@@ -287,23 +290,33 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     }
   };
 
+  // A withheld descriptor stays in the layout input so its row/period never changes shape
+  // or count (ADR-0067); only the rendering layer skips drawing it, using `withheldPhotoIds`.
+  const toLayoutDescriptor = (photoId: string): { photoId: string; aspectRatio: number; periodKey: string } => {
+    const descriptor = descriptorsById.get(photoId)!;
+    return { photoId: descriptor.photoId, aspectRatio: descriptor.aspectRatio, periodKey: descriptor.periodKey };
+  };
+
   const rebuildLayoutIfDirty = (): void => {
     if (!dirty) {
       return;
     }
-    // A withheld descriptor stays in the layout input so its row/period never changes shape
-    // or count (ADR-0067); only the rendering layer skips drawing it, using `withheldPhotoIds`.
-    const layoutDescriptors = descriptorOrder.map((photoId) => {
-      const descriptor = descriptorsById.get(photoId)!;
-      return { photoId: descriptor.photoId, aspectRatio: descriptor.aspectRatio, periodKey: descriptor.periodKey };
-    });
-    const { items, incompleteTailPhotoIds } = computeJustifiedRows(layoutDescriptors, {
+    const options: JustifiedRowsOptions = {
       ...layoutOptions,
       // A failed load also relaxes the withheld tail into view (implementation doc "Justified Rows and Virtualisation").
       hasMore: !isExhausted && loadError === undefined,
-    });
-    cachedLayoutItems = items;
-    cachedIncompleteTail = incompleteTailPhotoIds;
+    };
+    // A container-width/spacing/target-height change invalidates every cached row's geometry, so
+    // it forces a full rebuild; an ordinary new page only needs to fold in what's newly arrived
+    // (see `createIncrementalJustifiedRows` -- a per-page full recompute is O(descriptors²) total
+    // across a 20,000-Photo scroll session).
+    const result = layoutOptionsDirty
+      ? incrementalLayout.reset(descriptorOrder.map(toLayoutDescriptor), options)
+      : incrementalLayout.append(descriptorOrder.slice(consumedDescriptorCount).map(toLayoutDescriptor), options);
+    consumedDescriptorCount = descriptorOrder.length;
+    layoutOptionsDirty = false;
+    cachedLayoutItems = result.items;
+    cachedIncompleteTail = result.incompleteTailPhotoIds;
     cachedSnapshot = undefined;
     dirty = false;
   };
@@ -343,6 +356,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     },
     setLayout: (next) => {
       layoutOptions = next;
+      layoutOptionsDirty = true;
       markDirty();
       cachedSnapshot = undefined;
       notify();

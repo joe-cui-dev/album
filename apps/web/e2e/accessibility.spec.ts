@@ -16,10 +16,8 @@ import { expect, test } from "./fixtures/test.js";
 
 /**
  * Axe scans across every stable state in execution-plan Slice 0.2's list that is currently
- * reachable in the app at a desktop viewport. Two states -- Viewer Adjust and Viewer Revert
- * -- have no production UI yet (Slice 2's Chronology editor); they are `test.fixme` here so
- * the gap stays traceable without pretending the scan happened. Mobile "Jump to date"
- * states live in `mobile-accessibility.spec.ts`, which needs a narrower viewport.
+ * reachable in the app at a desktop viewport. Mobile "Jump to date" states live in
+ * `mobile-accessibility.spec.ts`, which needs a narrower viewport.
  */
 
 const jpeg = { name: "beach.jpg", mimeType: "image/jpeg", buffer: Buffer.from("fake-jpeg-bytes") };
@@ -115,9 +113,38 @@ test("Photo Viewer More renders without axe violations", async ({ mock, page }) 
   await expectNoAxeViolations(page);
 });
 
-// Gap: no Adjust/Revert UI exists yet (execution plan Slice 2 -- Chronology editor).
-test.fixme("Photo Viewer Adjust renders without axe violations", async () => {});
-test.fixme("Photo Viewer Revert renders without axe violations", async () => {});
+test("Photo Viewer Adjust renders without axe violations", async ({ mock, page }) => {
+  mock.viewer.queueOnce((route) =>
+    respondJson(route, buildViewerBootstrap({ photoId: "photo-1", fileName: "beach.jpg" })),
+  );
+  await page.goto("/album/photos/photo-1");
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Adjust date and time" }).click();
+  await expect(page.getByRole("dialog", { name: "Adjust date and time" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
+
+test("Photo Viewer Revert renders without axe violations", async ({ mock, page }) => {
+  mock.viewer.queueOnce((route) =>
+    respondJson(
+      route,
+      buildViewerBootstrap({
+        photoId: "photo-1",
+        fileName: "beach.jpg",
+        chronology: {
+          original: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif" },
+          active: { capturedAt: { precision: "day", localDate: "2025-01-05" }, source: "userAdjusted", revision: 2 },
+        },
+      }),
+    ),
+  );
+  await page.goto("/album/photos/photo-1");
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Adjust date and time" }).click();
+  await page.getByRole("button", { name: "Revert to original date and time" }).click();
+  await expect(page.getByRole("dialog", { name: "Revert to original date and time?" })).toBeVisible();
+  await expectNoAxeViolations(page);
+});
 
 test("Photo Viewer loading state renders without axe violations", async ({ mock, page }) => {
   mock.viewer.queueOnce(() => new Promise(() => {})); // never resolves during the scan

@@ -32,12 +32,14 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts"],
+      // Project-level `testIgnore` replaces the root one rather than merging with it, so the
+      // performance directory must be repeated here to actually stay out of this portable project.
+      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts", "**/performance/**"],
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "firefox",
-      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts"],
+      testIgnore: ["**/webkit-mobile-smoke.spec.ts", "**/mobile-chromium-smoke.spec.ts", "**/performance/**"],
       use: { ...devices["Desktop Firefox"] },
     },
     {

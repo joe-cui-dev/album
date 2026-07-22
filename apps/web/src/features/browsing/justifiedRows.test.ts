@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeJustifiedRows, type PhotoLayoutDescriptor } from "./justifiedRows.js";
+import { computeJustifiedRows, createIncrementalJustifiedRows, type PhotoLayoutDescriptor } from "./justifiedRows.js";
 
 const square = (photoId: string, periodKey: string): PhotoLayoutDescriptor => ({
   photoId,
@@ -141,5 +141,64 @@ describe("computeJustifiedRows", () => {
     >;
     const totalWidth = row.itemWidths.reduce((sum, width) => sum + width, 0) + 20 * (row.itemWidths.length - 1);
     expect(totalWidth).toBeCloseTo(250, 5);
+  });
+});
+
+describe("createIncrementalJustifiedRows", () => {
+  const options = { containerWidth: 1000, spacing: 10, targetRowHeight: 200, hasMore: true };
+
+  it("appending page by page matches a single full recompute over the same descriptors", () => {
+    const pages: PhotoLayoutDescriptor[][] = [
+      [square("a", "2025-03"), square("b", "2025-03")],
+      [square("c", "2025-03"), square("d", "2025-02"), square("e", "2025-02")],
+      [square("f", "2025-02"), square("g", "2025-01")],
+    ];
+    const incremental = createIncrementalJustifiedRows();
+    let last;
+    for (const page of pages) {
+      last = incremental.append(page, options);
+    }
+
+    const full = computeJustifiedRows(pages.flat(), options);
+    expect(last).toEqual(full);
+  });
+
+  it("withholds the still-open final group's tail exactly like a full recompute, across appends", () => {
+    const incremental = createIncrementalJustifiedRows();
+    const afterFirst = incremental.append([square("a", "2025-03")], options);
+    expect(afterFirst.incompleteTailPhotoIds).toEqual(["a"]);
+    expect(afterFirst.items).toEqual([{ kind: "month-marker", periodKey: "2025-03" }]);
+
+    const afterSecond = incremental.append([square("b", "2025-02")], options);
+    const full = computeJustifiedRows([square("a", "2025-03"), square("b", "2025-02")], options);
+    expect(afterSecond).toEqual(full);
+  });
+
+  it("does not permanently settle a tail relaxed only by a transient load error -- a later same-period append can still extend it", () => {
+    const incremental = createIncrementalJustifiedRows();
+    incremental.append([square("a", "2025-03")], options);
+
+    // A load error surfaces with no new descriptors; hasMore flips false, relaxing the tail.
+    const afterError = incremental.append([], { ...options, hasMore: false });
+    expect(afterError.incompleteTailPhotoIds).toBeUndefined();
+    expect(afterError.items).toEqual([
+      { kind: "month-marker", periodKey: "2025-03" },
+      { kind: "row", periodKey: "2025-03", photoIds: ["a"], height: 200, itemWidths: [200] },
+    ]);
+
+    // Retry succeeds and extends the same still-open period rather than starting a new one.
+    const afterRetry = incremental.append([square("b", "2025-03")], options);
+    const full = computeJustifiedRows([square("a", "2025-03"), square("b", "2025-03")], options);
+    expect(afterRetry).toEqual(full);
+  });
+
+  it("reset recomputes from scratch, e.g. after a container-width change invalidates prior geometry", () => {
+    const incremental = createIncrementalJustifiedRows();
+    incremental.append([square("a", "2025-03"), square("b", "2025-02")], options);
+
+    const narrower = { ...options, containerWidth: 100 };
+    const afterReset = incremental.reset([square("a", "2025-03"), square("b", "2025-02")], narrower);
+    const full = computeJustifiedRows([square("a", "2025-03"), square("b", "2025-02")], narrower);
+    expect(afterReset).toEqual(full);
   });
 });
