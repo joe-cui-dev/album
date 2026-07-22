@@ -10,6 +10,7 @@ import type { PhotoViewer } from "./photoViewer.js";
 import { usePhotoViewerSnapshot } from "./usePhotoViewer.js";
 import { CapturedAtEditorDialog } from "../chronology/CapturedAtEditorDialog.js";
 import { createHttpCapturedAtEditorPort } from "../chronology/capturedAtEditorPort.js";
+import { ViewerMediaStage } from "./ViewerMediaStage.js";
 
 interface PhotoViewerDarkroomProps {
   viewer: PhotoViewer;
@@ -29,11 +30,36 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorHistoryBackSignal, setEditorHistoryBackSignal] = useState(0);
   const [chronologyAnnouncement, setChronologyAnnouncement] = useState<string>();
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const [gestureActive, setGestureActive] = useState(false);
+  const [activityTick, setActivityTick] = useState(0);
+  const [photoAnnouncement, setPhotoAnnouncement] = useState<string>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const editorHistoryReadyRef = useRef(false);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const announcedPhotoRef = useRef<string | undefined>(undefined);
+  const idleTimerRef = useRef<number | undefined>(undefined);
+  const bootstrap = snapshot.bootstrap;
+
+  const revealChrome = () => { setChromeVisible(true); setActivityTick((tick) => tick + 1); };
+  useEffect(() => {
+    window.clearTimeout(idleTimerRef.current);
+    if (!gestureActive && !infoOpen && !moreOpen && !editorOpen && chromeVisible) {
+      idleTimerRef.current = window.setTimeout(() => setChromeVisible(false), 3_000);
+    }
+    return () => window.clearTimeout(idleTimerRef.current);
+  }, [activityTick, bootstrap?.photoId, chromeVisible, editorOpen, gestureActive, infoOpen, moreOpen]);
+
+  useEffect(() => {
+    if (!bootstrap) return;
+    if (announcedPhotoRef.current !== undefined && announcedPhotoRef.current !== bootstrap.photoId) {
+      setPhotoAnnouncement(`${bootstrap.fileName}. ${formatCapturedAt(bootstrap.chronology.active.capturedAt, "accessible")}${snapshot.sequencePosition?.total !== undefined ? `. ${snapshot.sequencePosition.index + 1} of ${snapshot.sequencePosition.total}` : ""}`);
+    }
+    announcedPhotoRef.current = bootstrap.photoId;
+  }, [bootstrap, snapshot.sequencePosition]);
 
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
@@ -63,12 +89,14 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       if (editorOpen) {
         return;
       }
+      revealChrome();
       if (event.key === "Escape") {
         event.preventDefault();
         if (moreOpen) {
           setMoreOpen(false);
           return;
         }
+        if (infoOpen) { setInfoOpen(false); return; }
         onClose();
       } else if (event.key === "ArrowLeft") {
         viewer.intents.showPrevious();
@@ -80,7 +108,17 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, viewer, moreOpen, editorOpen]);
+  }, [onClose, viewer, moreOpen, infoOpen, editorOpen]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const outside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node) && !moreButtonRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [moreOpen]);
 
   useEffect(() => {
     const viewerElement = dialogRef.current;
@@ -103,8 +141,6 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       setEditorHistoryBackSignal((signal) => signal + 1);
     }
   }, [editorOpen, location.key, location.state]);
-
-  const bootstrap = snapshot.bootstrap;
 
   const advanceOrClose = (): void => {
     if (bootstrap?.olderPhotoId !== undefined) {
@@ -129,6 +165,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     if (!bootstrap) {
       return;
     }
+    setMoreOpen(false);
     mutations.intents.downloadOriginal({ photoId: bootstrap.photoId, fileName: bootstrap.fileName });
   };
 
@@ -156,8 +193,9 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       className="fixed inset-0 z-50 flex flex-col bg-stone-950 text-white"
       ref={dialogRef}
       role={mode === "contextual" ? "dialog" : undefined}
+      onFocusCapture={revealChrome}
     >
-      <header className="flex items-center justify-between gap-3 p-3">
+      <header className={`flex items-center justify-between gap-3 p-3 transition-opacity ${chromeVisible ? "" : "pointer-events-none opacity-0"}`} onFocus={revealChrome}>
         <button
           aria-label="Close"
           className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
@@ -177,6 +215,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
         </div>
         <div className="flex items-center gap-1">
           <button
+            aria-controls="photo-information"
             aria-expanded={infoOpen}
             aria-label="Photo information"
             className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
@@ -193,6 +232,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                 aria-label="More"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
                 onClick={() => setMoreOpen((open) => !open)}
+                onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") { event.preventDefault(); setMoreOpen(true); } }}
                 ref={moreButtonRef}
                 type="button"
               >
@@ -201,6 +241,14 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
               {moreOpen ? (
                 <div
                   className="absolute right-0 top-full z-10 mt-1 min-w-48 rounded-md border border-white/10 bg-stone-900 py-1 text-sm shadow-lg"
+                  onKeyDown={(event) => {
+                    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+                    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+                    if (event.key === "Escape") { event.preventDefault(); setMoreOpen(false); moreButtonRef.current?.focus(); }
+                    else if (event.key === "Tab") setMoreOpen(false);
+                    else if (event.key === "Home" || event.key === "End" || event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; items[next]?.focus(); }
+                  }}
+                  ref={menuRef}
                   role="menu"
                 >
                   <button
@@ -235,38 +283,20 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
         </div>
       </header>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-        {snapshot.collectionChanged ? (
+      {snapshot.collectionChanged ? (
           <CollectionChangedNotice
             currentCollection={snapshot.collectionChanged.currentCollection}
             onReturn={onClose}
             onSwitch={() => viewer.intents.switchToCurrentCollection()}
           />
-        ) : snapshot.loadError ? (
-          <p className="flex flex-col items-center gap-3 text-center">
-            Couldn&apos;t load this photo.
-            <button className="underline" onClick={() => viewer.intents.retry()} type="button">
-              Retry
-            </button>
-          </p>
-        ) : snapshot.isLoading || !bootstrap ? (
-          <p role="status">Loading photo…</p>
-        ) : (
-          <img
-            alt={bootstrap.fileName}
-            className="max-h-full max-w-full object-contain"
-            onLoad={() => viewer.intents.notifyDisplayDecoded()}
-            src={bootstrap.displayAccess.url}
-          />
-        )}
-
+        ) : <ViewerMediaStage bootstrap={bootstrap} chromeVisible={chromeVisible} isLoading={snapshot.isLoading} loadError={snapshot.loadError} onActivity={revealChrome} onGesture={setGestureActive} onToggleChrome={() => setChromeVisible((visible) => !visible)} viewer={viewer}>
         {bootstrap?.newerPhotoId !== undefined ? (
           <NavButton ariaLabel="Previous" icon="left" onClick={() => viewer.intents.showPrevious()} />
         ) : null}
         {bootstrap?.olderPhotoId !== undefined ? (
           <NavButton ariaLabel="Next" icon="right" onClick={() => viewer.intents.showNext()} />
         ) : null}
-      </div>
+      </ViewerMediaStage>}
 
       {infoOpen && bootstrap ? <InfoPanel bootstrap={bootstrap} /> : null}
       {editorOpen && bootstrap ? (
@@ -286,6 +316,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
         />
       ) : null}
       {chronologyAnnouncement ? <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{chronologyAnnouncement}</p> : null}
+      {photoAnnouncement ? <p aria-atomic="true" aria-live="polite" className="sr-only">{photoAnnouncement}</p> : null}
     </div>
   );
 }
@@ -306,6 +337,7 @@ function NavButton({
         icon === "left" ? "left-3" : "right-3"
       }`}
       onClick={onClick}
+      onPointerDown={(event) => event.stopPropagation()}
       type="button"
     >
       {icon === "left" ? (
@@ -349,7 +381,7 @@ function CollectionChangedNotice({
 
 function InfoPanel({ bootstrap }: { bootstrap: NonNullable<ReturnType<typeof usePhotoViewerSnapshot>["bootstrap"]> }) {
   return (
-    <aside className="max-h-[40vh] overflow-y-auto border-t border-white/10 bg-stone-900 p-4 text-sm">
+    <aside aria-label="Photo information" className="max-h-[40vh] overflow-y-auto border-t border-white/10 bg-stone-900 p-4 text-sm" id="photo-information" role="region">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
         <dt className="font-semibold text-white/70">Captured</dt>
         <dd>{formatCapturedAt(bootstrap.chronology.active.capturedAt, "detail")}</dd>
