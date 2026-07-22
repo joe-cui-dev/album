@@ -99,6 +99,7 @@ describe("handleAdjustCapturedAt", () => {
       body: JSON.stringify({ capturedAt: june15 }),
     });
     expect(response.statusCode).toBe(412);
+    expect(JSON.parse(response.body ?? "{}")).toMatchObject({ code: "chronology_changed" });
   });
 
   it("rejects an invalid capturedAt body", async () => {

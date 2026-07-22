@@ -404,6 +404,7 @@ export type PhotoCollection = "active" | "archived";
 export type AlbumErrorCode =
   | "empty_period"
   | "photo_collection_changed"
+  | "chronology_changed"
   | "concurrent_projection_movement";
 
 export interface AlbumErrorBody {

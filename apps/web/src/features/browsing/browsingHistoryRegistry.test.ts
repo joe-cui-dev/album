@@ -181,3 +181,30 @@ describe("notifyPhotosArrived", () => {
     expect(() => registry.notifyPhotosArrived()).not.toThrow();
   });
 });
+
+describe("applyChronologyChange", () => {
+  it("withholds the stale mounted placement without a live jump", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const archive = fakeWindow();
+    const timeline = fakeWindow();
+    registry.activate("archived:latest", () => archive);
+    registry.activate("active:latest", () => timeline);
+
+    registry.applyChronologyChange({ photoId: "photo-1", collection: "active" });
+
+    expect(timeline.intents.setWithheld).toHaveBeenCalledWith("photo-1", true);
+    expect(archive.dispose).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a retained window for the changed collection", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    const archive = fakeWindow();
+    registry.activate("active:latest", () => timeline);
+    registry.activate("archived:latest", () => archive);
+
+    registry.applyChronologyChange({ photoId: "photo-1", collection: "active" });
+
+    expect(timeline.dispose).toHaveBeenCalledTimes(1);
+  });
+});

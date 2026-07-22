@@ -28,6 +28,8 @@ export interface AlbumMutationsIntents {
   setMembership(input: { photoId: string; collection: PhotoCollection }): void;
   retryProcessing(photoId: string): void;
   downloadOriginal(input: { photoId: string; fileName: string }): void;
+  /** Shell-level chronology intent used by the Viewer after a successful Adjust or Revert. */
+  chronologyChanged(input: { photoId: string; collection: PhotoCollection }): void;
   dismissFeedback(): void;
 }
 
@@ -223,6 +225,14 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     },
     downloadOriginal: ({ photoId, fileName }) => {
       void runDownloadOriginal(photoId, fileName);
+    },
+    chronologyChanged: ({ photoId, collection }) => {
+      if (disposed) {
+        return;
+      }
+      registry.applyChronologyChange({ photoId, collection });
+      navigationRevision += 1;
+      notify();
     },
     dismissFeedback: () => {
       if (feedback === undefined) {

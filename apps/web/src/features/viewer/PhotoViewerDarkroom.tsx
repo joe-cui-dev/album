@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { ChevronLeft, ChevronRight, Info, MoreVertical, X } from "lucide-react";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
+import { capturedAtSourceLabel } from "../../lib/capturedAtSource.js";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { ALBUM_BACKGROUND_ROOT_ID } from "../shell/albumBackgroundRoot.js";
 import type { PhotoViewer } from "./photoViewer.js";
 import { usePhotoViewerSnapshot } from "./usePhotoViewer.js";
+import { CapturedAtEditorDialog } from "../chronology/CapturedAtEditorDialog.js";
+import { createHttpCapturedAtEditorPort } from "../chronology/capturedAtEditorPort.js";
 
 interface PhotoViewerDarkroomProps {
   viewer: PhotoViewer;
@@ -16,12 +20,19 @@ interface PhotoViewerDarkroomProps {
 
 /** The tracer Viewer's Darkroom presentation (implementation doc "Photo Viewer"). */
 export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoViewerDarkroomProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const snapshot = usePhotoViewerSnapshot(viewer);
   const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
   const [infoOpen, setInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorHistoryBackSignal, setEditorHistoryBackSignal] = useState(0);
+  const [chronologyAnnouncement, setChronologyAnnouncement] = useState<string>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const editorHistoryReadyRef = useRef(false);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -49,6 +60,9 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (editorOpen) {
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         if (moreOpen) {
@@ -66,7 +80,29 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, viewer, moreOpen]);
+  }, [onClose, viewer, moreOpen, editorOpen]);
+
+  useEffect(() => {
+    const viewerElement = dialogRef.current;
+    if (!viewerElement || !editorOpen) {
+      return;
+    }
+    viewerElement.setAttribute("inert", "");
+    viewerElement.setAttribute("aria-hidden", "true");
+    return () => {
+      viewerElement.removeAttribute("inert");
+      viewerElement.removeAttribute("aria-hidden");
+    };
+  }, [editorOpen]);
+
+  useEffect(() => {
+    const isEditorEntry = Boolean((location.state as { capturedAtEditor?: boolean } | null)?.capturedAtEditor);
+    if (editorOpen && isEditorEntry) {
+      editorHistoryReadyRef.current = true;
+    } else if (editorOpen && editorHistoryReadyRef.current) {
+      setEditorHistoryBackSignal((signal) => signal + 1);
+    }
+  }, [editorOpen, location.key, location.state]);
 
   const bootstrap = snapshot.bootstrap;
 
@@ -94,6 +130,21 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       return;
     }
     mutations.intents.downloadOriginal({ photoId: bootstrap.photoId, fileName: bootstrap.fileName });
+  };
+
+  const openEditor = (): void => {
+    setMoreOpen(false);
+    navigate(location.pathname, { state: { ...(location.state ?? {}), capturedAtEditor: true } });
+    setEditorOpen(true);
+  };
+
+  const closeEditor = (fromHistory = false): void => {
+    setEditorOpen(false);
+    editorHistoryReadyRef.current = false;
+    if (!fromHistory) {
+      navigate(-1);
+    }
+    window.setTimeout(() => moreButtonRef.current?.focus(), 0);
   };
 
   const downloadInFlight = bootstrap ? mutationsSnapshot.downloadsInFlight.has(bootstrap.photoId) : false;
@@ -142,6 +193,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                 aria-label="More"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
                 onClick={() => setMoreOpen((open) => !open)}
+                ref={moreButtonRef}
                 type="button"
               >
                 <MoreVertical aria-hidden="true" className="h-5 w-5" />
@@ -151,6 +203,14 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                   className="absolute right-0 top-full z-10 mt-1 min-w-48 rounded-md border border-white/10 bg-stone-900 py-1 text-sm shadow-lg"
                   role="menu"
                 >
+                  <button
+                    className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10"
+                    onClick={openEditor}
+                    role="menuitem"
+                    type="button"
+                  >
+                    Adjust date and time
+                  </button>
                   <button
                     className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10"
                     onClick={handleArchiveOrRestore}
@@ -209,6 +269,23 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       </div>
 
       {infoOpen && bootstrap ? <InfoPanel bootstrap={bootstrap} /> : null}
+      {editorOpen && bootstrap ? (
+        <CapturedAtEditorDialog
+          chronology={bootstrap.chronology}
+          collection={bootstrap.collection}
+          historyBackSignal={editorHistoryBackSignal}
+          onDismiss={closeEditor}
+          onSuccess={(result) => {
+            mutations.intents.chronologyChanged({ photoId: bootstrap.photoId, collection: bootstrap.collection });
+            setChronologyAnnouncement(`${result.kind === "adjust" ? "Date and time adjusted" : "Date and time reverted"}. ${formatCapturedAt(result.capturedAt, "accessible")}. ${capturedAtSourceLabel(result.source)}.`);
+            viewer.intents.refresh();
+          }}
+          photoId={bootstrap.photoId}
+          port={createHttpCapturedAtEditorPort()}
+          restoreHistoryEntry={() => navigate(location.pathname, { state: { ...(location.state ?? {}), capturedAtEditor: true } })}
+        />
+      ) : null}
+      {chronologyAnnouncement ? <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{chronologyAnnouncement}</p> : null}
     </div>
   );
 }
@@ -276,6 +353,8 @@ function InfoPanel({ bootstrap }: { bootstrap: NonNullable<ReturnType<typeof use
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
         <dt className="font-semibold text-white/70">Captured</dt>
         <dd>{formatCapturedAt(bootstrap.chronology.active.capturedAt, "detail")}</dd>
+        <dt className="font-semibold text-white/70">Source</dt>
+        <dd>{capturedAtSourceLabel(bootstrap.chronology.active.source)}</dd>
         {bootstrap.metadata?.cameraMake ? (
           <>
             <dt className="font-semibold text-white/70">Camera</dt>

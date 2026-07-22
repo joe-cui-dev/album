@@ -118,7 +118,7 @@ export const handleRevertCapturedAt = async ({
 
 const mapChronologyError = (error: unknown): APIGatewayProxyStructuredResultV2 => {
   if (error instanceof StaleChronologyRevisionError) {
-    return json(412, { message: "The Photo's chronology has changed; refresh and try again" });
+    return json(412, { code: "chronology_changed", message: "Captured At changed since it was loaded" });
   }
   return mapConcurrentModificationError(error);
 };

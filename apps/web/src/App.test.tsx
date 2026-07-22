@@ -257,4 +257,23 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("img", { name: "beach.jpg" })).not.toBeInTheDocument());
   });
+
+  it("uses the central source label in Viewer Info and opens the date-and-time editor from More", async () => {
+    mockSignedInFetch({ timeline: onePhotoCollectionPage, viewer: viewerBootstrap });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("link", { name: /beach\.jpg/ }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Photo information" }));
+    expect(await screen.findByText("Date from photo")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Adjust date and time" }));
+    const editor = await screen.findByRole("dialog", { name: "Adjust date and time" });
+    expect(within(editor).getByLabelText("Date")).toHaveValue("");
+    expect(within(editor).getByLabelText("Date")).toHaveFocus();
+
+    await userEvent.click(within(editor).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Adjust date and time" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "More" })).toHaveFocus();
+  });
 });

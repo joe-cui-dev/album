@@ -26,6 +26,8 @@ export interface BrowsingHistoryRegistry {
    * activation refetches and picks the new Photos up.
    */
   notifyPhotosArrived(): void;
+  /** A Viewer Adjust/Revert moved chronology. Retained windows must refetch; a mounted one keeps its anchor and withholds its stale placement. */
+  applyChronologyChange(change: { photoId: string; collection: PhotoCollection }): void;
   /** Disposes every retained window (Session loss or explicit Sign Out; ADR-0062). */
   disposeAll(): void;
 }
@@ -85,6 +87,13 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
     },
     notifyPhotosArrived: () => {
       invalidateIfNotMounted("active");
+    },
+    applyChronologyChange: ({ photoId, collection }) => {
+      // The mounted Browsing Window remains stable beneath a contextual Viewer;
+      // hiding the stale descriptor avoids presenting the old chronology slot or
+      // forcing a surprise live jump. Retained windows are recreated on return.
+      withholdInMountedWindow(photoId, collection, true);
+      invalidateIfNotMounted(collection);
     },
     disposeAll: () => {
       active?.window.dispose();

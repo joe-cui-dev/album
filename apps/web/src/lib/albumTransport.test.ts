@@ -64,6 +64,17 @@ describe("albumTransport.request", () => {
     });
   });
 
+  it("exposes a stale chronology as chronology_changed without inspecting its message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({ code: "chronology_changed", message: "anything" }, { status: 412 }),
+    );
+
+    await expect(albumTransport.request("/photos/photo-1/captured-at-adjustment")).rejects.toMatchObject({
+      code: "chronology_changed",
+      status: 412,
+    });
+  });
+
   it("carries currentCollection through for a photo_collection_changed conflict", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       Response.json(

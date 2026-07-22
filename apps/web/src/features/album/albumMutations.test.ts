@@ -8,6 +8,7 @@ const fakeRegistry = (): BrowsingHistoryRegistry => ({
   applyMembershipChange: vi.fn(),
   revertMembershipChange: vi.fn(),
   notifyPhotosArrived: vi.fn(),
+  applyChronologyChange: vi.fn(),
   disposeAll: vi.fn(),
 });
 

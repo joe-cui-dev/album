@@ -125,6 +125,16 @@ describe("createPhotoViewer", () => {
     expect(test.calls).toHaveLength(2);
   });
 
+  it("refreshes the current Photo and clears its now-stale exact sequence position", async () => {
+    viewer = createPhotoViewer({ photoId: "b", port: test.port, initialSequencePosition: { index: 2, total: 4 } });
+    test.resolveNextBootstrap(bootstrap("b"));
+    await flush();
+
+    viewer.intents.refresh();
+    expect(test.calls[1]).toEqual({ photoId: "b", collection: "active" });
+    expect(viewer.getSnapshot().sequencePosition).toBeUndefined();
+  });
+
   it("offsets the originating Sequence Position by one on each Previous/Next step", async () => {
     viewer = createPhotoViewer({
       photoId: "b",

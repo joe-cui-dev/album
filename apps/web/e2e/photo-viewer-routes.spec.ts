@@ -94,3 +94,28 @@ test("traps Tab focus within the contextual Viewer", async ({ mock, page }) => {
   await page.keyboard.press("Tab");
   await expect(closeButton).toBeFocused();
 });
+
+test("opens Adjust from More and resolves browser Back inside the dirty editor", async ({ mock, page }) => {
+  const photo = buildPhoto({ photoId: "photo-1", fileName: "beach.jpg" });
+  mock.timeline.queueOnce((route) => respondJson(route, collectionPage([photo])));
+  mock.navigation.queueOnce((route) => respondJson(route, emptyNavigation()));
+  mock.viewer.queueOnce((route) =>
+    respondJson(route, buildViewerBootstrap({ photoId: "photo-1", fileName: "beach.jpg" })),
+  );
+
+  await page.goto("/album");
+  await page.getByRole("link", { name: /beach\.jpg/ }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Adjust date and time" }).click();
+
+  const editor = page.getByRole("dialog", { name: "Adjust date and time" });
+  await expect(editor).toBeVisible();
+  await editor.getByLabel("Date").fill("2025-01-02");
+  await page.goBack();
+
+  await expect(page.getByRole("dialog", { name: "Discard changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page).toHaveURL("/album/photos/photo-1");
+  await expect(page.getByRole("button", { name: "More" })).toBeFocused();
+});

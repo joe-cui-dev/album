@@ -26,6 +26,8 @@ export interface PhotoViewerIntents {
   /** Toward `olderPhotoId` in visual collection order. */
   showNext(): void;
   retry(): void;
+  /** Reloads the current bootstrap after a chronology mutation so neighbours and exact position converge. */
+  refresh(): void;
   /** Explicit acknowledgement of a `photo_collection_changed` conflict. */
   switchToCurrentCollection(): void;
   /** The adapter calls this once the current Display Photo has decoded, permitting bounded neighbour prefetch. */
@@ -221,6 +223,13 @@ export const createPhotoViewer = (options: PhotoViewerOptions): PhotoViewer => {
       if (loadError === undefined) {
         return;
       }
+      void runLoad(currentPhotoId, requestedCollection);
+    },
+    refresh: () => {
+      // A chronology mutation can move this Photo anywhere in the source
+      // Browsing Window. The old index is no longer exact, so omit it rather
+      // than announcing a stale position until a future window establishes one.
+      sequencePosition = undefined;
       void runLoad(currentPhotoId, requestedCollection);
     },
     switchToCurrentCollection: () => {

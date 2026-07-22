@@ -110,6 +110,7 @@ const isAbortError = (error: unknown): boolean =>
 const albumErrorCodes = new Set<AlbumErrorCode>([
   "empty_period",
   "photo_collection_changed",
+  "chronology_changed",
   "concurrent_projection_movement",
 ]);
 const isAlbumErrorCode = (value: unknown): value is AlbumErrorCode =>
