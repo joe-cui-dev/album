@@ -193,7 +193,10 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       aria-modal={mode === "contextual" ? "true" : undefined}
       className="fixed inset-0 z-50 flex flex-col bg-stone-950 text-white"
       ref={dialogRef}
-      role={mode === "contextual" ? "dialog" : undefined}
+      // A direct/standalone load (refresh or shared link) has no background page underneath --
+      // this is the page's whole content, so it needs a landmark (axe "region") rather than the
+      // dialog role reserved for the contextual overlay atop a Timeline/Archive background.
+      role={mode === "contextual" ? "dialog" : "main"}
       onFocusCapture={revealChrome}
     >
       {/* A plain div, not <header>: nested inside the dialog it would register as a second

@@ -61,7 +61,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return (
       <main className="session-state" aria-live="polite">
         <span aria-hidden="true" className="session-mark">A</span>
-        <p>{uiMessages.session.loading}</p>
+        <h1 className="session-loading-heading">{uiMessages.session.loading}</h1>
       </main>
     );
   }
