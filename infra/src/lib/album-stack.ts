@@ -136,39 +136,35 @@ export class AlbumStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const webDistribution = new Distribution(
-      this,
-      "WebDistribution",
-      {
-        certificate: props.certificate,
-        domainNames: [albumDomain],
-        defaultRootObject: "index.html",
-        errorResponses: [
-          {
-            httpStatus: 403,
-            responseHttpStatus: 200,
-            responsePagePath: "/index.html",
-            ttl: Duration.minutes(5),
-          },
-          {
-            httpStatus: 404,
-            responseHttpStatus: 200,
-            responsePagePath: "/index.html",
-            ttl: Duration.minutes(5),
-          },
-        ],
-        priceClass: PriceClass.PRICE_CLASS_100,
-        defaultBehavior: {
-          origin: S3BucketOrigin.withOriginAccessControl(
-            webBucket as unknown as IBucket,
-          ),
-          allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
-          cachePolicy: CachePolicy.CACHING_OPTIMIZED,
-          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+    const webDistribution = new Distribution(this, "WebDistribution", {
+      certificate: props.certificate,
+      domainNames: [albumDomain],
+      defaultRootObject: "index.html",
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: "/index.html",
+          ttl: Duration.minutes(5),
         },
-        minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: "/index.html",
+          ttl: Duration.minutes(5),
+        },
+      ],
+      priceClass: PriceClass.PRICE_CLASS_100,
+      defaultBehavior: {
+        origin: S3BucketOrigin.withOriginAccessControl(
+          webBucket as unknown as IBucket,
+        ),
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
-    );
+      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+    });
 
     new ARecord(this, "AlbumAliasRecord", {
       zone: hostedZone,
@@ -369,9 +365,27 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const retryProcessing = new NodejsFunction(
+    const retryProcessing = new NodejsFunction(this, "RetryProcessingHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "retry-processing.ts",
+      ),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "RetryProcessingLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const processingIssues = new NodejsFunction(
       this,
-      "RetryProcessingHandler",
+      "ProcessingIssuesHandler",
       {
         runtime: Runtime.NODEJS_22_X,
         entry: join(
@@ -380,53 +394,71 @@ export class AlbumStack extends Stack {
           "api",
           "src",
           "handlers",
-          "retry-processing.ts",
+          "processing-issues.ts",
         ),
         handler: "handler",
         environment: commonEnvironment,
         reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "RetryProcessingLogGroup", {
+        logGroup: new LogGroup(this, "ProcessingIssuesLogGroup", {
           retention: RetentionDays.ONE_WEEK,
         }),
       },
     );
 
-    const processingIssues = new NodejsFunction(this, "ProcessingIssuesHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "processing-issues.ts"),
-      handler: "handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ProcessingIssuesLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const processingIssuesSummary = new NodejsFunction(
+      this,
+      "ProcessingIssuesSummaryHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "processing-issues.ts",
+        ),
+        handler: "summaryHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "ProcessingIssuesSummaryLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
-    const processingIssuesSummary = new NodejsFunction(this, "ProcessingIssuesSummaryHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "processing-issues.ts"),
-      handler: "summaryHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ProcessingIssuesSummaryLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
-
-    const timelinePhotosV2 = new NodejsFunction(this, "TimelinePhotosV2Handler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "list-collection-photos-v2.ts"),
-      handler: "timelinePhotosV2Handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "TimelinePhotosV2LogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const timelinePhotosV2 = new NodejsFunction(
+      this,
+      "TimelinePhotosV2Handler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "list-collection-photos-v2.ts",
+        ),
+        handler: "timelinePhotosV2Handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "TimelinePhotosV2LogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
     const archivePhotosV2 = new NodejsFunction(this, "ArchivePhotosV2Handler", {
       runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "list-collection-photos-v2.ts"),
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "list-collection-photos-v2.ts",
+      ),
       handler: "archivePhotosV2Handler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
@@ -437,7 +469,14 @@ export class AlbumStack extends Stack {
 
     const albumNavigation = new NodejsFunction(this, "AlbumNavigationHandler", {
       runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "album-navigation.ts"),
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "album-navigation.ts",
+      ),
       handler: "handler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
@@ -446,20 +485,38 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const timelineThumbnailAccess = new NodejsFunction(this, "TimelineThumbnailAccessHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "timeline-thumbnail-access.ts"),
-      handler: "handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "TimelineThumbnailAccessLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const timelineThumbnailAccess = new NodejsFunction(
+      this,
+      "TimelineThumbnailAccessHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "timeline-thumbnail-access.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "TimelineThumbnailAccessLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
     const viewerBootstrap = new NodejsFunction(this, "ViewerBootstrapHandler", {
       runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "viewer-bootstrap.ts"),
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "viewer-bootstrap.ts",
+      ),
       handler: "handler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
@@ -468,49 +525,93 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const adjustCapturedAt = new NodejsFunction(this, "AdjustCapturedAtHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "captured-at-adjustment.ts"),
-      handler: "adjustCapturedAtHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "AdjustCapturedAtLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const adjustCapturedAt = new NodejsFunction(
+      this,
+      "AdjustCapturedAtHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "captured-at-adjustment.ts",
+        ),
+        handler: "adjustCapturedAtHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "AdjustCapturedAtLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
-    const revertCapturedAt = new NodejsFunction(this, "RevertCapturedAtHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "captured-at-adjustment.ts"),
-      handler: "revertCapturedAtHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "RevertCapturedAtLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const revertCapturedAt = new NodejsFunction(
+      this,
+      "RevertCapturedAtHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "captured-at-adjustment.ts",
+        ),
+        handler: "revertCapturedAtHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "RevertCapturedAtLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
-    const archiveMembership = new NodejsFunction(this, "ArchiveMembershipHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "archive-membership.ts"),
-      handler: "archiveMembershipHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ArchiveMembershipLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const archiveMembership = new NodejsFunction(
+      this,
+      "ArchiveMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "archive-membership.ts",
+        ),
+        handler: "archiveMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "ArchiveMembershipLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
-    const restoreMembership = new NodejsFunction(this, "RestoreMembershipHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "archive-membership.ts"),
-      handler: "restoreMembershipHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "RestoreMembershipLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const restoreMembership = new NodejsFunction(
+      this,
+      "RestoreMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "archive-membership.ts",
+        ),
+        handler: "restoreMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "RestoreMembershipLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
     const session = new NodejsFunction(this, "SessionHandler", {
       runtime: Runtime.NODEJS_22_X,
@@ -534,17 +635,28 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const dispatchSignInCode = new NodejsFunction(this, "DispatchSignInCodeHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "dispatch-sign-in-code.ts"),
-      handler: "handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 2,
-      timeout: Duration.seconds(30),
-      logGroup: new LogGroup(this, "DispatchSignInCodeLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const dispatchSignInCode = new NodejsFunction(
+      this,
+      "DispatchSignInCodeHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "dispatch-sign-in-code.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 2,
+        timeout: Duration.seconds(30),
+        logGroup: new LogGroup(this, "DispatchSignInCodeLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
     dispatchSignInCode.addEventSource(
       new SqsEventSource(signInDispatchQueue, {
         batchSize: 5,
@@ -574,46 +686,60 @@ export class AlbumStack extends Stack {
       }),
     );
 
-    const photoMaintenanceWorker = new NodejsFunction(this, "PhotoMaintenanceWorker", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "maintenance.ts"),
-      handler: "maintenanceWorkerHandler",
-      environment: commonEnvironment,
-      bundling: { forceDockerBundling: true, nodeModules: ["sharp"] },
-      reservedConcurrentExecutions: 2,
-      timeout: Duration.minutes(2),
-      logGroup: new LogGroup(this, "PhotoMaintenanceWorkerLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
+    const photoMaintenanceWorker = new NodejsFunction(
+      this,
+      "PhotoMaintenanceWorker",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "maintenance.ts"),
+        handler: "maintenanceWorkerHandler",
+        environment: commonEnvironment,
+        bundling: { forceDockerBundling: true, nodeModules: ["sharp"] },
+        reservedConcurrentExecutions: 2,
+        timeout: Duration.minutes(2),
+        logGroup: new LogGroup(this, "PhotoMaintenanceWorkerLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+    photoMaintenanceWorker.addEventSource(
+      new SqsEventSource(photoMaintenanceQueue, {
+        batchSize: 1,
+        reportBatchItemFailures: true,
       }),
-    });
-    photoMaintenanceWorker.addEventSource(new SqsEventSource(photoMaintenanceQueue, {
-      batchSize: 1,
-      reportBatchItemFailures: true,
-    }));
+    );
 
-    const photoMaintenanceCoordinator = new NodejsFunction(this, "PhotoMaintenanceCoordinator", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "maintenance-coordinator.ts"),
-      handler: "handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 1,
-      timeout: Duration.minutes(5),
-      logGroup: new LogGroup(this, "PhotoMaintenanceCoordinatorLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const photoMaintenanceCoordinator = new NodejsFunction(
+      this,
+      "PhotoMaintenanceCoordinator",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "maintenance-coordinator.ts"),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 1,
+        timeout: Duration.minutes(5),
+        logGroup: new LogGroup(this, "PhotoMaintenanceCoordinatorLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
-    const phase2Reconciliation = new NodejsFunction(this, "Phase2Reconciliation", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "reconciliation-handler.ts"),
-      handler: "handler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 1,
-      timeout: Duration.minutes(5),
-      logGroup: new LogGroup(this, "Phase2ReconciliationLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
+    const phase2Reconciliation = new NodejsFunction(
+      this,
+      "Phase2Reconciliation",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "reconciliation-handler.ts"),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 1,
+        timeout: Duration.minutes(5),
+        logGroup: new LogGroup(this, "Phase2ReconciliationLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
 
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
@@ -726,23 +852,39 @@ export class AlbumStack extends Stack {
     });
     processingQueueAgeAlarm.addAlarmAction(new SnsAction(alarmTopic));
 
-    const maintenanceDlqVisibleMessagesAlarm = new Alarm(this, "PhotoMaintenanceDlqVisibleMessagesAlarm", {
-      metric: photoMaintenanceDlq.metricApproximateNumberOfMessagesVisible({ period: Duration.minutes(5) }),
-      threshold: 0,
-      evaluationPeriods: 1,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
-    });
-    maintenanceDlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
+    const maintenanceDlqVisibleMessagesAlarm = new Alarm(
+      this,
+      "PhotoMaintenanceDlqVisibleMessagesAlarm",
+      {
+        metric: photoMaintenanceDlq.metricApproximateNumberOfMessagesVisible({
+          period: Duration.minutes(5),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      },
+    );
+    maintenanceDlqVisibleMessagesAlarm.addAlarmAction(
+      new SnsAction(alarmTopic),
+    );
 
-    const signInDispatchDlqVisibleMessagesAlarm = new Alarm(this, "SignInDispatchDlqVisibleMessagesAlarm", {
-      metric: signInDispatchDlq.metricApproximateNumberOfMessagesVisible({ period: Duration.minutes(5) }),
-      threshold: 0,
-      evaluationPeriods: 1,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
-    });
-    signInDispatchDlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
+    const signInDispatchDlqVisibleMessagesAlarm = new Alarm(
+      this,
+      "SignInDispatchDlqVisibleMessagesAlarm",
+      {
+        metric: signInDispatchDlq.metricApproximateNumberOfMessagesVisible({
+          period: Duration.minutes(5),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      },
+    );
+    signInDispatchDlqVisibleMessagesAlarm.addAlarmAction(
+      new SnsAction(alarmTopic),
+    );
 
     for (const lambda of [
       createUploadBatch,
@@ -832,16 +974,22 @@ export class AlbumStack extends Stack {
       ),
     });
 
-    api.addRoutes({
+    const sessionV2CodeRoutes = api.addRoutes({
       path: "/v2/session/sign-in-code",
       methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration("SessionV2CodeIntegration", sessionV2),
+      integration: new HttpLambdaIntegration(
+        "SessionV2CodeIntegration",
+        sessionV2,
+      ),
     });
 
-    api.addRoutes({
+    const sessionV2VerifyRoutes = api.addRoutes({
       path: "/v2/session/verify",
       methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration("SessionV2VerifyIntegration", sessionV2),
+      integration: new HttpLambdaIntegration(
+        "SessionV2VerifyIntegration",
+        sessionV2,
+      ),
     });
 
     // Per-route throttles for the two public, unauthenticated auth v2 endpoints (execution
@@ -851,9 +999,22 @@ export class AlbumStack extends Stack {
     // add its key here rather than setting `.routeSettings` again elsewhere.
     const defaultStage = api.defaultStage!.node.defaultChild as CfnStage;
     defaultStage.routeSettings = {
-      "POST /v2/session/sign-in-code": { throttlingRateLimit: 1, throttlingBurstLimit: 5 },
-      "POST /v2/session/verify": { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
+      "POST /v2/session/sign-in-code": {
+        ThrottlingRateLimit: 1,
+        ThrottlingBurstLimit: 5,
+      },
+      "POST /v2/session/verify": {
+        ThrottlingRateLimit: 5,
+        ThrottlingBurstLimit: 10,
+      },
     };
+    // RouteSettings refers to route keys, but CloudFormation does not infer an
+    // ordering relationship from those JSON keys. Ensure the routes exist before
+    // it applies the Default Stage settings that reference them.
+    api.defaultStage!.node.addDependency(
+      ...sessionV2CodeRoutes,
+      ...sessionV2VerifyRoutes,
+    );
 
     api.addRoutes({
       path: "/upload-batches",
