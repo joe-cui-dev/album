@@ -4,8 +4,8 @@ This is the living roadmap for Personal Album. It records the intended MVP bound
 
 ## Status
 
-- The experience foundation, chronology/scale foundation, browsing tracer, and supporting workflows are substantially implemented and deployed.
-- Refinement and acceptance decisions are complete; implementation remains in [the stage 5 execution plan](./refinement-acceptance-execution-plan.md).
+- The experience foundation, chronology/scale foundation, browsing tracer, and supporting workflows are implemented locally.
+- Candidate verification is defined in [the stage 5 execution plan](./refinement-acceptance-execution-plan.md); its performance, production, and assisted gates remain deliberately unclaimed.
 - Production smoke testing has not been confirmed, so the MVP is not yet accepted.
 
 Implementation, deployment, and production verification are separate milestones. A feature is only accepted after it works in the production user journey.
@@ -53,25 +53,15 @@ Using the default API Gateway URL remains acceptable through MVP acceptance. A s
 - Ready-only Timeline/Archive projections without the legacy `uploaded` Processing State.
 - Shared photo object-key contracts and storage adapters.
 - CDK deployment, frontend hosting, operational logs helper, and automated tests.
+- Auth v2, exact-Origin admission, allowlist revalidation, Viewer refinement, chronology editor,
+  accessibility/resilience closure, smoke-fixture verifier, and the 20,000-Photo candidate profile harness.
 
 ## Remaining Before MVP Acceptance
-
-### Refinement and accessibility
-
-- Complete Viewer swipe, zoom/pan, idle chrome, menu, Info, and access-recovery behaviour.
-- Deliver the User-facing Adjust/Revert Captured At journey.
-- Close WCAG 2.2 AA, focus, contrast, reduced-motion, long-text, and failure-scenario gates.
-- Add the portable acceptance harness, browser matrix, fixture pack, and 20,000-Photo measurement profile.
-
-### Security
-
-- Revalidate the User Allowlist on protected requests with the bounded temporary-grant window in ADR 0070.
-- Deploy asynchronous auth v2, abuse controls, and the no-code-ID contract in ADR 0071, then remove v1 after its observation window.
-- Validate the exact browser Origin for every state-changing API request.
 
 ### Production acceptance
 
 - Pass the automated, performance, assisted-device, and security gates in the [stage 5 execution plan](./refinement-acceptance-execution-plan.md).
+- Deploy and observe auth v2 for 24 hours, then remove v1 in a separately authorised deployment.
 - Complete the production smoke test in [deployment.md](./deployment.md) with dedicated Users and versioned non-private fixtures.
 - Publish a passing dated record under `docs/acceptance/`, then and only then mark the MVP Accepted.
 

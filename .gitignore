@@ -10,3 +10,4 @@ infra/cdk-outputs.json
 test-results/
 playwright-report/
 blob-report/
+fixtures/production-smoke/run-variants/

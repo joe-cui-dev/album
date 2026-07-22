@@ -6,12 +6,15 @@ import { defineConfig, devices } from "@playwright/test";
  * separate config/command (`verify:performance`) from the portable acceptance run: this
  * profile is hardware-specific and not part of the pass/fail acceptance gate for a PR.
  *
- * No specs live under `e2e/performance/` yet -- Slice 5 adds the 20,000-Photo generator
- * and measurement spec described in the execution plan.
+ * `e2e/performance/album-scale.spec.ts` owns the generated 20,000-Photo profile. The
+ * root command repeats it four times: one warm-up followed by three recorded runs.
  */
 export default defineConfig({
   testDir: "./e2e/performance",
   fullyParallel: false,
+  // Repeats are chronological evidence: run one warm-up, then three measurements on the
+  // same browser/machine rather than racing them on separate workers.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   reporter: "list",

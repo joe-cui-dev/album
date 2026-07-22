@@ -18,7 +18,7 @@
     "test:e2e": "npm run test:e2e -w @album/web",
     "verify:smoke-fixtures": "node scripts/verify-smoke-fixtures.mjs",
     "verify:acceptance": "npm run check && npm run test && npm run build && npm run test:e2e && npm run verify:smoke-fixtures && npm run cdk:synth",
-    "verify:performance": "npm run test:e2e:performance -w @album/web",
+    "verify:performance": "npm run test:e2e:performance -w @album/web -- --repeat-each=4",
     "dev:web": "npm run dev -w @album/web",
     "logs": "node scripts/logs.mjs query",
     "logs:tail": "node scripts/logs.mjs tail",
