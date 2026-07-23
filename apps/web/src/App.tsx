@@ -168,7 +168,7 @@ function AlbumRoutes({ registry, mutations, navCount, uploadTray }: AlbumRoutesP
                   action: (
                     <>
                       <button
-                        className="inline-flex min-h-10 items-center justify-center rounded-md bg-emerald-800 px-4 font-bold text-white"
+                        className="inline-flex min-h-10 items-center justify-center rounded-md bg-emulsion px-4 font-bold text-white hover:bg-emulsion-dark"
                         onClick={uploadTray.intents.open}
                         type="button"
                       >

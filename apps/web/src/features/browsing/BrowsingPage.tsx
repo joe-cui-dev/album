@@ -124,7 +124,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
         years={years}
       />
       <div className="min-w-0 flex-1">
-        <h1 className="mb-4 text-2xl font-bold text-stone-950" ref={headingRef} tabIndex={-1}>
+        <h1 className="mb-4" ref={headingRef} tabIndex={-1}>
           {title}
         </h1>
         <BrowsingGrid

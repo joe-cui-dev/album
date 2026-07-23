@@ -33,7 +33,7 @@ export function TimelineThumbnailImage({ sources, width, height, fetchPriority, 
     return (
       <div
         aria-hidden="true"
-        className="h-full w-full bg-stone-100"
+        className="h-full w-full bg-table-glow"
         style={{ width, height }}
       />
     );
@@ -42,7 +42,7 @@ export function TimelineThumbnailImage({ sources, width, height, fetchPriority, 
   return (
     <img
       alt=""
-      className={`h-full w-full bg-stone-100 object-cover transition-opacity motion-reduce:transition-none ${
+      className={`h-full w-full bg-table-glow object-cover transition-opacity motion-reduce:transition-none ${
         decoded ? "opacity-100" : "opacity-0"
       }`}
       decoding="async"

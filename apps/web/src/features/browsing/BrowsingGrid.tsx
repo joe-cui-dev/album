@@ -206,7 +206,7 @@ export function BrowsingGrid({
         })}
       </div>
       {snapshot.loadError ? (
-        <p className="flex items-center justify-between gap-3 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+        <p className="mt-4 flex items-center justify-between gap-3 rounded-md border-l-2 border-danger bg-danger/10 px-3 py-2 text-sm font-semibold text-danger">
           <span>Couldn&apos;t load more photos.</span>
           <button className="underline" onClick={() => browsingWindow.intents.retry()} type="button">
             Retry
@@ -220,7 +220,7 @@ export function BrowsingGrid({
 function MonthMarker({ periodKey }: { periodKey: string }) {
   return (
     <h2
-      className="sticky top-0 z-10 flex h-10 items-end bg-white/90 px-1 pb-1 text-sm font-bold text-stone-800 backdrop-blur"
+      className="sticky top-0 z-10 flex h-10 items-end border-b border-line bg-print-white/90 px-1 pb-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-ink-muted backdrop-blur"
       style={{ height: MONTH_MARKER_HEIGHT }}
     >
       {labelForPeriodKey(periodKey)}
@@ -259,7 +259,7 @@ function PhotoRow({
         return (
           <Link
             aria-label={photoLinkName(descriptor.fileName, descriptor.capturedAt)}
-            className="block overflow-hidden rounded-sm focus:outline-none focus:ring-2 focus:ring-[var(--emulsion-blue)]"
+            className="block overflow-hidden rounded-sm bg-table-glow ring-1 ring-line shadow-sm transition-shadow duration-150 hover:shadow-md hover:ring-control-line focus:outline-none focus:ring-2 focus:ring-emulsion"
             key={photoId}
             state={{
               background: location,

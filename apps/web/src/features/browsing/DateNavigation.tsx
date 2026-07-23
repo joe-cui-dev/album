@@ -88,7 +88,7 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
 
       <div className="md:hidden">
         <button
-          className="inline-flex min-h-10 items-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900"
+          className="inline-flex min-h-10 items-center rounded-md border border-control-line bg-print-white px-3 text-sm font-semibold text-ink"
           onClick={() => setSheetOpen(true)}
           ref={triggerRef}
           type="button"
@@ -99,17 +99,17 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
           <div
             aria-label="Jump to date"
             aria-modal="true"
-            className="fixed inset-0 z-30 flex items-end bg-stone-950/40"
+            className="fixed inset-0 z-30 flex items-end bg-ink/40"
             onClick={cancelAndClose}
             role="dialog"
           >
             <div
-              className="max-h-[70vh] w-full overflow-y-auto rounded-t-xl bg-white p-4"
+              className="max-h-[70vh] w-full overflow-y-auto rounded-t-xl bg-print-white p-4"
               onClick={(event) => event.stopPropagation()}
               ref={dialogRef}
             >
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-stone-950" ref={headingRef} tabIndex={-1}>
+                <h2 className="text-lg font-bold text-ink" ref={headingRef} tabIndex={-1}>
                   Jump to date
                 </h2>
                 <button aria-label="Close" onClick={cancelAndClose} type="button">
@@ -136,21 +136,21 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
 function JumpStatus({ jumpState, onRetry }: { jumpState: JumpState; onRetry: (anchor: string) => void }) {
   if (jumpState.status === "pending") {
     return (
-      <p className="mt-3 text-sm text-stone-600" role="status">
+      <p className="mt-3 text-sm text-ink-muted" role="status">
         Loading that period…
       </p>
     );
   }
   if (jumpState.status === "empty_period") {
     return (
-      <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" role="status">
+      <p className="mt-3 rounded-md border-l-2 border-exposure bg-exposure/10 px-3 py-2 text-sm font-semibold text-ink" role="status">
         That period is now empty.
       </p>
     );
   }
   if (jumpState.status === "failed") {
     return (
-      <p className="mt-3 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+      <p className="mt-3 flex items-center gap-2 rounded-md border-l-2 border-danger bg-danger/10 px-3 py-2 text-sm font-semibold text-danger" role="alert">
         Couldn&apos;t jump to that date.
         <button className="underline" onClick={() => onRetry(jumpState.anchor)} type="button">
           Retry
@@ -197,7 +197,7 @@ function YearList({
               <button
                 aria-expanded={expanded}
                 aria-label={`${expanded ? "Collapse" : "Expand"} ${year.year}`}
-                className="flex h-8 w-8 items-center justify-center rounded text-stone-600 hover:bg-stone-100"
+                className="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:bg-ink/5"
                 onClick={() => onToggleYear(year.year)}
                 type="button"
               >
@@ -209,8 +209,8 @@ function YearList({
               </button>
               <button
                 aria-current={isVisibleYear ? "true" : undefined}
-                className={`min-h-8 flex-1 rounded px-2 text-left text-sm font-semibold hover:bg-stone-100 ${
-                  isVisibleYear ? "bg-emerald-50 text-emerald-900" : "text-stone-900"
+                className={`min-h-8 flex-1 rounded px-2 text-left text-sm font-semibold hover:bg-ink/5 ${
+                  isVisibleYear ? "bg-emulsion/10 text-emulsion" : "text-ink"
                 }`}
                 onClick={() => latest && onJump(latest.anchor)}
                 type="button"
@@ -265,15 +265,15 @@ function PeriodButton({
   return (
     <button
       aria-current={isVisible ? "true" : undefined}
-      className={`flex min-h-8 w-full items-center justify-between rounded px-2 text-left text-sm hover:bg-stone-100 disabled:text-stone-400 ${
-        isVisible ? "bg-emerald-50 font-semibold text-emerald-900" : "text-stone-700"
+      className={`flex min-h-8 w-full items-center justify-between rounded px-2 text-left text-sm hover:bg-ink/5 disabled:text-ink-muted/50 ${
+        isVisible ? "bg-emulsion/10 font-semibold text-emulsion" : "text-ink-muted"
       }`}
       disabled={isPending}
       onClick={() => onJump(anchor)}
       type="button"
     >
       <span>{label}</span>
-      {count !== undefined ? <span className="text-xs text-stone-500">{count}</span> : null}
+      {count !== undefined ? <span className="text-xs text-ink-muted">{count}</span> : null}
     </button>
   );
 }

@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/* Bridges the light-table token system below into real Tailwind utilities (bg-ink, text-emulsion,
+   ring-line, font-mono, ...) so feature components don't fall back to Tailwind's generic default
+   palette (stone/emerald), which was fighting these tokens visually. */
+@theme {
+  --color-table-glow: var(--table-glow);
+  --color-print-white: var(--print-white);
+  --color-ink: var(--album-ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-control-line: var(--control-line);
+  --color-emulsion: var(--emulsion-blue);
+  --color-emulsion-dark: #285668;
+  --color-exposure: var(--exposure-amber);
+  --color-darkroom: var(--darkroom);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-mono: "Azeret Mono", ui-monospace, monospace;
+  --font-display: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif;
+}
+
 :root {
   --table-glow: #edf2f1;
   --print-white: #fbfcfb;
@@ -139,8 +159,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .album-content > section { border-color: var(--line); }
-.album-content h1, .album-content h2 { font-family: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif; color: var(--album-ink); letter-spacing: -0.035em; }
-.album-content h2 { font-size: clamp(1.65rem, 3vw, 2.3rem); font-weight: 650; }
+/* h1 only: the sticky month markers and the mobile date-jump sheet heading are also h-level
+   headings nested under .album-content, but they're compact Tailwind-styled labels, not page
+   titles -- an earlier "h1, h2" selector here clobbered their font-size and blew out their layout. */
+.album-content h1 { font-family: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif; color: var(--album-ink); letter-spacing: -0.035em; font-size: clamp(1.65rem, 3vw, 2.3rem); font-weight: 650; }
 
 .empty-album {
   display: grid;
