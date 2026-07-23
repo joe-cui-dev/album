@@ -746,6 +746,7 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(listTimelinePhotos);
     photosBucket.grantRead(displayAccessUrl);
     photosBucket.grantRead(originalDownloadUrl);
+    photosBucket.grantRead(viewerBootstrap);
     photosBucket.grantRead(timelinePhotosV2);
     photosBucket.grantRead(archivePhotosV2);
     photosBucket.grantRead(timelineThumbnailAccess);
@@ -755,6 +756,7 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(getPhotoDetail);
     metadataTable.grantReadData(displayAccessUrl);
     metadataTable.grantReadData(originalDownloadUrl);
+    metadataTable.grantReadData(viewerBootstrap);
     metadataTable.grantReadData(retryProcessing);
     metadataTable.grantReadData(processingIssues);
     metadataTable.grantReadData(processingIssuesSummary);
