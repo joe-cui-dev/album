@@ -89,7 +89,9 @@ JUL 2026
 
 The rail uses photographic data typography and Exposure amber to identify the current period. It always says `Photos`, never `Exposures`. The product does not use film sprocket holes, Polaroid frames, fake frame numbers, paper texture, dust effects, photo tilts, retro filters, gradient heroes, or stock family photography.
 
-The Timeline is a cool, evenly lit surface. Photo Viewer transitions to Darkroom so one Photo can be viewed without peripheral glare. The transition is restrained and disabled when reduced motion is requested.
+The Timeline is a cool, evenly lit surface. Photo Viewer transitions to Darkroom so one Photo can be viewed without peripheral glare. The transition is restrained and disabled when reduced motion is requested. Opening Viewer from a Timeline Thumbnail uses the View Transitions API to morph that one clicked Thumbnail into the Darkroom image; a browser without View Transitions, or reduced motion, falls back to an instant route change with no separate code path. Only Viewer entry carries this transition -- Previous/Next and Close remain plain navigation.
+
+The app bar keeps the Album wordmark alone on the left, with Archive, Add photos, the conditional Processing Issues entry, and the User menu clustered together on the right rather than spread across the bar. The app bar, the desktop year index, and each month marker remain visible -- sticky, not merely present at load -- while the Timeline scrolls, with the year index and month markers offset to sit just below the app bar rather than under it.
 
 ## Responsive Layout
 
@@ -141,6 +143,8 @@ The client initially requests 80 Photos and automatically requests one older cur
 ### Justified Rows
 
 Timeline uses Justified Rows that preserve each Timeline Thumbnail's aspect ratio. Photos remain in chronological order from left to right and top to bottom. The design does not use square cropping or Masonry.
+
+A period's short final row -- too few Photos to reach a full row at the target height -- justify-fills the row width like any other row instead of sitting left-aligned at a fixed height with unused width to its right. That enlargement is capped at 1.5x the target row height, so a lone narrow or portrait Photo is not stretched arbitrarily tall; a wide Photo's own natural fill height already lands under that cap unstretched.
 
 No file name or date caption remains visible below a thumbnail. Hover and keyboard focus reveal a restrained capture date overlay. Touch opens Photo Viewer immediately. Accessible names include the known capture date and Original File Name without inventing unknown date components.
 

@@ -7,6 +7,9 @@ interface TimelineThumbnailImageProps {
   height: number;
   fetchPriority: "high" | "auto" | "low";
   loading: "eager" | "lazy";
+  /** Set only on the one thumbnail whose Link is opening the Viewer, to pair with its `view-transition-name`
+   * (design doc "Photographic Signature"). Browsers without View Transitions ignore it. */
+  viewTransitionName?: string;
 }
 
 /**
@@ -16,7 +19,14 @@ interface TimelineThumbnailImageProps {
  * access-renewal loop hands it a fresh source URL (implementation doc "Temporary-access
  * recovery"); until then the previous, still-usable source stays on screen.
  */
-export function TimelineThumbnailImage({ sources, width, height, fetchPriority, loading }: TimelineThumbnailImageProps) {
+export function TimelineThumbnailImage({
+  sources,
+  width,
+  height,
+  fetchPriority,
+  loading,
+  viewTransitionName,
+}: TimelineThumbnailImageProps) {
   const [decoded, setDecoded] = useState(false);
   const [failed, setFailed] = useState(false);
   const src = sources.large.url;
@@ -54,7 +64,7 @@ export function TimelineThumbnailImage({ sources, width, height, fetchPriority, 
       sizes={`${Math.round(width)}px`}
       src={src}
       srcSet={srcSet}
-      style={{ transitionDuration: "140ms" }}
+      style={{ transitionDuration: "140ms", ...(viewTransitionName !== undefined ? { viewTransitionName } : {}) }}
       width={width}
     />
   );

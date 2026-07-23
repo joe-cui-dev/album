@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import type { AlbumNavigationYear } from "@album/shared";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
 import { trapTab } from "../../lib/focusTrap.js";
@@ -74,7 +74,10 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
 
   return (
     <>
-      <nav aria-label="Jump to date" className="hidden w-56 shrink-0 md:block">
+      <nav
+        aria-label="Jump to date"
+        className="hidden w-56 shrink-0 md:sticky md:top-[var(--album-bar-height)] md:block md:max-h-[calc(100vh_-_var(--album-bar-height))] md:overflow-y-auto"
+      >
         <YearList
           expandedYear={expandedYear}
           jumpState={jumpState}
@@ -193,33 +196,35 @@ function YearList({
         const latest = periods[0];
         return (
           <li key={year.year}>
-            <div className="flex items-center gap-1">
-              <button
-                aria-expanded={expanded}
-                aria-label={`${expanded ? "Collapse" : "Expand"} ${year.year}`}
-                className="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:bg-ink/5"
-                onClick={() => onToggleYear(year.year)}
-                type="button"
-              >
-                {expanded ? (
-                  <ChevronDown aria-hidden="true" className="h-4 w-4" />
-                ) : (
-                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                )}
-              </button>
+            <div className="flex items-center gap-0.5">
+              {/* Jump (year numeral) and disclosure (caret) are two independent controls -- clicking
+                  the year always jumps to its newest month, the caret only ever toggles the list
+                  (design doc "Year jumping and disclosure are separate controls"). */}
               <button
                 aria-current={isVisibleYear ? "true" : undefined}
-                className={`min-h-8 flex-1 rounded px-2 text-left text-sm font-semibold hover:bg-ink/5 ${
-                  isVisibleYear ? "bg-emulsion/10 text-emulsion" : "text-ink"
+                className={`flex min-h-11 flex-1 items-center rounded px-1 text-left font-display text-2xl font-semibold tracking-tight transition-colors hover:bg-ink/5 ${
+                  isVisibleYear ? "text-exposure" : "text-ink"
                 }`}
                 onClick={() => latest && onJump(latest.anchor)}
                 type="button"
               >
                 {year.year}
               </button>
+              <button
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "Collapse" : "Expand"} ${year.year}`}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-ink-muted hover:bg-ink/5"
+                onClick={() => onToggleYear(year.year)}
+                type="button"
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  className={`h-4 w-4 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
+                />
+              </button>
             </div>
             {expanded ? (
-              <ul className="ml-9 space-y-0.5 py-1">
+              <ul className="ml-2 space-y-0.5 border-l border-line py-1 pl-3">
                 {showLatestInYear && latest ? (
                   <li>
                     <PeriodButton anchor={latest.anchor} jumpState={jumpState} label={`Latest in ${year.year}`} onJump={onJump} />
@@ -230,6 +235,7 @@ function YearList({
                     <PeriodButton
                       anchor={period.anchor}
                       count={period.count}
+                      displayLabel={period.shortLabel}
                       isVisible={period.anchor === visiblePeriodKey}
                       jumpState={jumpState}
                       label={period.label}
@@ -249,6 +255,7 @@ function YearList({
 function PeriodButton({
   anchor,
   count,
+  displayLabel,
   isVisible = false,
   jumpState,
   label,
@@ -256,6 +263,8 @@ function PeriodButton({
 }: {
   anchor: string;
   count?: number;
+  /** The compact mono label shown visually (e.g. "JUL"); falls back to `label` when absent (e.g. "Latest in 2024"). */
+  displayLabel?: string;
   isVisible?: boolean;
   jumpState: JumpState;
   label: string;
@@ -265,15 +274,24 @@ function PeriodButton({
   return (
     <button
       aria-current={isVisible ? "true" : undefined}
-      className={`flex min-h-8 w-full items-center justify-between rounded px-2 text-left text-sm hover:bg-ink/5 disabled:text-ink-muted/50 ${
-        isVisible ? "bg-emulsion/10 font-semibold text-emulsion" : "text-ink-muted"
+      aria-label={count !== undefined ? `${label}, ${count} photos` : label}
+      className={`flex min-h-8 w-full items-center justify-between rounded px-2 text-left hover:bg-ink/5 disabled:text-ink-muted/50 ${
+        isVisible ? "font-semibold text-exposure" : "text-ink-muted"
       }`}
       disabled={isPending}
       onClick={() => onJump(anchor)}
       type="button"
     >
-      <span>{label}</span>
-      {count !== undefined ? <span className="text-xs text-ink-muted">{count}</span> : null}
+      {/* Mono/uppercase data typography is reserved for the genuine month abbreviation; the plain
+          "Latest in {year}" action reads as an ordinary instruction (design doc "Typography"). */}
+      <span aria-hidden="true" className={displayLabel !== undefined ? "font-mono text-xs uppercase tracking-wider" : "text-sm"}>
+        {displayLabel ?? label}
+      </span>
+      {count !== undefined ? (
+        <span aria-hidden="true" className="font-mono text-[0.7rem] text-ink-muted">
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -281,8 +299,12 @@ function PeriodButton({
 interface OrderedPeriod {
   anchor: string;
   label: string;
+  /** Mono abbreviation for the indented month list, e.g. "JUL"; "Unknown" for the Date Unknown row. */
+  shortLabel: string;
   count: number;
 }
+
+const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Newest month first, then Date Unknown, per the design doc's year-row ordering. */
 const orderedPeriods = (year: AlbumNavigationYear): OrderedPeriod[] => {
@@ -292,10 +314,14 @@ const orderedPeriods = (year: AlbumNavigationYear): OrderedPeriod[] => {
     .map(([month, count]) => ({
       anchor: `${year.year}-${month}`,
       label: formatCapturedAt({ precision: "month", localDate: `${year.year}-${month}` }, "accessible"),
+      shortLabel: MONTH_ABBREVIATIONS[Number(month) - 1] ?? month,
       count,
     }));
   const unknownCount = year.counts.unknown;
   return unknownCount !== undefined
-    ? [...monthEntries, { anchor: `${year.year}-unknown`, label: "Date unknown", count: unknownCount }]
+    ? [
+        ...monthEntries,
+        { anchor: `${year.year}-unknown`, label: "Date unknown", shortLabel: "Unknown", count: unknownCount },
+      ]
     : monthEntries;
 };

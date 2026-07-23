@@ -1,18 +1,19 @@
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useViewTransitionState } from "react-router";
 import type { PhotoCollection } from "@album/shared";
 import { formatCapturedAt, photoLinkName } from "../../lib/capturedAtFormat.js";
+import { PHOTO_VIEW_TRANSITION_NAME } from "../../lib/viewTransitionNames.js";
 import { BROWSING_ROW_SPACING, BROWSING_TARGET_ROW_HEIGHT } from "./browsingLayoutConstants.js";
-import type { BrowsingWindow, RestorationAnchor } from "./browsingWindow.js";
+import type { BrowsingWindow, PhotoDescriptor, RestorationAnchor } from "./browsingWindow.js";
 import type { JustifiedLayoutItem } from "./justifiedRows.js";
 import { TimelineThumbnailImage } from "./TimelineThumbnailImage.js";
 import { useBrowsingWindowSnapshot } from "./useBrowsingWindow.js";
 
 const SPACING = BROWSING_ROW_SPACING;
 const TARGET_ROW_HEIGHT = BROWSING_TARGET_ROW_HEIGHT;
-const MONTH_MARKER_HEIGHT = 40;
+const MONTH_MARKER_HEIGHT = 56;
 const LOAD_MORE_THRESHOLD_ITEMS = 6;
 const RENEWAL_POLL_MS = 20_000;
 
@@ -23,6 +24,8 @@ interface BrowsingGridProps {
   sourceCollection: PhotoCollection;
   /** Fires as the topmost visible period changes, for the date navigation's active styling only. */
   onVisiblePeriodChange?: (periodKey: string) => void;
+  /** Exact Photo counts per periodKey, from Album Navigation, for the month marker's second line. */
+  periodCounts?: ReadonlyMap<string, number>;
 }
 
 /** ADR-0064: TanStack Virtual with window scrolling, driven entirely by the Browsing Window's own snapshot. */
@@ -32,12 +35,14 @@ export function BrowsingGrid({
   emptyState,
   sourceCollection,
   onVisiblePeriodChange,
+  periodCounts,
 }: BrowsingGridProps) {
   const snapshot = useBrowsingWindowSnapshot(browsingWindow);
   const location = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>();
   const hasRestoredRef = useRef(false);
+  const [currentPeriodKey, setCurrentPeriodKey] = useState<string>();
 
   useLayoutEffect(() => {
     const element = containerRef.current;
@@ -150,6 +155,7 @@ export function BrowsingGrid({
       browsingWindow.intents.recordRestorationAnchor({ kind: "period", periodKey: item.periodKey });
     }
     // Scroll changes only the date navigation's active styling, never its disclosure (design doc "Date Navigation and History").
+    setCurrentPeriodKey(item.periodKey);
     onVisiblePeriodChange?.(item.periodKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browsingWindow, firstVisibleIndex]);
@@ -161,6 +167,17 @@ export function BrowsingGrid({
         <p>{emptyState.description}</p>
         {emptyState.action}
       </section>
+    );
+  }
+
+  // The very first page hasn't landed yet, so there's no real layout to virtualize -- a static
+  // neutral placeholder fills that space instead of leaving it blank (design doc "Thumbnail
+  // Loading": "a static neutral placeholder ... no shimmer").
+  if (snapshot.isLoadingInitial && layoutItems.length === 0) {
+    return (
+      <div ref={containerRef}>
+        <InitialLoadingPlaceholder />
+      </div>
     );
   }
 
@@ -185,7 +202,11 @@ export function BrowsingGrid({
               }}
             >
               {item.kind === "month-marker" ? (
-                <MonthMarker periodKey={item.periodKey} />
+                <MonthMarker
+                  count={periodCounts?.get(item.periodKey)}
+                  isCurrent={item.periodKey === currentPeriodKey}
+                  periodKey={item.periodKey}
+                />
               ) : (
                 <PhotoRow
                   browsingWindow={browsingWindow}
@@ -217,13 +238,59 @@ export function BrowsingGrid({
   );
 }
 
-function MonthMarker({ periodKey }: { periodKey: string }) {
+const PLACEHOLDER_ROWS = [
+  [2, 1, 3, 1],
+  [1, 1, 1, 2],
+];
+
+/** Decorative only (`aria-hidden`): behaviour and copy are unchanged, this only replaces the
+ * blank space that used to precede the first real row while `isLoadingInitial` is true. */
+function InitialLoadingPlaceholder() {
+  return (
+    <div aria-hidden="true">
+      <div className="mb-1 h-14 w-48 bg-print-white/70" />
+      {PLACEHOLDER_ROWS.map((widths, rowIndex) => (
+        <div className="flex" key={rowIndex} style={{ gap: SPACING, height: TARGET_ROW_HEIGHT, marginBottom: SPACING }}>
+          {widths.map((flex, itemIndex) => (
+            <div className="rounded-sm bg-ink/5" key={itemIndex} style={{ flex }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Photographic data typography rail (design doc "Photographic Signature"): two stacked mono
+ * lines, e.g. `JUL 2026` / `7 PHOTOS`. Exposure amber marks the current period without being the
+ * sole signal -- `aria-current` and a heavier bottom border carry the same state non-visually
+ * and non-colour, matching the year/period buttons' existing `aria-current` pattern. */
+function MonthMarker({
+  count,
+  isCurrent,
+  periodKey,
+}: {
+  count: number | undefined;
+  isCurrent: boolean;
+  periodKey: string;
+}) {
+  const { primary, secondary, accessible } = monthMarkerLabels(periodKey, count);
   return (
     <h2
-      className="sticky top-0 z-10 flex h-10 items-end border-b border-line bg-print-white/90 px-1 pb-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-ink-muted backdrop-blur"
-      style={{ height: MONTH_MARKER_HEIGHT }}
+      aria-current={isCurrent ? "true" : undefined}
+      aria-label={accessible}
+      className={`sticky z-10 flex flex-col justify-center gap-0.5 bg-print-white/90 px-1 backdrop-blur transition-colors duration-300 ${
+        isCurrent ? "border-b-2 border-exposure/50 text-exposure" : "border-b border-line text-ink-muted"
+      }`}
+      style={{ height: MONTH_MARKER_HEIGHT, top: "var(--album-bar-height)" }}
     >
-      {labelForPeriodKey(periodKey)}
+      <span aria-hidden="true" className="font-mono text-xs font-semibold uppercase tracking-wider">
+        {primary}
+      </span>
+      {/* No dimming opacity here -- the parent's already-AA-compliant `text-exposure`/`text-ink-muted`
+          colour carries the contrast; a smaller size alone gives the secondary line its hierarchy. */}
+      <span aria-hidden="true" className="font-mono text-[0.65rem] uppercase tracking-wider">
+        {secondary}
+      </span>
     </h2>
   );
 }
@@ -257,29 +324,80 @@ function PhotoRow({
           return <span key={photoId} style={{ height: item.height, width }} />;
         }
         return (
-          <Link
-            aria-label={photoLinkName(descriptor.fileName, descriptor.capturedAt)}
-            className="block overflow-hidden rounded-sm bg-table-glow ring-1 ring-line shadow-sm transition-shadow duration-150 hover:shadow-md hover:ring-control-line focus:outline-none focus:ring-2 focus:ring-emulsion"
+          <PhotoLink
+            browsingWindow={browsingWindow}
+            descriptor={descriptor}
+            fetchPriority={firstRowInView ? "high" : "auto"}
+            height={item.height}
             key={photoId}
-            state={{
-              background: location,
-              sequencePosition: browsingWindow.getSequencePosition(photoId),
-              sourceCollection,
-            }}
-            style={{ height: item.height, width }}
+            loading={inVisibleRange ? "eager" : "lazy"}
+            location={location}
+            photoId={photoId}
+            sourceCollection={sourceCollection}
             to={photoHrefFor(photoId)}
-          >
-            <TimelineThumbnailImage
-              fetchPriority={firstRowInView ? "high" : "auto"}
-              height={item.height}
-              loading={inVisibleRange ? "eager" : "lazy"}
-              sources={descriptor.timelineThumbnailSources}
-              width={width}
-            />
-          </Link>
+            width={width}
+          />
         );
       })}
     </div>
+  );
+}
+
+/** One Justified Row thumbnail Link. A dedicated component so `useViewTransitionState` -- legal
+ * only at a stable per-item hook position -- can tell whether this exact Link is the one opening
+ * the Viewer, and only then pair its image with the Viewer's via a shared `view-transition-name`
+ * (ADR-0063's modal layer keeps this Link mounted underneath throughout the transition). */
+function PhotoLink({
+  browsingWindow,
+  descriptor,
+  fetchPriority,
+  height,
+  loading,
+  location,
+  photoId,
+  sourceCollection,
+  to,
+  width,
+}: {
+  browsingWindow: BrowsingWindow;
+  descriptor: PhotoDescriptor;
+  fetchPriority: "high" | "auto";
+  height: number;
+  loading: "eager" | "lazy";
+  location: ReturnType<typeof useLocation>;
+  photoId: string;
+  sourceCollection: PhotoCollection;
+  to: string;
+  width: number;
+}) {
+  const isOpeningViewer = useViewTransitionState(to);
+  return (
+    <Link
+      aria-label={photoLinkName(descriptor.fileName, descriptor.capturedAt)}
+      className="timeline-photo-link"
+      state={{
+        background: location,
+        sequencePosition: browsingWindow.getSequencePosition(photoId),
+        sourceCollection,
+      }}
+      style={{ height, width }}
+      to={to}
+      viewTransition
+    >
+      <span className="timeline-photo-thumb-wrap">
+        <TimelineThumbnailImage
+          fetchPriority={fetchPriority}
+          height={height}
+          loading={loading}
+          sources={descriptor.timelineThumbnailSources}
+          width={width}
+          {...(isOpeningViewer ? { viewTransitionName: PHOTO_VIEW_TRANSITION_NAME } : {})}
+        />
+      </span>
+      <span aria-hidden="true" className="timeline-photo-overlay">
+        {formatCapturedAt(descriptor.capturedAt, "compact")}
+      </span>
+    </Link>
   );
 }
 
@@ -290,15 +408,28 @@ const estimateItemSize = (item: JustifiedLayoutItem | undefined): number => {
   return item.kind === "month-marker" ? MONTH_MARKER_HEIGHT : item.height + SPACING;
 };
 
-const labelForPeriodKey = (periodKey: string): string => {
+/** The month marker's compact two-line text plus its full `aria-label`, from one `periodKey` parse. */
+const monthMarkerLabels = (
+  periodKey: string,
+  count: number | undefined,
+): { primary: string; secondary: string; accessible: string } => {
   const [yearPart, monthPart] = periodKey.split("-") as [string, string];
-  if (monthPart === "unknown") {
-    return `${yearPart} · Date unknown`;
-  }
-  return formatCapturedAt(
-    { precision: "month", localDate: periodKey },
-    "accessible",
-  );
+  const isDateUnknown = monthPart === "unknown";
+  const primary = isDateUnknown ? yearPart : formatCapturedAt({ precision: "month", localDate: periodKey }, "compact");
+  const accessibleBase = isDateUnknown
+    ? `${yearPart}, Date unknown`
+    : formatCapturedAt({ precision: "month", localDate: periodKey }, "accessible");
+  const countSuffix = count !== undefined ? `${count} photos` : undefined;
+  const secondary = isDateUnknown
+    ? countSuffix !== undefined
+      ? `Date unknown · ${countSuffix}`
+      : "Date unknown"
+    : (countSuffix ?? "");
+  return {
+    primary,
+    secondary,
+    accessible: countSuffix !== undefined ? `${accessibleBase}, ${countSuffix}` : accessibleBase,
+  };
 };
 
 const findAnchorIndex = (

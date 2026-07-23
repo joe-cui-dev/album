@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle, Archive, ChevronDown, Plus } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import type { SessionUser } from "@album/shared";
@@ -28,9 +28,20 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount, u
   const onProcessingIssuesView = useLocation().pathname === "/album/processing-issues";
   const showProcessingIssuesNav = onProcessingIssuesView || (openCount !== undefined && openCount > 0);
 
+  // Drives the sticky app bar's scroll-divider shadow (design doc "Photographic Signature"):
+  // a static class flip, not an animation, so it needs no reduced-motion branch -- the
+  // box-shadow's own CSS transition already falls under the global reduced-motion override.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = (): void => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div className="album-shell">
-      <header className="album-bar">
+      <header className={`album-bar ${scrolled ? "album-bar--scrolled" : ""}`}>
         <Link aria-label="Album home" className="album-wordmark" to="/album">
           {uiMessages.album}
         </Link>

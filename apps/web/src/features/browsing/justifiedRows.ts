@@ -135,18 +135,27 @@ const justifiedRow = (
   };
 };
 
-/** A known-complete period's short final row: laid out at target height, never stretched to fill the container. */
+/** A known-complete period's short-of-a-row remainder: never crosses a period boundary, so packRows'
+ * row-closing threshold guarantees its aspect-ratio sum alone can't reach the container width at
+ * target height -- justify-filling it (like a full row) can only ever enlarge, never shrink, past
+ * target height. Capped at 1.5x target height so a lone narrow/portrait tail isn't hard-pulled
+ * arbitrarily tall; a wide tail's natural fill height already lands under that cap unstretched. */
 const relaxedRow = (
   periodKey: string,
   descriptors: PhotoLayoutDescriptor[],
-  { targetRowHeight }: JustifiedRowsOptions,
-): JustifiedRowItem => ({
-  kind: "row",
-  periodKey,
-  photoIds: descriptors.map((descriptor) => descriptor.photoId),
-  height: targetRowHeight,
-  itemWidths: descriptors.map((descriptor) => descriptor.aspectRatio * targetRowHeight),
-});
+  { containerWidth, spacing, targetRowHeight }: JustifiedRowsOptions,
+): JustifiedRowItem => {
+  const aspectRatioSum = descriptors.reduce((sum, descriptor) => sum + descriptor.aspectRatio, 0);
+  const fillHeight = (containerWidth - spacing * (descriptors.length - 1)) / aspectRatioSum;
+  const height = Math.min(fillHeight, targetRowHeight * 1.5);
+  return {
+    kind: "row",
+    periodKey,
+    photoIds: descriptors.map((descriptor) => descriptor.photoId),
+    height,
+    itemWidths: descriptors.map((descriptor) => descriptor.aspectRatio * height),
+  };
+};
 
 export interface IncrementalJustifiedRows {
   /** Appends the descriptors loaded since the previous call and returns the up-to-date result. */

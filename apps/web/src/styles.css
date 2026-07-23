@@ -42,6 +42,9 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   --space-8: 3rem;
+  /* The sticky app bar's rendered height -- the year axis and month markers stick just below it.
+     Redefined for the mobile two-row bar layout below (design doc "Responsive Layout"). */
+  --album-bar-height: 4.5rem;
   font-family: "Source Sans 3", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   color: var(--album-ink);
   background: var(--table-glow);
@@ -73,14 +76,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .album-shell { min-height: 100vh; }
 
 .album-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: grid;
-  grid-template-columns: minmax(7rem, 1fr) auto minmax(7rem, 1fr);
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--space-4);
-  min-height: 4.5rem;
+  min-height: var(--album-bar-height);
   padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--table-glow) 92%, white);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 transparent;
+  transition: box-shadow 200ms ease, background-color 200ms ease;
+}
+/* The separator/shadow fades in once the page has actually scrolled, instead of a permanent
+   border, so the bar reads as floating glass at rest -- a sticky app bar's own scroll-divider
+   convention, restrained like the rest of this surface (design doc "Photographic Signature"). */
+.album-bar--scrolled {
+  background: color-mix(in srgb, var(--table-glow) 97%, white);
+  box-shadow: 0 1px 0 var(--line), 0 12px 24px -20px rgb(21 36 43 / 22%);
 }
 
 .album-wordmark, .wordmark {
@@ -92,7 +108,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   text-decoration: none;
 }
 
-.album-nav { display: flex; align-items: center; gap: var(--space-2); }
+.album-nav { display: flex; align-items: center; justify-self: end; gap: var(--space-2); }
 
 .album-nav a, .album-add-button, .album-user-menu button {
   display: inline-flex;
@@ -292,14 +308,81 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (max-width: 42rem) {
+  /* Two rows now, so the sticky offset consumed by the year axis and month markers grows to match. */
+  :root { --album-bar-height: 7.25rem; }
   .album-bar { grid-template-columns: 1fr auto; padding: 0 var(--space-4); }
-  .album-nav { grid-column: 1 / -1; grid-row: 2; width: 100%; padding-bottom: var(--space-2); }
+  .album-nav { grid-column: 1 / -1; grid-row: 2; width: 100%; justify-self: stretch; padding-bottom: var(--space-2); }
   .album-nav a, .album-add-button { flex: 1; }
   .album-user-menu { grid-column: 2; grid-row: 1; }
   .album-user-menu summary span { display: none; }
   .album-content { padding: var(--space-5) var(--space-4); }
 }
 
+/* Timeline thumbnails (design doc "Photographic Signature", "Justified Rows"): an evenly-lit
+   surface rather than a card. The inset separator stays faint (~6% ink) but permanent -- it is
+   the only boundary a white-background document photo has against its table-glow neighbours. */
+.timeline-photo-link {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.15rem;
+  background: var(--table-glow);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--album-ink) 6%, transparent);
+}
+.timeline-photo-link:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--album-ink) 6%, transparent),
+    0 0 0 3px var(--emulsion-blue);
+  outline: none;
+}
+
+.timeline-photo-thumb-wrap {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scale(1);
+  transition: transform 180ms ease;
+}
+
+.timeline-photo-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 0.3rem 0.45rem;
+  background: linear-gradient(to top, color-mix(in srgb, var(--darkroom) 80%, transparent), transparent);
+  color: var(--print-white);
+  font-family: "Azeret Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+.timeline-photo-link:focus-visible .timeline-photo-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Hover-driven scale and date overlay are restricted to fine-pointer, hover-capable input --
+   touch opens Photo Viewer immediately and must never show a "stuck" hover state after Back
+   (design doc "Justified Rows": "Touch opens Photo Viewer immediately"). */
+@media (hover: hover) and (pointer: fine) {
+  .timeline-photo-link:hover .timeline-photo-thumb-wrap { transform: scale(1.02); }
+  .timeline-photo-link:hover .timeline-photo-overlay {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Viewer-opening shared-element transition (design doc "Photo Viewer": "Photo Viewer transitions
+   to Darkroom ... restrained and disabled when reduced motion is requested"). Scoped to the one
+   paired name rather than the default cross-fade of the whole page -- must match
+   `PHOTO_VIEW_TRANSITION_NAME` in `src/lib/viewTransitionNames.ts` (a CSS selector can't import it). */
+::view-transition-group(photo-thumb) { animation-duration: 220ms; }
+::view-transition-old(photo-thumb), ::view-transition-new(photo-thumb) { animation-duration: 220ms; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  /* The browser's own reduced-motion handling for View Transitions (design doc "Interaction and
+     Accessibility": "Reduced motion removes ... Darkroom ... transitions"). */
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

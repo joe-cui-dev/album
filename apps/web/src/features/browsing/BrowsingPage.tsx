@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import type { ListCollectionPhotosV2Response, PhotoCollection } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
@@ -60,6 +60,18 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
   const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
   const navigation = useAlbumNavigation(mutationsSnapshot.navigationRevision);
   const years = (collection === "active" ? navigation.data?.timeline.years : navigation.data?.archive.years) ?? [];
+
+  // Exact Photo counts for the month marker's second line, keyed the same way as `periodKey`
+  // ("YYYY-MM" or "YYYY-unknown") -- see `browsingWindow.ts`'s `periodKeyOf`.
+  const periodCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const year of years) {
+      for (const [month, count] of Object.entries(year.counts)) {
+        map.set(month === "unknown" ? `${year.year}-unknown` : `${year.year}-${month}`, count);
+      }
+    }
+    return map;
+  }, [years]);
 
   const [jumpState, setJumpState] = useState<JumpState>({ status: "idle" });
   const jumpControllerRef = useRef<AbortController | undefined>(undefined);
@@ -131,6 +143,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
           browsingWindow={browsingWindow}
           emptyState={emptyState}
           onVisiblePeriodChange={setVisiblePeriodKey}
+          periodCounts={periodCounts}
           photoHrefFor={photoHrefFor}
           sourceCollection={collection}
         />

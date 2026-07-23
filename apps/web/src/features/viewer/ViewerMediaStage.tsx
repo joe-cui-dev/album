@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ViewerBootstrapResponse } from "@album/shared";
+import { PHOTO_VIEW_TRANSITION_NAME } from "../../lib/viewTransitionNames.js";
 import type { PhotoViewer } from "./photoViewer.js";
 import { createViewerGestureController } from "./viewerGesture.js";
 import { createViewerTransform, isAtFit, panBy, resetForPhoto, resizeTransform, scaleAroundPoint, type ViewerTransform } from "./viewerTransform.js";
@@ -46,7 +47,10 @@ export function ViewerMediaStage({ bootstrap, isLoading, loadError, viewer, chro
 
   const atFit = !transform || isAtFit(transform);
   const zoom = () => { if (!transform) return; update(atFit ? scaleAroundPoint(transform, 1, { x: transform.viewport.width / 2, y: transform.viewport.height / 2 }) : resetForPhoto(transform, transform.photo)); onActivity(); };
-  const imageStyle = transform ? { transform: `translate(${transform.pan.x}px, ${transform.pan.y}px) scale(${transform.scale})`, transformOrigin: "center", maxWidth: "none", maxHeight: "none", width: transform.photo.width, height: transform.photo.height } : undefined;
+  // Always paired with the one Timeline thumbnail Link mid-transition into this route
+  // (`BrowsingGrid`'s `PhotoLink`); harmless outside an active View Transition, and Prev/Next
+  // never triggers one, so a stale name here can never collide with a second snapshot target.
+  const imageStyle = transform ? { transform: `translate(${transform.pan.x}px, ${transform.pan.y}px) scale(${transform.scale})`, transformOrigin: "center", maxWidth: "none", maxHeight: "none", width: transform.photo.width, height: transform.photo.height, viewTransitionName: PHOTO_VIEW_TRANSITION_NAME } : undefined;
   const handleError = () => {
     if (!bootstrap) return;
     // Test and development fixtures use an in-memory data URL; it has no expiring

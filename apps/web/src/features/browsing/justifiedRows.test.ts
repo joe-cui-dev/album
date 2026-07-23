@@ -46,7 +46,7 @@ describe("computeJustifiedRows", () => {
     expect(rows[1]).toMatchObject({ periodKey: "2024-07", photoIds: ["c"] });
   });
 
-  it("relaxes a non-final period's short tail into a final row at target height", () => {
+  it("relaxes a non-final period's short tail by justify-filling it, capped at 1.5x target height", () => {
     const descriptors = [square("a", "2024-06"), square("b", "2024-07")];
     const result = computeJustifiedRows(descriptors, {
       containerWidth: 1000,
@@ -55,11 +55,30 @@ describe("computeJustifiedRows", () => {
       hasMore: false,
     });
 
+    // A lone square photo's natural full-width fill height (1000) exceeds the 150 cap (1.5x100),
+    // so it settles at the cap rather than being hard-pulled to fill the entire container width.
     expect(result.items).toEqual([
       { kind: "month-marker", periodKey: "2024-06" },
-      { kind: "row", periodKey: "2024-06", photoIds: ["a"], height: 100, itemWidths: [100] },
+      { kind: "row", periodKey: "2024-06", photoIds: ["a"], height: 150, itemWidths: [150] },
       { kind: "month-marker", periodKey: "2024-07" },
-      { kind: "row", periodKey: "2024-07", photoIds: ["b"], height: 100, itemWidths: [100] },
+      { kind: "row", periodKey: "2024-07", photoIds: ["b"], height: 150, itemWidths: [150] },
+    ]);
+  });
+
+  it("justify-fills a short tail up to the container width when that stays under the 1.5x cap", () => {
+    // A lone square photo's natural fill height (containerWidth / aspectRatioSum) is 1000,
+    // which is under this test's 1200 cap (1.5x800), so it is not clamped at all.
+    const descriptors = [square("a", "2024-06")];
+    const result = computeJustifiedRows(descriptors, {
+      containerWidth: 1000,
+      spacing: 10,
+      targetRowHeight: 800,
+      hasMore: false,
+    });
+
+    expect(result.items).toEqual([
+      { kind: "month-marker", periodKey: "2024-06" },
+      { kind: "row", periodKey: "2024-06", photoIds: ["a"], height: 1000, itemWidths: [1000] },
     ]);
   });
 
@@ -76,7 +95,7 @@ describe("computeJustifiedRows", () => {
     expect(result.incompleteTailPhotoIds).toEqual(["a", "b"]);
   });
 
-  it("relaxes the withheld tail into a visible row once nothing more can arrive", () => {
+  it("relaxes the withheld tail into a visible, justify-filled row once nothing more can arrive", () => {
     const descriptors = [square("a", "2024-06"), square("b", "2024-06")];
     const result = computeJustifiedRows(descriptors, {
       containerWidth: 1000,
@@ -85,10 +104,11 @@ describe("computeJustifiedRows", () => {
       hasMore: false,
     });
 
+    // Natural fill height ((1000 - 10) / 2 = 495) exceeds the 150 cap, so it settles there.
     expect(result.incompleteTailPhotoIds).toBeUndefined();
     expect(result.items).toEqual([
       { kind: "month-marker", periodKey: "2024-06" },
-      { kind: "row", periodKey: "2024-06", photoIds: ["a", "b"], height: 100, itemWidths: [100, 100] },
+      { kind: "row", periodKey: "2024-06", photoIds: ["a", "b"], height: 150, itemWidths: [150, 150] },
     ]);
   });
 
@@ -179,11 +199,12 @@ describe("createIncrementalJustifiedRows", () => {
     incremental.append([square("a", "2025-03")], options);
 
     // A load error surfaces with no new descriptors; hasMore flips false, relaxing the tail.
+    // Natural fill height (1000 / 1 = 1000) exceeds the 300 cap (1.5x200), so it settles there.
     const afterError = incremental.append([], { ...options, hasMore: false });
     expect(afterError.incompleteTailPhotoIds).toBeUndefined();
     expect(afterError.items).toEqual([
       { kind: "month-marker", periodKey: "2025-03" },
-      { kind: "row", periodKey: "2025-03", photoIds: ["a"], height: 200, itemWidths: [200] },
+      { kind: "row", periodKey: "2025-03", photoIds: ["a"], height: 300, itemWidths: [300] },
     ]);
 
     // Retry succeeds and extends the same still-open period rather than starting a new one.

@@ -1,2 +1,2 @@
 export const BROWSING_ROW_SPACING = 4;
-export const BROWSING_TARGET_ROW_HEIGHT = 200;
+export const BROWSING_TARGET_ROW_HEIGHT = 240;

@@ -1,11 +1,16 @@
 import { screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import type { ReactNode } from "react";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TimelinePhotoV2 } from "@album/shared";
 import { renderApp } from "../../test/test-utils.js";
 import { BrowsingGrid } from "./BrowsingGrid.js";
 import { createBrowsingWindow, type BrowsingWindow } from "./browsingWindow.js";
 import { createTestAlbumBrowsingPort, type TestAlbumBrowsingPort } from "./testAlbumBrowsingPort.js";
+
+/** A data router, not plain `MemoryRouter` -- `PhotoLink`'s `useViewTransitionState` requires one,
+ * matching the `createBrowserRouter` the real app renders under (`App.tsx`). */
+const renderWithRouter = (node: ReactNode) => renderApp(<RouterProvider router={createMemoryRouter([{ path: "*", Component: () => node }])} />);
 
 const layout = { containerWidth: 1000, spacing: 4, targetRowHeight: 200 };
 
@@ -35,15 +40,13 @@ describe("BrowsingGrid", () => {
     test = createTestAlbumBrowsingPort();
     browsingWindow = createBrowsingWindow({ collection: "active", port: test.port, layout });
 
-    renderApp(
-      <MemoryRouter>
-        <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />
-      </MemoryRouter>,
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />,
     );
 
     test.resolveNextLoad({ photos: [photo("a"), photo("b")], expiresAt: "2030-01-01T00:00:00.000Z" });
 
-    expect(await screen.findByText("July 2024")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /July 2024/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /a\.jpg/ })).toHaveAttribute("href", "/album/photos/a");
     expect(screen.getByRole("link", { name: /b\.jpg/ })).toHaveAttribute("href", "/album/photos/b");
   });
@@ -52,10 +55,8 @@ describe("BrowsingGrid", () => {
     test = createTestAlbumBrowsingPort();
     browsingWindow = createBrowsingWindow({ collection: "archived", port: test.port, layout });
 
-    renderApp(
-      <MemoryRouter>
-        <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />
-      </MemoryRouter>,
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />,
     );
 
     test.resolveNextLoad({ photos: [] });
@@ -69,10 +70,8 @@ describe("BrowsingGrid", () => {
     test.resolveNextLoad({ photos: [photo("a")], nextCursor: "cursor-1" });
     await flush();
 
-    renderApp(
-      <MemoryRouter>
-        <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />
-      </MemoryRouter>,
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />,
     );
 
     browsingWindow.intents.loadMore();
