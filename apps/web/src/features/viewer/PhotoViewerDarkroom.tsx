@@ -191,7 +191,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     <div
       aria-label={bootstrap?.fileName ?? "Photo"}
       aria-modal={mode === "contextual" ? "true" : undefined}
-      className="fixed inset-0 z-50 flex flex-col bg-stone-950 text-white"
+      className="fixed inset-0 z-50 flex flex-col bg-darkroom text-white"
       ref={dialogRef}
       // A direct/standalone load (refresh or shared link) has no background page underneath --
       // this is the page's whole content, so it needs a landmark (axe "region") rather than the
@@ -246,7 +246,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
               </button>
               {moreOpen ? (
                 <div
-                  className="absolute right-0 top-full z-10 mt-1 min-w-48 rounded-md border border-white/10 bg-stone-900 py-1 text-sm shadow-lg"
+                  className="absolute right-0 top-full z-10 mt-1 min-w-48 rounded-md border border-white/10 bg-darkroom-elevated py-1 text-sm shadow-lg"
                   onKeyDown={(event) => {
                     const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
                     const index = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -371,7 +371,7 @@ function CollectionChangedNotice({
       </p>
       <div className="flex gap-2">
         <button
-          className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-stone-950"
+          className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-ink"
           onClick={onSwitch}
           type="button"
         >
@@ -387,7 +387,7 @@ function CollectionChangedNotice({
 
 function InfoPanel({ bootstrap }: { bootstrap: NonNullable<ReturnType<typeof usePhotoViewerSnapshot>["bootstrap"]> }) {
   return (
-    <aside aria-label="Photo information" className="max-h-[40vh] overflow-y-auto border-t border-white/10 bg-stone-900 p-4 text-sm" id="photo-information" role="region">
+    <aside aria-label="Photo information" className="max-h-[40vh] overflow-y-auto border-t border-white/10 bg-darkroom-elevated p-4 text-sm" id="photo-information" role="region">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
         <dt className="font-semibold text-white/70">Captured</dt>
         <dd>{formatCapturedAt(bootstrap.chronology.active.capturedAt, "detail")}</dd>

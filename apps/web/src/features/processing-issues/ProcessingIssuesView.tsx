@@ -97,21 +97,21 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
 
   return (
     <main className="album-content">
-      <h1 className="text-2xl font-bold text-stone-950">{uiMessages.processingIssues.title}</h1>
+      <h1>{uiMessages.processingIssues.title}</h1>
 
       {loadError ? (
-        <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+        <p className="mt-4 rounded-md border-l-2 border-danger bg-danger/10 px-3 py-2 text-sm font-semibold text-danger" role="alert">
           {loadError}
         </p>
       ) : null}
 
       {issues === undefined ? null : issues.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-stone-200 bg-white p-6 text-center">
-          <p className="font-semibold text-stone-950">{uiMessages.processingIssues.emptyTitle}</p>
-          <p className="mt-1 text-sm text-stone-600">{uiMessages.processingIssues.emptyDescription}</p>
+        <div className="mt-8 rounded-lg border border-line bg-print-white p-6 text-center">
+          <p className="font-semibold text-ink">{uiMessages.processingIssues.emptyTitle}</p>
+          <p className="mt-1 text-sm text-ink-muted">{uiMessages.processingIssues.emptyDescription}</p>
         </div>
       ) : (
-        <ul className="mt-6 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+        <ul className="mt-6 divide-y divide-line rounded-lg border border-line bg-print-white">
           {issues.map((issue) => (
             <ProcessingIssueRow
               isRetrying={isRetrying(issue)}
@@ -138,14 +138,14 @@ function ProcessingIssueRow({
   return (
     <li className="grid gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div>
-        <p className="font-semibold text-stone-950">{issue.fileName}</p>
-        <p className="mt-1 text-sm text-stone-600">{messageForReasonCode(issue.reasonCode)}</p>
-        <p className="mt-1 text-xs text-stone-500">
+        <p className="font-semibold text-ink">{issue.fileName}</p>
+        <p className="mt-1 text-sm text-ink-muted">{messageForReasonCode(issue.reasonCode)}</p>
+        <p className="mt-1 text-xs text-ink-muted">
           {uiMessages.processingIssues.addedAt} {new Date(issue.addedAt).toLocaleDateString()}
         </p>
       </div>
       <button
-        className="inline-flex min-h-10 items-center justify-center rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-900 disabled:cursor-not-allowed disabled:text-stone-400"
+        className="inline-flex min-h-10 items-center justify-center rounded-md border border-control-line bg-print-white px-4 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:text-ink-muted/50"
         disabled={isRetrying}
         onClick={() => onRetry(issue.photoId)}
         type="button"
