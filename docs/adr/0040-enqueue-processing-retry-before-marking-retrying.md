@@ -1,0 +1,3 @@
+# Enqueue Processing Retry Before Marking Retrying
+
+Retry Processing will first obtain SQS acceptance for a message carrying a retry-attempt ID, then conditionally mark the durable Processing Issue retrying and increment its attempt data, returning `202 Accepted`; it will not add a transactional outbox in this slice. Send failure leaves the Issue failed and retryable, while a database failure after successful send converges when the worker transactionally marks processing, and duplicate requests or deliveries are idempotent against the Issue attempt and Photo Processing State. This accepts at-least-once coordination for a repeatable processor while avoiding an outbox dispatcher and cleanup lifecycle whose reliability is not yet needed for irreversible side effects.

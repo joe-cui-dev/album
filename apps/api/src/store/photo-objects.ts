@@ -16,6 +16,7 @@ export interface PhotoObjectStore {
   readObjectMetadata(
     objectKey: string,
   ): Promise<Record<string, string | undefined>>;
+  objectExists(objectKey: string): Promise<boolean>;
   readObjectBytes(objectKey: string): Promise<Uint8Array>;
   writeJpegObject(input: {
     objectKey: string;

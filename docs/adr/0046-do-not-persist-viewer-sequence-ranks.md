@@ -1,0 +1,5 @@
+# Do Not Persist Viewer Sequence Ranks
+
+Photo Viewer will show an exact `n of total` Viewer Sequence Position only when the originating Timeline or Archive browsing context can prove it from the exact Date Index and its continuously loaded window. A directly loaded or refreshed Viewer route will show its collection, known Captured At value, and neighbour availability without an ordinal. The system will not scan a collection to calculate an arbitrary Photo's rank, persist ranks that would require widespread updates after chronology or Archive membership changes, or present the index of only the browser's loaded Photos as though it were global.
+
+“Exact” means non-estimated within the accepted live-read model, not a cross-request snapshot. The client hides the position after observing duplicate IDs, count contradictions, collection mutation, or any gap between the Browsing Window anchor and current Photo; it does not add a shared collection-revision write hotspot merely to retain the indicator during concurrent changes.

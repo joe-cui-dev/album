@@ -1,0 +1,3 @@
+# Resume Photo Processing by Attempt Identity
+
+Photo processing will persist an attempt ID and start instant when a new upload or User retry atomically claims a Photo. Redelivery of the same SQS attempt may resume idempotent fixed-key processing, a different live attempt may not take over, and the final DynamoDB transaction is conditioned on the attempt ID so an old worker cannot publish over a newer result. The Lambda will return actual partial batch failures; on the last receive it will best-effort create a Processing Issue before still sending the message to the DLQ, with unrecoverable database outages left to DLQ reconciliation. This prevents the current Processing state from causing transiently failed messages to be acknowledged and abandoned on redelivery.

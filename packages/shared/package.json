@@ -8,9 +8,13 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "test": "jest --config ./jest.config.cjs"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.7.0"
   }
 }

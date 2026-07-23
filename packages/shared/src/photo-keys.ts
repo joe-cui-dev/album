@@ -42,6 +42,12 @@ export const buildTimelineThumbnailObjectKey = ({
 }: Pick<OriginalObjectKeyParts, "userId" | "photoId">): string =>
   `timeline-thumbnails/${userId}/${photoId}.jpg`;
 
+export const buildTimelineThumbnailLargeObjectKey = ({
+  userId,
+  photoId,
+}: Pick<OriginalObjectKeyParts, "userId" | "photoId">): string =>
+  `timeline-thumbnails/${userId}/${photoId}-large.jpg`;
+
 export const originalUploadMetadata = ({
   userId,
   uploadBatchId,

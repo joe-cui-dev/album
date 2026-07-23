@@ -1,0 +1,3 @@
+# Bound the Browsing Window History Cache
+
+The client will retain the active Browsing Window, including a Viewer-pinned originating window, plus only the most recently inactive Browsing Window for exact request-free Back restoration. Older history entries keep their URL start anchor and lightweight recovery hints but recreate the window from that anchor when revisited, without promising an evicted deep scroll position. Timeline and Archive share this cache bound. This keeps browser history semantically correct while preventing repeated date jumps or collection switches from retaining multiple 20,000-Photo descriptor sets; the bound may be raised later from measured headroom without changing correctness.

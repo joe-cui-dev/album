@@ -1,0 +1,3 @@
+# Maintain an Exact Transactional Date Index
+
+Each Personal Album will maintain separate Active and Archived Date Index projections with one small counter item per year and counters for each known month plus Date Unknown. Writes that add, move, archive, restore, or adjust a Ready Photo will update the relevant Timeline projections and Date Index counters in the same DynamoDB transaction; zero counters may remain stored but are omitted by the API. This adds bounded write work while letting year/month navigation and Photo counts load without scanning Photos or tolerating an asynchronously missing period, and the index can be rebuilt from Timeline and Archive projections when migrating or repairing data.

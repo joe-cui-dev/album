@@ -1,16 +1,305 @@
 @import "tailwindcss";
 
-* {
-  box-sizing: border-box;
+/* Bridges the light-table token system below into real Tailwind utilities (bg-ink, text-emulsion,
+   ring-line, font-mono, ...) so feature components don't fall back to Tailwind's generic default
+   palette (stone/emerald), which was fighting these tokens visually. */
+@theme {
+  --color-table-glow: var(--table-glow);
+  --color-print-white: var(--print-white);
+  --color-ink: var(--album-ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-control-line: var(--control-line);
+  --color-emulsion: var(--emulsion-blue);
+  --color-emulsion-dark: #285668;
+  --color-exposure: var(--exposure-amber);
+  --color-darkroom: var(--darkroom);
+  --color-darkroom-elevated: color-mix(in srgb, var(--darkroom) 100%, white 8%);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-mono: "Azeret Mono", ui-monospace, monospace;
+  --font-display: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif;
 }
 
+:root {
+  --table-glow: #edf2f1;
+  --print-white: #fbfcfb;
+  --album-ink: #15242b;
+  --emulsion-blue: #356a7c;
+  --exposure-amber: #925D1F;
+  --darkroom: #101619;
+  --ink-muted: color-mix(in srgb, var(--album-ink) 66%, transparent);
+  --line: color-mix(in srgb, var(--album-ink) 17%, transparent);
+  /* Required control boundaries (dropzones, bordered buttons, inputs) need more contrast than
+     the 17% decorative separator line -- WCAG 2.2 1.4.11 non-text contrast. */
+  --control-line: color-mix(in srgb, var(--album-ink) 52%, transparent);
+  --danger: #a33d38;
+  --success: #326c58;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+  font-family: "Source Sans 3", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  color: var(--album-ink);
+  background: var(--table-glow);
+}
+
+* { box-sizing: border-box; }
+
+html { min-width: 320px; background: var(--table-glow); }
+
 body {
-  margin: 0;
   min-width: 320px;
-  background: #f7f7f4;
-  color: #1c1917;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  background: var(--table-glow);
+  color: var(--album-ink);
+  font-family: inherit;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+button, input, select { font: inherit; }
+
+button, a { -webkit-tap-highlight-color: transparent; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--emulsion-blue);
+  outline-offset: 3px;
+}
+
+.album-shell { min-height: 100vh; }
+
+.album-bar {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) auto minmax(7rem, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.5rem;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--table-glow) 92%, white);
+}
+
+.album-wordmark, .wordmark {
+  color: var(--album-ink);
+  font-family: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif;
+  font-size: 1.18rem;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+
+.album-nav { display: flex; align-items: center; gap: var(--space-2); }
+
+.album-nav a, .album-add-button, .album-user-menu button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--album-ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.album-nav a:hover, .album-user-menu button:hover { background: color-mix(in srgb, var(--album-ink) 7%, transparent); }
+.album-add-button { background: var(--emulsion-blue); color: white; box-shadow: 0 1px 0 rgb(0 0 0 / 12%); }
+.album-add-button:hover { background: #285668; }
+
+.album-user-menu { justify-self: end; position: relative; }
+.album-user-menu summary { display: flex; min-height: 2.75rem; max-width: 13rem; align-items: center; gap: var(--space-2); cursor: pointer; list-style: none; color: var(--ink-muted); font-size: 0.875rem; }
+.album-user-menu summary::-webkit-details-marker { display: none; }
+.album-user-menu summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-user-menu[open] > button { position: absolute; z-index: 2; right: 0; top: calc(100% + .4rem); width: max-content; border: 1px solid var(--line); background: var(--print-white); box-shadow: 0 .5rem 1.25rem rgb(21 36 43 / 10%); }
+
+.album-content { width: min(100%, 78rem); margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+
+.album-feedback-region {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.album-feedback-entry {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 0.4rem;
+  background: var(--darkroom);
+  color: var(--print-white);
+  font-size: 0.9rem;
+  box-shadow: 0 .5rem 1.5rem rgb(21 36 43 / 25%);
+  pointer-events: auto;
+}
+
+.album-feedback-entry--failure { border: 1px solid var(--danger); }
+
+.album-feedback-entry button {
+  min-height: 2.75rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.album-content > section { border-color: var(--line); }
+/* h1 only: the sticky month markers and the mobile date-jump sheet heading are also h-level
+   headings nested under .album-content, but they're compact Tailwind-styled labels, not page
+   titles -- an earlier "h1, h2" selector here clobbered their font-size and blew out their layout. */
+.album-content h1 { font-family: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif; color: var(--album-ink); letter-spacing: -0.035em; font-size: clamp(1.65rem, 3vw, 2.3rem); font-weight: 650; }
+
+.empty-album {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  max-width: 32rem;
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  border-left: 2px solid var(--exposure-amber);
+  background: color-mix(in srgb, var(--print-white) 72%, transparent);
+}
+.empty-album h1 { margin: 0; font-size: clamp(1.8rem, 6vw, 2.8rem); font-weight: 650; }
+.empty-album p { margin: 0; color: var(--ink-muted); font-size: 1.1rem; }
+.empty-album small { color: var(--ink-muted); font-family: "Azeret Mono", ui-monospace, monospace; font-size: .75rem; letter-spacing: .04em; }
+.empty-album button, .sign-in-card form > button, .session-error button { min-height: 2.75rem; border: 0; border-radius: .3rem; background: var(--emulsion-blue); color: white; padding: 0 var(--space-4); font-weight: 650; cursor: pointer; }
+.empty-album button:hover, .sign-in-card form > button:hover, .session-error button:hover { background: #285668; }
+
+.sign-in-page, .session-state { display: grid; min-height: 100vh; place-items: center; padding: var(--space-5); background: var(--table-glow); }
+.sign-in-card { width: min(100%, 30rem); padding: clamp(1.5rem, 6vw, 3.5rem); border: 1px solid var(--line); background: var(--print-white); box-shadow: 0 1.25rem 3rem rgb(21 36 43 / 7%); }
+.sign-in-card h1, .session-error h1 { margin: var(--space-4) 0 var(--space-2); font-family: Archivo, "Arial Narrow", sans-serif; font-size: clamp(2rem, 6vw, 3rem); font-weight: 650; letter-spacing: -0.055em; }
+.sign-in-intro { margin: 0 0 var(--space-6); color: var(--ink-muted); font-size: 1.05rem; }
+.sign-in-card form { display: grid; gap: var(--space-4); }
+.sign-in-card label { display: grid; gap: var(--space-2); color: var(--album-ink); font-size: .9rem; font-weight: 650; }
+.sign-in-card input { min-height: 2.75rem; border: 1px solid var(--control-line); border-radius: .25rem; background: white; padding: 0 var(--space-3); color: var(--album-ink); }
+.development-code { margin: 0; padding: var(--space-3); background: #fff5df; color: #704a18; font-size: .875rem; }
+.form-error { margin: 0; color: var(--danger); font-weight: 600; }
+.text-button { margin-top: var(--space-4); padding: 0; border: 0; background: transparent; color: var(--emulsion-blue); font-size: .9rem; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+
+.session-state { align-content: center; gap: var(--space-4); color: var(--ink-muted); }
+/* The loading state's only text is a level-one heading for axe's page-has-heading-one rule,
+   but reads visually like the plain status line it always was. */
+.session-loading-heading { margin: 0; font: inherit; font-weight: inherit; }
+.session-mark { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border: 1px solid var(--exposure-amber); color: var(--album-ink); font-family: Archivo, sans-serif; font-weight: 650; }
+.session-error { width: min(100%, 34rem); padding: var(--space-6); border-left: 2px solid var(--danger); background: var(--print-white); }
+.session-error h1 { font-size: 1.7rem; }
+.session-error p { color: var(--ink-muted); }
+
+.upload-tray-bar {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  z-index: 55;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: 0.4rem;
+  background: var(--darkroom);
+  color: var(--print-white);
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 .5rem 1.5rem rgb(21 36 43 / 25%);
+  cursor: pointer;
+}
+
+.upload-tray {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.upload-tray-panel {
+  width: min(100%, 24rem);
+  max-height: min(80vh, 40rem);
+  margin: var(--space-5);
+  overflow-y: auto;
+  border-radius: 0.5rem;
+  background: var(--print-white);
+  box-shadow: 0 1.25rem 3rem rgb(21 36 43 / 18%);
+  pointer-events: auto;
+}
+
+.upload-tray-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--print-white);
+}
+.upload-tray-header h2 { margin: 0; font-family: Archivo, "Arial Narrow", sans-serif; font-size: 1.1rem; font-weight: 650; }
+.upload-tray-header-actions { display: flex; gap: var(--space-2); }
+.upload-tray-header-actions button { display: inline-flex; min-height: 2.25rem; min-width: 2.25rem; align-items: center; justify-content: center; border: 0; border-radius: 0.3rem; background: transparent; cursor: pointer; }
+.upload-tray-header-actions button:hover { background: color-mix(in srgb, var(--album-ink) 7%, transparent); }
+
+.upload-tray-dropzone { display: grid; justify-items: center; gap: var(--space-3); margin: var(--space-4); padding: var(--space-6) var(--space-4); border: 2px dashed var(--control-line); border-radius: 0.4rem; text-align: center; }
+.upload-tray-dropzone--active { border-color: var(--emulsion-blue); background: color-mix(in srgb, var(--emulsion-blue) 6%, transparent); }
+.upload-tray-dropzone button { min-height: 2.5rem; padding: 0 var(--space-4); border: 1px solid var(--control-line); border-radius: 0.3rem; background: white; font-weight: 600; cursor: pointer; }
+
+.upload-tray-selection { margin: 0 var(--space-4); padding: 0; list-style: none; }
+.upload-tray-selection-row { display: grid; grid-template-columns: 3rem 1fr auto; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.upload-tray-thumb { width: 3rem; height: 3rem; overflow: hidden; border-radius: 0.3rem; background: var(--table-glow); }
+.upload-tray-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.upload-tray-thumb-fallback { display: grid; height: 100%; place-items: center; padding: 0 var(--space-1); color: var(--ink-muted); font-size: 0.6rem; text-align: center; }
+.upload-tray-selection-meta p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; }
+.upload-tray-selection-row button { border: 0; background: transparent; color: var(--ink-muted); cursor: pointer; }
+
+.upload-tray-warning { margin: var(--space-2) var(--space-4); color: var(--danger); font-size: 0.85rem; font-weight: 600; }
+
+.upload-tray-submit { display: flex; width: calc(100% - 2 * var(--space-4)); min-height: 2.75rem; align-items: center; justify-content: center; gap: var(--space-2); margin: var(--space-4); border: 0; border-radius: 0.3rem; background: var(--emulsion-blue); color: white; font-weight: 650; cursor: pointer; }
+.upload-tray-submit:disabled { background: color-mix(in srgb, var(--album-ink) 25%, transparent); cursor: not-allowed; }
+
+.upload-tray-transfers { margin: 0; padding: var(--space-4); list-style: none; }
+.upload-tray-transfers li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.upload-tray-transfers p { margin: 0; font-size: 0.85rem; }
+.upload-tray-transfer-state { color: var(--ink-muted); }
+.upload-tray-transfers progress { width: 100%; margin-top: var(--space-1); }
+
+.upload-tray-completion { padding: var(--space-4); }
+.upload-tray-completion ul { margin: 0 0 var(--space-4); padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.upload-tray-completion li { display: flex; align-items: center; gap: var(--space-2); font-size: 0.95rem; }
+.upload-tray-completion-actions { display: flex; gap: var(--space-3); }
+.upload-tray-completion-actions button { min-height: 2.5rem; padding: 0 var(--space-4); border: 1px solid var(--control-line); border-radius: 0.3rem; background: white; font-weight: 600; cursor: pointer; }
+
+@media (max-width: 42rem) {
+  .upload-tray { align-items: flex-end; }
+  .upload-tray-panel { width: 100%; max-height: 80vh; margin: 0; border-radius: 0.5rem 0.5rem 0 0; }
+}
+
+@media (max-width: 42rem) {
+  .album-bar { grid-template-columns: 1fr auto; padding: 0 var(--space-4); }
+  .album-nav { grid-column: 1 / -1; grid-row: 2; width: 100%; padding-bottom: var(--space-2); }
+  .album-nav a, .album-add-button { flex: 1; }
+  .album-user-menu { grid-column: 2; grid-row: 1; }
+  .album-user-menu summary span { display: none; }
+  .album-content { padding: var(--space-5) var(--space-4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

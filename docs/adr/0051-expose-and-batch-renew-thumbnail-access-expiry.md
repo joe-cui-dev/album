@@ -1,0 +1,3 @@
+# Expose and Batch-Renew Timeline Thumbnail Access Expiry
+
+Timeline page and Timeline Thumbnail Access responses will expose a conservative `expiresAt` for their temporary thumbnail URLs. One client scheduler will batch up to 100 visible or soon-visible Photo IDs for renewal shortly before expiry, coalesce concurrent demand for the same Photo, and replace both responsive sources together. An image access or loading failure may trigger one immediate renewal and retry to recover from clock skew or early invalidation; a second failure becomes a local static placeholder rather than an infinite refresh loop or per-Photo User retry. This adds an explicit lease signal to the API while keeping thumbnail bytes on the existing private presigned-download path.

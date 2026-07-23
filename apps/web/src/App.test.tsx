@@ -1,27 +1,112 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  AlbumNavigationResponse,
+  GetProcessingIssuesSummaryResponse,
+  ListCollectionPhotosV2Response,
+  ViewerBootstrapResponse,
+} from "@album/shared";
 import { App } from "./App.js";
-import { hashFile } from "./features/upload/hashFile.js";
+import { sessionExpiredEvent } from "./lib/sessionEvents.js";
 import { renderApp } from "./test/test-utils.js";
-
-vi.mock("./features/upload/hashFile.js", () => ({
-  hashFile: vi.fn(async () => "hash-value"),
-}));
-
-vi.mock("./features/upload/uploadToS3.js", () => ({
-  uploadToS3: vi.fn(async ({ onProgress }) => {
-    onProgress(100);
-  }),
-}));
 
 const apiBaseUrl =
   "https://replace-with-http-api-id.execute-api.ap-southeast-2.amazonaws.com";
+
+const session = { signedIn: true, user: { userId: "user-1", email: "joe@example.com" } };
+
+const emptyNavigation: AlbumNavigationResponse = {
+  timeline: { years: [] },
+  archive: { years: [] },
+  processingIssueCount: 0,
+};
+
+const emptySummary: GetProcessingIssuesSummaryResponse = { openCount: 0 };
+
+const emptyCollectionPage: ListCollectionPhotosV2Response = { photos: [] };
+
+const onePhotoCollectionPage: ListCollectionPhotosV2Response = {
+  photos: [
+    {
+      photoId: "photo-1",
+      fileName: "beach.jpg",
+      capturedAt: { precision: "day", localDate: "2025-01-02" },
+      addedAt: "2025-01-02T10:00:00.000Z",
+      displayDimensions: { width: 1600, height: 1200 },
+      timelineThumbnailSources: {
+        large: { url: "https://temporary.example/thumbnail.jpg", dimensions: { width: 640, height: 480 } },
+      },
+    },
+  ],
+  // Far enough in the future that the Grid's mount-time renewal check is a no-op.
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
+
+const viewerBootstrap: ViewerBootstrapResponse = {
+  photoId: "photo-1",
+  fileName: "beach.jpg",
+  format: "jpeg",
+  fileSizeBytes: 1234,
+  metadata: { cameraMake: "Canon" },
+  displayDimensions: { width: 1600, height: 1200 },
+  chronology: {
+    original: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif" },
+    active: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif", revision: 1 },
+  },
+  archived: false,
+  collection: "active",
+  displayAccess: { url: "https://temporary.example/display.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
+};
+
+/**
+ * The signed-in album mounts several independent, concurrently-firing reads
+ * (Timeline/Archive page, Album Navigation, Processing Issues summary); their
+ * relative fetch order isn't a contract worth pinning down in a component
+ * test, so this dispatches by pathname/method instead of a positional
+ * `mockResolvedValueOnce` chain.
+ */
+const mockSignedInFetch = (overrides: {
+  timeline?: ListCollectionPhotosV2Response;
+  archive?: ListCollectionPhotosV2Response;
+  navigation?: AlbumNavigationResponse;
+  summary?: GetProcessingIssuesSummaryResponse;
+  viewer?: ViewerBootstrapResponse;
+} = {}) =>
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+
+    if (url.pathname === "/session" && method === "GET") {
+      return Response.json(session);
+    }
+    if (url.pathname === "/session" && method === "DELETE") {
+      return Response.json({ signedIn: false });
+    }
+    if (url.pathname === "/v2/timeline" && method === "GET") {
+      return Response.json(overrides.timeline ?? emptyCollectionPage);
+    }
+    if (url.pathname === "/v2/archive" && method === "GET") {
+      return Response.json(overrides.archive ?? emptyCollectionPage);
+    }
+    if (url.pathname === "/album-navigation" && method === "GET") {
+      return Response.json(overrides.navigation ?? emptyNavigation);
+    }
+    if (url.pathname === "/processing-issues/summary" && method === "GET") {
+      return Response.json(overrides.summary ?? emptySummary);
+    }
+    if (/^\/v2\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET" && overrides.viewer) {
+      return Response.json(overrides.viewer);
+    }
+
+    throw new Error(`Unmocked fetch: ${method} ${url.pathname}`);
+  });
 
 describe("App", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    window.history.replaceState({}, "", "/");
   });
 
   it("shows the email sign-in form when no session is active", async () => {
@@ -35,6 +120,61 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: "Send sign-in code" }),
     ).toBeInTheDocument();
+  });
+
+  it("gives an empty signed-in album a single clear next action that opens the Upload Tray", async () => {
+    mockSignedInFetch();
+
+    renderApp(<App />);
+
+    expect(await screen.findByRole("navigation", { name: "Album" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your album is empty" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("heading", { name: "Your album is empty" }).parentElement!)
+        .getByRole("button", { name: "Add photos" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Archive behind the signed-in application route", async () => {
+    window.history.replaceState({}, "", "/album/archive");
+    mockSignedInFetch();
+
+    renderApp(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Your archive is empty" }),
+    ).toBeInTheDocument();
+  });
+
+  it("redirects an unknown /album/* path back to the album (the Tray has no route of its own)", async () => {
+    window.history.replaceState({}, "", "/album/upload");
+    mockSignedInFetch();
+
+    renderApp(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Your album is empty" })).toBeInTheDocument();
+  });
+
+  it("opens the Upload Tray from the shell's Add Photos button", async () => {
+    mockSignedInFetch();
+
+    renderApp(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Album" });
+    await userEvent.click(within(nav).getByRole("button", { name: "Add photos" }));
+
+    expect(await screen.findByLabelText("Choose photos")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Add photos" })).toBeInTheDocument();
+  });
+
+  it("returns to sign-in when a protected request reports an expired session", async () => {
+    mockSignedInFetch();
+
+    renderApp(<App />);
+    await screen.findByRole("navigation", { name: "Album" });
+
+    fireEvent(window, new Event(sessionExpiredEvent));
+
+    expect(await screen.findByLabelText("Email address")).toBeInTheDocument();
   });
 
   it("shows an actionable error when the API responds with the Vite HTML fallback", async () => {
@@ -53,13 +193,11 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("requests a sign-in code on the same page and shows a development code hint", async () => {
+  it("requests a sign-in code on the same page and reveals the code field", async () => {
     const fetch = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ signedIn: false }))
-      .mockResolvedValueOnce(
-        Response.json({ accepted: true, codeId: "code-1", devCode: "123456" }),
-      );
+      .mockResolvedValueOnce(Response.json({ accepted: true }));
 
     renderApp(<App />);
 
@@ -70,9 +208,8 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send sign-in code" }));
 
     expect(await screen.findByLabelText("Sign-in code")).toBeInTheDocument();
-    expect(screen.getByText(/Development code:/)).toHaveTextContent("123456");
     expect(fetch).toHaveBeenLastCalledWith(
-      `${apiBaseUrl}/session/sign-in-code`,
+      `${apiBaseUrl}/v2/session/sign-in-code`,
       {
         method: "POST",
         body: JSON.stringify({ email: "joe@example.com" }),
@@ -82,16 +219,9 @@ describe("App", () => {
     );
   });
 
-  it("signs out and returns to the email sign-in form", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ signedIn: false }));
+  it("signs out, returns to the email sign-in form, and resets the URL to the generic entry route", async () => {
+    window.history.replaceState({}, "", "/album/archive");
+    const fetch = mockSignedInFetch();
 
     renderApp(<App />);
 
@@ -103,487 +233,47 @@ describe("App", () => {
       credentials: "include",
       headers: {},
     });
+    expect(window.location.pathname).toBe("/");
   });
 
-  it("keeps invalid selected files visible but creates an upload batch with valid files only", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          uploads: [
-            {
-              photoId: "photo-1",
-              objectKey: "originals/user-1/batch-1/photo-1",
-              uploadUrl: "https://upload.example/photo-1",
-              duplicate: false,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 0,
-            ready: 1,
-            processingFailed: 0,
-            exactDuplicate: 0,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "valid.jpg",
-              processingState: "ready",
-              exactDuplicate: false,
-            },
-          ],
-        }),
-      );
+  it("browses Timeline photos and opens the contextual Photo Viewer", async () => {
+    mockSignedInFetch({ timeline: onePhotoCollectionPage, viewer: viewerBootstrap });
 
     renderApp(<App />);
 
-    const input = await screen.findByLabelText("Choose photos");
-    const valid = new File(["valid"], "valid.jpg", { type: "image/jpeg" });
-    const invalid = new File(["invalid"], "notes.txt", { type: "text/plain" });
-    fireEvent.change(input, { target: { files: [valid, invalid] } });
+    const photoLink = await screen.findByRole("link", { name: /beach\.jpg/ });
+    await userEvent.click(photoLink);
 
-    expect(await screen.findByText("valid.jpg")).toBeInTheDocument();
-    expect(screen.getByText("notes.txt")).toBeInTheDocument();
-    expect(screen.getByText("JPEG, PNG, or HEIC photos only")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Upload 1 photo" }));
-
-    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/upload-batches`, {
-      method: "POST",
-      body: JSON.stringify({
-        files: [
-          {
-            fileName: "valid.jpg",
-            contentType: "image/jpeg",
-            fileSizeBytes: valid.size,
-            clientSha256: "hash-value",
-            fileModifiedAt: new Date(valid.lastModified).toISOString(),
-          },
-        ],
-      }),
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    });
-  });
-
-  it("blocks upload batches with more than 100 valid files before calling the API", async () => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      Response.json({
-        signedIn: true,
-        user: { userId: "user-1", email: "joe@example.com" },
-      }),
-    );
-
-    renderApp(<App />);
-
-    const input = await screen.findByLabelText("Choose photos");
-    const files = Array.from(
-      { length: 101 },
-      (_, index) =>
-        new File(["valid"], `valid-${index}.jpg`, { type: "image/jpeg" }),
-    );
-    fireEvent.change(input, { target: { files } });
-
-    expect(await screen.findByText("Choose 100 photos or fewer")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upload 101 photos" })).toBeDisabled();
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("warns when browser hashing fails but still creates the upload batch without clientSha256", async () => {
-    vi.mocked(hashFile).mockRejectedValueOnce(new Error("hash unavailable"));
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          uploads: [
-            {
-              photoId: "photo-1",
-              objectKey: "originals/user-1/batch-1/photo-1",
-              uploadUrl: "https://upload.example/photo-1",
-              duplicate: false,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 0,
-            ready: 1,
-            processingFailed: 0,
-            exactDuplicate: 0,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "valid.jpg",
-              processingState: "ready",
-              exactDuplicate: false,
-            },
-          ],
-        }),
-      );
-
-    renderApp(<App />);
-
-    const input = await screen.findByLabelText("Choose photos");
-    const valid = new File(["valid"], "valid.jpg", { type: "image/jpeg" });
-    fireEvent.change(input, { target: { files: [valid] } });
-    await userEvent.click(screen.getByRole("button", { name: "Upload 1 photo" }));
-
-    expect(
-      await screen.findByText("Could not calculate SHA-256 for one or more files."),
-    ).toBeInTheDocument();
-    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/upload-batches`, {
-      method: "POST",
-      body: JSON.stringify({
-        files: [
-          {
-            fileName: "valid.jpg",
-            contentType: "image/jpeg",
-            fileSizeBytes: valid.size,
-            fileModifiedAt: new Date(valid.lastModified).toISOString(),
-          },
-        ],
-      }),
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    });
-  });
-
-  it("polls upload batch status every 2 seconds and stops after terminal states", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          uploads: [
-            {
-              photoId: "photo-1",
-              objectKey: "originals/user-1/batch-1/photo-1",
-              uploadUrl: "https://upload.example/photo-1",
-              duplicate: false,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 1,
-            ready: 0,
-            processingFailed: 0,
-            exactDuplicate: 0,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "valid.jpg",
-              processingState: "processing",
-              exactDuplicate: false,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 0,
-            ready: 1,
-            processingFailed: 0,
-            exactDuplicate: 0,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "valid.jpg",
-              processingState: "ready",
-              exactDuplicate: false,
-            },
-          ],
-        }),
-      );
-
-    renderApp(<App />);
-
-    const input = await screen.findByLabelText("Choose photos");
-    fireEvent.change(input, {
-      target: { files: [new File(["valid"], "valid.jpg", { type: "image/jpeg" })] },
-    });
-    await user.click(screen.getByRole("button", { name: "Upload 1 photo" }));
-
-    expect(await screen.findByText("Processing state: Processing")).toBeInTheDocument();
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(await screen.findByText("Processing state: Ready")).toBeInTheDocument();
-
-    await vi.advanceTimersByTimeAsync(4000);
-    expect(fetch).toHaveBeenCalledTimes(4);
-  });
-
-  it("shows duplicate and failed processing results and retries failed photos without optimistic state changes", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          uploads: [
-            {
-              photoId: "photo-1",
-              objectKey: "originals/user-1/batch-1/photo-1",
-              uploadUrl: "https://upload.example/photo-1",
-              duplicate: false,
-            },
-            {
-              photoId: "photo-2",
-              objectKey: "originals/user-1/batch-1/photo-2",
-              uploadUrl: "https://upload.example/photo-2",
-              duplicate: false,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 0,
-            ready: 0,
-            processingFailed: 1,
-            exactDuplicate: 1,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "failed.jpg",
-              processingState: "processingFailed",
-              exactDuplicate: false,
-              failureMessage: "Decoder could not read the photo",
-            },
-            {
-              photoId: "photo-2",
-              fileName: "duplicate.jpg",
-              processingState: "exactDuplicate",
-              exactDuplicate: true,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          photoId: "photo-1",
-          fileName: "failed.jpg",
-          processingState: "processingFailed",
-          exactDuplicate: false,
-          failureMessage: "Decoder could not read the photo",
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          uploadBatchId: "batch-1",
-          counts: {
-            uploadRequested: 0,
-            uploaded: 0,
-            processing: 1,
-            ready: 0,
-            processingFailed: 0,
-            exactDuplicate: 1,
-          },
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "failed.jpg",
-              processingState: "processing",
-              exactDuplicate: false,
-            },
-            {
-              photoId: "photo-2",
-              fileName: "duplicate.jpg",
-              processingState: "exactDuplicate",
-              exactDuplicate: true,
-            },
-          ],
-        }),
-      );
-
-    renderApp(<App />);
-
-    const input = await screen.findByLabelText("Choose photos");
-    fireEvent.change(input, {
-      target: {
-        files: [
-          new File(["failed"], "failed.jpg", { type: "image/jpeg" }),
-          new File(["duplicate"], "duplicate.jpg", { type: "image/jpeg" }),
-        ],
-      },
-    });
-    await user.click(screen.getByRole("button", { name: "Upload 2 photos" }));
-
-    expect(await screen.findByText("Decoder could not read the photo")).toBeInTheDocument();
-    expect(screen.getAllByText("Exact duplicate").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "Retry failed.jpg" }));
-    expect(screen.getByText("Processing state: Processing failed")).toBeInTheDocument();
-    expect(fetch).toHaveBeenNthCalledWith(
-      4,
-      `${apiBaseUrl}/photos/photo-1/retry-processing`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {},
-      },
-    );
-
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(await screen.findByText("Processing state: Processing")).toBeInTheDocument();
-  });
-
-  it("browses timeline photos, opens detail, archives, and creates a single-photo original download", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          signedIn: true,
-          user: { userId: "user-1", email: "joe@example.com" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          photos: [
-            {
-              photoId: "photo-1",
-              fileName: "beach.jpg",
-              capturedAt: "2025-01-02T10:00:00.000Z",
-              processingState: "ready",
-              archived: false,
-              displayDimensions: { width: 1600, height: 1200 },
-              timelineThumbnailUrl: "https://temporary.example/thumbnail.jpg",
-              timelineThumbnailDimensions: { width: 320, height: 240 },
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          photoId: "photo-1",
-          fileName: "beach.jpg",
-          format: "jpeg",
-          fileSizeBytes: 1234,
-          capturedAt: "2025-01-02T10:00:00.000Z",
-          capturedAtSource: "exif",
-          processingState: "ready",
-          archived: false,
-          metadata: {
-            width: 4000,
-            height: 3000,
-            cameraMake: "Canon",
-          },
-          displayDimensions: { width: 1600, height: 1200 },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          url: "https://temporary.example/display.jpg",
-          expiresInSeconds: 300,
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          url: "https://temporary.example/original.jpg",
-          expiresInSeconds: 300,
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ photoId: "photo-1", archived: true }))
-      .mockResolvedValueOnce(Response.json({ photos: [] }));
-
-    renderApp(<App />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Refresh timeline" }));
-    expect(await screen.findByAltText("beach.jpg thumbnail")).toHaveAttribute(
-      "src",
-      "https://temporary.example/thumbnail.jpg",
-    );
-    await userEvent.click(await screen.findByRole("button", { name: "Open beach.jpg" }));
-
-    expect(await screen.findByText("Canon")).toBeInTheDocument();
-    expect(screen.getByAltText("beach.jpg")).toHaveAttribute(
+    expect(await screen.findByRole("img", { name: "beach.jpg" })).toHaveAttribute(
       "src",
       "https://temporary.example/display.jpg",
     );
+    // The originating Timeline route stays mounted underneath the modal, just hidden from the accessibility tree (ADR-0063).
+    expect(screen.getByRole("link", { hidden: true, name: /beach\.jpg/ })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Download original" }));
-    expect(await screen.findByRole("link", { name: "Open original download" })).toHaveAttribute(
-      "href",
-      "https://temporary.example/original.jpg",
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Photo information" }));
+    expect(await screen.findByText("Canon")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Archive photo" }));
-    expect(await screen.findByText("No timeline photos")).toBeInTheDocument();
-    expect(fetch).toHaveBeenNthCalledWith(2, `${apiBaseUrl}/timeline`, {
-      credentials: "include",
-      headers: {},
-    });
-    expect(fetch).toHaveBeenNthCalledWith(4, `${apiBaseUrl}/photos/photo-1/display-access`, {
-      method: "POST",
-      credentials: "include",
-      headers: {},
-    });
-    expect(fetch).toHaveBeenNthCalledWith(5, `${apiBaseUrl}/photos/photo-1/original-download`, {
-      method: "POST",
-      credentials: "include",
-      headers: {},
-    });
-    expect(fetch).toHaveBeenNthCalledWith(6, `${apiBaseUrl}/photos/photo-1/archive`, {
-      method: "POST",
-      credentials: "include",
-      headers: {},
-    });
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("img", { name: "beach.jpg" })).not.toBeInTheDocument());
+  });
+
+  it("uses the central source label in Viewer Info and opens the date-and-time editor from More", async () => {
+    mockSignedInFetch({ timeline: onePhotoCollectionPage, viewer: viewerBootstrap });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("link", { name: /beach\.jpg/ }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Photo information" }));
+    expect(await screen.findByText("Date from photo")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Adjust date and time" }));
+    const editor = await screen.findByRole("dialog", { name: "Adjust date and time" });
+    expect(within(editor).getByLabelText("Date")).toHaveValue("");
+    expect(within(editor).getByLabelText("Date")).toHaveFocus();
+
+    await userEvent.click(within(editor).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Adjust date and time" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "More" })).toHaveFocus();
   });
 });

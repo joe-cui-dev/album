@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useState } from "react";
 import type { SessionUser } from "@album/shared";
 import { apiClient } from "../../lib/apiClient.js";
+import { sessionExpiredEvent } from "../../lib/sessionEvents.js";
+import { uiMessages } from "../../lib/uiMessages.js";
 import { SignInForm } from "./SignInForm.js";
 
 interface AuthGateProps {
@@ -49,14 +51,32 @@ export function AuthGate({ children }: AuthGateProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const returnToSignIn = () => setSession({ status: "signedOut" });
+    window.addEventListener(sessionExpiredEvent, returnToSignIn);
+    return () => window.removeEventListener(sessionExpiredEvent, returnToSignIn);
+  }, []);
+
   if (session.status === "loading") {
-    return <main className="grid min-h-screen place-items-center">Loading session</main>;
+    return (
+      <main className="session-state" aria-live="polite">
+        <span aria-hidden="true" className="session-mark">A</span>
+        <h1 className="session-loading-heading">{uiMessages.session.loading}</h1>
+      </main>
+    );
   }
 
   if (session.status === "error") {
     return (
-      <main className="grid min-h-screen place-items-center px-5 text-red-700">
-        {session.message}
+      <main className="session-state px-5">
+        <section className="session-error" role="alert">
+          <span aria-hidden="true" className="session-mark">A</span>
+          <h1>{uiMessages.session.failed}</h1>
+          <p>{session.message}</p>
+          <button onClick={() => setSession({ status: "signedOut" })} type="button">
+            {uiMessages.session.returnToSignIn}
+          </button>
+        </section>
       </main>
     );
   }

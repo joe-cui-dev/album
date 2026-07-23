@@ -1,0 +1,3 @@
+# Retain Layout Descriptors, Not Thumbnail Resources
+
+One Browsing Window will retain a compact descriptor for every Photo it has incrementally loaded so reverse scrolling, row geometry, and restoration do not require a new newer-direction pagination API. Rendered DOM, decoded image resources, request state, and temporary Timeline Thumbnail URLs will remain bounded around the viewport; distant URLs are discarded and refreshed in batches when their Photos approach the viewport again. The 20,000-Photo validation must measure the worst case where all compact descriptors have accumulated. A reverse-pagination or descriptor-eviction design will be reconsidered only if that measured footprint exceeds the agreed browser budget.

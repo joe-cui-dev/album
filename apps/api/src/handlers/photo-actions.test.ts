@@ -2,7 +2,6 @@ import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
 import type { PhotoObjectStore } from "../store/photo-objects.js";
 import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
 import {
-  handleArchivePhoto,
   handleCreateDisplayAccessUrl,
   handleCreateOriginalDownloadUrl,
   handleGetPhotoDetail,
@@ -43,14 +42,6 @@ describe("photo action handlers", () => {
     });
     expect(JSON.stringify(body).includes("originalObjectKey")).toBe(false);
     expect(JSON.stringify(body).includes("displayObjectKey")).toBe(false);
-  });
-
-  it("archives a signed-in user's photo", async () => {
-    const { album } = await createReadyAlbum();
-    const response = await handleArchivePhoto({ user, album, photoId: "photo-1" });
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body ?? "{}")).toEqual({ photoId: "photo-1", archived: true });
-    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ archived: true });
   });
 
   it("creates a temporary display access URL only for ready photos with display output", async () => {

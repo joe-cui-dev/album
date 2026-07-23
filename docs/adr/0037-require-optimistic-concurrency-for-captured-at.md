@@ -1,0 +1,3 @@
+# Require Optimistic Concurrency for Captured At
+
+Photo detail and Captured At adjustment responses will expose a chronology revision and matching ETag, and Adjust or Revert Captured At will require that ETag through `If-Match`. A stale request receives `412 Precondition Failed`, a missing precondition receives `428`, and the DynamoDB transaction conditions both the revision and current projection key before incrementing the revision and moving chronology data. Identical retry and already-reverted requests remain idempotent without a new revision, preventing rare cross-device edits from silently overwriting User corrections or leaving duplicate projections.

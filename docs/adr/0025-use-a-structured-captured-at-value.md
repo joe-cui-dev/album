@@ -1,0 +1,3 @@
+# Use a Structured Captured At Value
+
+Captured At will cross domain and API boundaries as one structured value containing its capture-local calendar components, Captured At Precision, Date-and-Time resolution when applicable, and an optional Capture Time Offset for Date-and-Time precision. It will not be represented as a JavaScript `Date` or an ISO instant: those representations cannot express partial dates or minute-only time and would falsely interpret offset-free EXIF values as UTC. Storage adapters may flatten the value and derive sortable keys, but that representation remains internal to the adapter.

@@ -1,0 +1,3 @@
+# Prefer Capture-Oriented EXIF Times
+
+Photo processing will resolve EXIF Captured At from a valid `DateTimeOriginal`, then a valid `DateTimeDigitized`, before falling back to file-modified and upload time; the generic EXIF `DateTime` file-change field will not be used as a capture date. Each selected timestamp may use only its corresponding offset and subsecond tags, and an invalid calendar value causes processing to try the next candidate while an invalid offset merely leaves the valid local date and time offset-free. This recovers useful camera metadata without presenting a general file-edit timestamp as the time a Photo was captured.

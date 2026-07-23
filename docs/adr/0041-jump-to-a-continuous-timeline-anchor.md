@@ -1,0 +1,3 @@
+# Jump to a Continuous Timeline Anchor
+
+Timeline Navigation will request a `startAt` year-month or Date Unknown anchor and then continue through ordinary older cursor pages, rather than treating the selected period as a filter. Timeline and Archive will default to pages of 80 with a maximum of 100, make `startAt` and cursor mutually exclusive, and reject an anchor that became empty instead of silently landing in another period; year selection resolves through the exact Date Index to that year's newest non-empty month or Date Unknown. This preserves one continuous collection while allowing direct access to periods that the client has not incrementally loaded.

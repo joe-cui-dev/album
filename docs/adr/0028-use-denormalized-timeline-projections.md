@@ -1,0 +1,3 @@
+# Use Denormalized Timeline Projections
+
+Timeline and Archive will query separate per-User DynamoDB projection items that contain the lightweight fields needed to render one Ready Photo, rather than querying Photo IDs and then batch-loading and filtering authoritative Photo records. Ready, Archive Photo, Restore Photo, Adjust Captured At, and thumbnail backfill operations will transactionally update the authoritative Photo and its projection membership. This duplicates a small amount of data but gives each page one ordered, limited query whose cursor, visibility, and chronology do not depend on post-query filtering; non-Ready Photos have no Timeline or Archive projection.

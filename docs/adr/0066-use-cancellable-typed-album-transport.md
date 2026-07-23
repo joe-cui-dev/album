@@ -1,0 +1,3 @@
+# Use a Cancellable, Typed Album Transport
+
+The web transport will accept Abort Signals and classify unsuccessful responses into typed status and stable error codes rather than exposing message-only `Error` values. Owned Browsing Window and Photo Viewer adapters translate transport responses, ETags, access expiry, and cache metadata into their module interfaces; React elements neither parse raw headers nor display infrastructure messages. Structured conflicts distinguish empty navigation periods, changed Viewer collections, and concurrent projection movement, while network, cancellation, non-JSON, image, and authentication failures remain separate. Any protected `401` triggers the single Session invalidation path before the cancelled controller work settles.

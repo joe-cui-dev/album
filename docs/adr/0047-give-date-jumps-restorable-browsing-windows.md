@@ -1,0 +1,3 @@
+# Give Date Jumps Restorable Browsing Windows
+
+A manual Timeline Navigation jump will open a new Browsing Window at the selected year-month or Date Unknown anchor and continue through ordinary older cursor pages. The web client will put the anchor in the URL and create one browser history entry, so refresh reloads the same anchored window and Back can restore the prior window and scroll state; ordinary scrolling only updates restoration state without adding history entries. The client will not download intervening Photos from the latest period or silently add a newer-direction pagination contract. At the top of an anchored window, the User returns to newer periods through Timeline Navigation or Browser Back.

@@ -6,6 +6,7 @@ import {
   type StackProps,
 } from "aws-cdk-lib";
 import {
+  CfnStage,
   CorsHttpMethod,
   HttpApi,
   HttpMethod,
@@ -46,7 +47,7 @@ import { SqsDestination } from "aws-cdk-lib/aws-s3-notifications";
 import { BucketDeployment, Source } from "aws-cdk-lib/aws-s3-deployment";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { Queue } from "aws-cdk-lib/aws-sqs";
+import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { ORIGINALS_KEY_PREFIX } from "@album/shared";
 import { dirname, join } from "path";
@@ -135,39 +136,35 @@ export class AlbumStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const webDistribution = new Distribution(
-      this,
-      "WebDistribution",
-      {
-        certificate: props.certificate,
-        domainNames: [albumDomain],
-        defaultRootObject: "index.html",
-        errorResponses: [
-          {
-            httpStatus: 403,
-            responseHttpStatus: 200,
-            responsePagePath: "/index.html",
-            ttl: Duration.minutes(5),
-          },
-          {
-            httpStatus: 404,
-            responseHttpStatus: 200,
-            responsePagePath: "/index.html",
-            ttl: Duration.minutes(5),
-          },
-        ],
-        priceClass: PriceClass.PRICE_CLASS_100,
-        defaultBehavior: {
-          origin: S3BucketOrigin.withOriginAccessControl(
-            webBucket as unknown as IBucket,
-          ),
-          allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
-          cachePolicy: CachePolicy.CACHING_OPTIMIZED,
-          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+    const webDistribution = new Distribution(this, "WebDistribution", {
+      certificate: props.certificate,
+      domainNames: [albumDomain],
+      defaultRootObject: "index.html",
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: "/index.html",
+          ttl: Duration.minutes(5),
         },
-        minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: "/index.html",
+          ttl: Duration.minutes(5),
+        },
+      ],
+      priceClass: PriceClass.PRICE_CLASS_100,
+      defaultBehavior: {
+        origin: S3BucketOrigin.withOriginAccessControl(
+          webBucket as unknown as IBucket,
+        ),
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
-    );
+      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+    });
 
     new ARecord(this, "AlbumAliasRecord", {
       zone: hostedZone,
@@ -215,17 +212,47 @@ export class AlbumStack extends Stack {
       },
     });
 
+    const photoMaintenanceDlq = new Queue(this, "PhotoMaintenanceDlq", {
+      retentionPeriod: Duration.days(14),
+    });
+    const photoMaintenanceQueue = new Queue(this, "PhotoMaintenanceQueue", {
+      visibilityTimeout: Duration.minutes(5),
+      deadLetterQueue: {
+        queue: photoMaintenanceDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
     photosBucket.addEventNotification(
       EventType.OBJECT_CREATED,
       new SqsDestination(processingQueue),
       { prefix: ORIGINALS_KEY_PREFIX },
     );
 
+    // Auth v2's asynchronous dispatch queue (execution plan Slice 1.4 / ADR-0071): the
+    // admission handler only ever enqueues a request identity + Email, never a Code, and
+    // the allowlist check happens solely in the worker below.
+    const signInDispatchDlq = new Queue(this, "SignInDispatchDlq", {
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.SQS_MANAGED,
+    });
+    const signInDispatchQueue = new Queue(this, "SignInDispatchQueue", {
+      visibilityTimeout: Duration.minutes(1),
+      encryption: QueueEncryption.SQS_MANAGED,
+      deadLetterQueue: {
+        queue: signInDispatchDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
     const commonEnvironment = {
       USER_ALLOWLIST: userAllowlist,
+      WEB_ORIGINS: webOrigins.join(","),
+      SIGN_IN_DISPATCH_QUEUE_URL: signInDispatchQueue.queueUrl,
       PHOTOS_BUCKET_NAME: photosBucket.bucketName,
       METADATA_TABLE_NAME: metadataTable.tableName,
       PROCESSING_QUEUE_URL: processingQueue.queueUrl,
+      PHOTO_MAINTENANCE_QUEUE_URL: photoMaintenanceQueue.queueUrl,
       SESSION_SIGNING_SECRET: sessionSigningSecret,
       ALLOW_DEV_AUTH_CODES: allowDevAuthCodes,
       ...(sesFromEmail ? { SES_FROM_EMAIL: sesFromEmail } : {}),
@@ -308,17 +335,6 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const archivePhoto = new NodejsFunction(this, "ArchivePhotoHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
-      handler: "archivePhotoHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ArchivePhotoLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
-
     const displayAccessUrl = new NodejsFunction(
       this,
       "DisplayAccessUrlHandler",
@@ -349,9 +365,27 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const retryProcessing = new NodejsFunction(
+    const retryProcessing = new NodejsFunction(this, "RetryProcessingHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "retry-processing.ts",
+      ),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "RetryProcessingLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const processingIssues = new NodejsFunction(
       this,
-      "RetryProcessingHandler",
+      "ProcessingIssuesHandler",
       {
         runtime: Runtime.NODEJS_22_X,
         entry: join(
@@ -360,12 +394,220 @@ export class AlbumStack extends Stack {
           "api",
           "src",
           "handlers",
-          "retry-processing.ts",
+          "processing-issues.ts",
         ),
         handler: "handler",
         environment: commonEnvironment,
         reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "RetryProcessingLogGroup", {
+        logGroup: new LogGroup(this, "ProcessingIssuesLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const processingIssuesSummary = new NodejsFunction(
+      this,
+      "ProcessingIssuesSummaryHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "processing-issues.ts",
+        ),
+        handler: "summaryHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "ProcessingIssuesSummaryLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const timelinePhotosV2 = new NodejsFunction(
+      this,
+      "TimelinePhotosV2Handler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "list-collection-photos-v2.ts",
+        ),
+        handler: "timelinePhotosV2Handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "TimelinePhotosV2LogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const archivePhotosV2 = new NodejsFunction(this, "ArchivePhotosV2Handler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "list-collection-photos-v2.ts",
+      ),
+      handler: "archivePhotosV2Handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ArchivePhotosV2LogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const albumNavigation = new NodejsFunction(this, "AlbumNavigationHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "album-navigation.ts",
+      ),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "AlbumNavigationLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const timelineThumbnailAccess = new NodejsFunction(
+      this,
+      "TimelineThumbnailAccessHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "timeline-thumbnail-access.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "TimelineThumbnailAccessLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const viewerBootstrap = new NodejsFunction(this, "ViewerBootstrapHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "viewer-bootstrap.ts",
+      ),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "ViewerBootstrapLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const adjustCapturedAt = new NodejsFunction(
+      this,
+      "AdjustCapturedAtHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "captured-at-adjustment.ts",
+        ),
+        handler: "adjustCapturedAtHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "AdjustCapturedAtLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const revertCapturedAt = new NodejsFunction(
+      this,
+      "RevertCapturedAtHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "captured-at-adjustment.ts",
+        ),
+        handler: "revertCapturedAtHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "RevertCapturedAtLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const archiveMembership = new NodejsFunction(
+      this,
+      "ArchiveMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "archive-membership.ts",
+        ),
+        handler: "archiveMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "ArchiveMembershipLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const restoreMembership = new NodejsFunction(
+      this,
+      "RestoreMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "archive-membership.ts",
+        ),
+        handler: "restoreMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "RestoreMembershipLogGroup", {
           retention: RetentionDays.ONE_WEEK,
         }),
       },
@@ -382,6 +624,46 @@ export class AlbumStack extends Stack {
       }),
     });
 
+    const sessionV2 = new NodejsFunction(this, "SessionV2Handler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "session-v2.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "SessionV2LogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const dispatchSignInCode = new NodejsFunction(
+      this,
+      "DispatchSignInCodeHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "dispatch-sign-in-code.ts",
+        ),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 2,
+        timeout: Duration.seconds(30),
+        logGroup: new LogGroup(this, "DispatchSignInCodeLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+    dispatchSignInCode.addEventSource(
+      new SqsEventSource(signInDispatchQueue, {
+        batchSize: 5,
+        reportBatchItemFailures: true,
+      }),
+    );
+
     const processPhoto = new NodejsFunction(this, "ProcessPhotoHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "process-photo.ts"),
@@ -391,7 +673,13 @@ export class AlbumStack extends Stack {
         forceDockerBundling: true,
         nodeModules: ["sharp"],
       },
-      reservedConcurrentExecutions: 2,
+      // 128MB default gives ~1/12 vCPU; 2048MB gives a full vCPU so each photo's
+      // three sequential sharp renders run at full single-core speed.
+      memorySize: 2048,
+      // One invocation per photo (batchSize 1) plus 10 reserved slots lets a
+      // typical 5-15 photo batch process in parallel instead of queuing behind
+      // a 2-slot / 5-per-batch serial pipeline.
+      reservedConcurrentExecutions: 10,
       timeout: Duration.minutes(2),
       logGroup: new LogGroup(this, "ProcessPhotoLogGroup", {
         retention: RetentionDays.ONE_WEEK,
@@ -399,9 +687,64 @@ export class AlbumStack extends Stack {
     });
     processPhoto.addEventSource(
       new SqsEventSource(processingQueue, {
-        batchSize: 5,
+        batchSize: 1,
         reportBatchItemFailures: true,
       }),
+    );
+
+    const photoMaintenanceWorker = new NodejsFunction(
+      this,
+      "PhotoMaintenanceWorker",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "maintenance.ts"),
+        handler: "maintenanceWorkerHandler",
+        environment: commonEnvironment,
+        bundling: { forceDockerBundling: true, nodeModules: ["sharp"] },
+        reservedConcurrentExecutions: 2,
+        timeout: Duration.minutes(2),
+        logGroup: new LogGroup(this, "PhotoMaintenanceWorkerLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+    photoMaintenanceWorker.addEventSource(
+      new SqsEventSource(photoMaintenanceQueue, {
+        batchSize: 1,
+        reportBatchItemFailures: true,
+      }),
+    );
+
+    const photoMaintenanceCoordinator = new NodejsFunction(
+      this,
+      "PhotoMaintenanceCoordinator",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "maintenance-coordinator.ts"),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 1,
+        timeout: Duration.minutes(5),
+        logGroup: new LogGroup(this, "PhotoMaintenanceCoordinatorLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const phase2Reconciliation = new NodejsFunction(
+      this,
+      "Phase2Reconciliation",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join("..", "apps", "api", "src", "reconciliation-handler.ts"),
+        handler: "handler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 1,
+        timeout: Duration.minutes(5),
+        logGroup: new LogGroup(this, "Phase2ReconciliationLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
     );
 
     photosBucket.grantPut(createUploadBatch);
@@ -409,24 +752,56 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(listTimelinePhotos);
     photosBucket.grantRead(displayAccessUrl);
     photosBucket.grantRead(originalDownloadUrl);
+    photosBucket.grantRead(viewerBootstrap);
+    photosBucket.grantRead(timelinePhotosV2);
+    photosBucket.grantRead(archivePhotosV2);
+    photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
     metadataTable.grantReadData(listTimelinePhotos);
     metadataTable.grantReadData(getPhotoDetail);
-    metadataTable.grantReadWriteData(archivePhoto);
     metadataTable.grantReadData(displayAccessUrl);
     metadataTable.grantReadData(originalDownloadUrl);
+    metadataTable.grantReadData(viewerBootstrap);
     metadataTable.grantReadData(retryProcessing);
+    metadataTable.grantReadData(processingIssues);
+    metadataTable.grantReadData(processingIssuesSummary);
+    metadataTable.grantReadData(timelinePhotosV2);
+    metadataTable.grantReadData(archivePhotosV2);
+    metadataTable.grantReadData(albumNavigation);
+    metadataTable.grantReadData(timelineThumbnailAccess);
+    metadataTable.grantReadWriteData(adjustCapturedAt);
+    metadataTable.grantReadWriteData(revertCapturedAt);
+    metadataTable.grantReadWriteData(archiveMembership);
+    metadataTable.grantReadWriteData(restoreMembership);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
+    metadataTable.grantReadWriteData(photoMaintenanceWorker);
+    metadataTable.grantReadWriteData(photoMaintenanceCoordinator);
+    metadataTable.grantReadWriteData(phase2Reconciliation);
+    photosBucket.grantRead(phase2Reconciliation);
     processingQueue.grantConsumeMessages(processPhoto);
     processingQueue.grantSendMessages(retryProcessing);
+    photoMaintenanceQueue.grantConsumeMessages(photoMaintenanceWorker);
+    photoMaintenanceQueue.grantSendMessages(photoMaintenanceCoordinator);
+    photosBucket.grantReadWrite(photoMaintenanceWorker);
     session.addToRolePolicy(
       new PolicyStatement({
         actions: ["ses:SendEmail"],
         resources: ["*"],
       }),
     );
+    dispatchSignInCode.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: ["*"],
+      }),
+    );
+    metadataTable.grantReadWriteData(sessionV2);
+    metadataTable.grantReadWriteData(dispatchSignInCode);
+    // Least privilege: the admission handler only ever sends; the worker only ever consumes.
+    signInDispatchQueue.grantSendMessages(sessionV2);
+    signInDispatchQueue.grantConsumeMessages(dispatchSignInCode);
 
     const alarmTopic = new Topic(this, "AlarmTopic");
     alarmTopic.addSubscription(new EmailSubscription(budgetAlertEmail));
@@ -474,55 +849,39 @@ export class AlbumStack extends Stack {
     );
     dlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
 
-    const processingQueueAgeAlarm = new Alarm(this, "ProcessingQueueAgeAlarm", {
-      metric: processingQueue.metricApproximateAgeOfOldestMessage({
-        period: Duration.minutes(5),
-      }),
-      threshold: Duration.minutes(15).toSeconds(),
-      evaluationPeriods: 1,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
-    });
-    processingQueueAgeAlarm.addAlarmAction(new SnsAction(alarmTopic));
-
-    for (const lambda of [
-      createUploadBatch,
-      uploadBatchStatus,
-      listTimelinePhotos,
-      getPhotoDetail,
-      archivePhoto,
-      displayAccessUrl,
-      originalDownloadUrl,
-      retryProcessing,
-      session,
-      processPhoto,
-    ]) {
-      const errorsAlarm = new Alarm(this, `${lambda.node.id}ErrorsAlarm`, {
-        metric: lambda.metricErrors({
+    const maintenanceDlqVisibleMessagesAlarm = new Alarm(
+      this,
+      "PhotoMaintenanceDlqVisibleMessagesAlarm",
+      {
+        metric: photoMaintenanceDlq.metricApproximateNumberOfMessagesVisible({
           period: Duration.minutes(5),
         }),
         threshold: 0,
         evaluationPeriods: 1,
         comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: TreatMissingData.NOT_BREACHING,
-      });
-      errorsAlarm.addAlarmAction(new SnsAction(alarmTopic));
+      },
+    );
+    maintenanceDlqVisibleMessagesAlarm.addAlarmAction(
+      new SnsAction(alarmTopic),
+    );
 
-      const throttlesAlarm = new Alarm(
-        this,
-        `${lambda.node.id}ThrottlesAlarm`,
-        {
-          metric: lambda.metricThrottles({
-            period: Duration.minutes(5),
-          }),
-          threshold: 0,
-          evaluationPeriods: 1,
-          comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-          treatMissingData: TreatMissingData.NOT_BREACHING,
-        },
-      );
-      throttlesAlarm.addAlarmAction(new SnsAction(alarmTopic));
-    }
+    const signInDispatchDlqVisibleMessagesAlarm = new Alarm(
+      this,
+      "SignInDispatchDlqVisibleMessagesAlarm",
+      {
+        metric: signInDispatchDlq.metricApproximateNumberOfMessagesVisible({
+          period: Duration.minutes(5),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      },
+    );
+    signInDispatchDlqVisibleMessagesAlarm.addAlarmAction(
+      new SnsAction(alarmTopic),
+    );
 
     const api = new HttpApi(this, "AlbumApi", {
       corsPreflight: {
@@ -532,6 +891,7 @@ export class AlbumStack extends Stack {
           CorsHttpMethod.DELETE,
           CorsHttpMethod.GET,
           CorsHttpMethod.POST,
+          CorsHttpMethod.PUT,
         ],
         allowOrigins: webOrigins,
       },
@@ -557,6 +917,48 @@ export class AlbumStack extends Stack {
         session,
       ),
     });
+
+    const sessionV2CodeRoutes = api.addRoutes({
+      path: "/v2/session/sign-in-code",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "SessionV2CodeIntegration",
+        sessionV2,
+      ),
+    });
+
+    const sessionV2VerifyRoutes = api.addRoutes({
+      path: "/v2/session/verify",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "SessionV2VerifyIntegration",
+        sessionV2,
+      ),
+    });
+
+    // Per-route throttles for the two public, unauthenticated auth v2 endpoints (execution
+    // plan Slice 1.4: request ~1/s burst 5, verify ~5/s burst 10). The L2 HttpApi construct
+    // has no per-route throttle API, so this reaches the default stage's L1 escape hatch.
+    // This assignment overwrites the whole map -- if a later route needs its own throttle,
+    // add its key here rather than setting `.routeSettings` again elsewhere.
+    const defaultStage = api.defaultStage!.node.defaultChild as CfnStage;
+    defaultStage.routeSettings = {
+      "POST /v2/session/sign-in-code": {
+        ThrottlingRateLimit: 1,
+        ThrottlingBurstLimit: 5,
+      },
+      "POST /v2/session/verify": {
+        ThrottlingRateLimit: 5,
+        ThrottlingBurstLimit: 10,
+      },
+    };
+    // RouteSettings refers to route keys, but CloudFormation does not infer an
+    // ordering relationship from those JSON keys. Ensure the routes exist before
+    // it applies the Default Stage settings that reference them.
+    api.defaultStage!.node.addDependency(
+      ...sessionV2CodeRoutes,
+      ...sessionV2VerifyRoutes,
+    );
 
     api.addRoutes({
       path: "/upload-batches",
@@ -595,15 +997,6 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/photos/{photoId}/archive",
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration(
-        "ArchivePhotoIntegration",
-        archivePhoto,
-      ),
-    });
-
-    api.addRoutes({
       path: "/photos/{photoId}/display-access",
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration(
@@ -630,8 +1023,114 @@ export class AlbumStack extends Stack {
       ),
     });
 
+    api.addRoutes({
+      path: "/processing-issues",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ProcessingIssuesIntegration",
+        processingIssues,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/processing-issues/summary",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ProcessingIssuesSummaryIntegration",
+        processingIssuesSummary,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/timeline",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "TimelinePhotosV2Integration",
+        timelinePhotosV2,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/archive",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ArchivePhotosV2Integration",
+        archivePhotosV2,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/album-navigation",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "AlbumNavigationIntegration",
+        albumNavigation,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/timeline-thumbnail-access",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "TimelineThumbnailAccessIntegration",
+        timelineThumbnailAccess,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v2/photos/{photoId}/viewer",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "ViewerBootstrapIntegration",
+        viewerBootstrap,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/captured-at-adjustment",
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration(
+        "AdjustCapturedAtIntegration",
+        adjustCapturedAt,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/captured-at-adjustment",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        "RevertCapturedAtIntegration",
+        revertCapturedAt,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/archive",
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration(
+        "ArchiveMembershipIntegration",
+        archiveMembership,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/archive",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        "RestoreMembershipIntegration",
+        restoreMembership,
+      ),
+    });
+
     new CfnOutput(this, "HttpApiUrl", {
       value: api.apiEndpoint,
+    });
+
+    new CfnOutput(this, "PhotoMaintenanceCoordinatorName", {
+      value: photoMaintenanceCoordinator.functionName,
+    });
+    new CfnOutput(this, "Phase2ReconciliationName", {
+      value: phase2Reconciliation.functionName,
     });
 
     new CfnOutput(this, "WebAssetsBucketName", {

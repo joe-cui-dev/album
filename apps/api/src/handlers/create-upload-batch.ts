@@ -14,6 +14,7 @@ import {
   photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
+import { LEGACY_FALLBACK_TIME_ZONE, deriveLocalDateTime, isValidIanaTimeZone } from "../chronology-extraction.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, ok } from "../http.js";
@@ -73,17 +74,29 @@ export const handleCreateUploadBatch = async ({
   if (request.files.some((file) => !photoFormatForFile(file))) {
     return badRequest("Files must be JPEG, PNG, or HEIC photos");
   }
+  if (
+    request.uploadContext?.timeZone !== undefined &&
+    !isValidIanaTimeZone(request.uploadContext.timeZone)
+  ) {
+    return badRequest("uploadContext.timeZone must be a valid IANA time zone");
+  }
 
   const uploadBatchId = deps.newId();
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
+  // Old v1 clients omit uploadContext; the legacy zone keeps v2 chronology usable during rollout.
+  const uploadContextTimeZone = request.uploadContext?.timeZone ?? LEGACY_FALLBACK_TIME_ZONE;
+  const uploadLocalDateTime = deriveLocalDateTime(createdAt, uploadContextTimeZone);
 
   for (const file of request.files) {
     const photoId = deps.newId();
     const keyParts = { userId: user.userId, uploadBatchId, photoId };
     const objectKey = buildOriginalObjectKey(keyParts);
     const fileModifiedAt = validIsoDate(file.fileModifiedAt);
+    const fileModifiedLocalDateTime = fileModifiedAt
+      ? deriveLocalDateTime(fileModifiedAt, uploadContextTimeZone)
+      : undefined;
     const metadata = removeEmptyMetadata({
       ...originalUploadMetadata(keyParts),
       "original-file-name": file.fileName,
@@ -102,6 +115,11 @@ export const handleCreateUploadBatch = async ({
       ...(file.clientSha256 ? { clientSha256: file.clientSha256 } : {}),
       uploadRequestedAt: createdAt,
       ...(fileModifiedAt ? { fileModifiedAt } : {}),
+      ...(fileModifiedLocalDateTime
+        ? { fileModifiedLocalDateTime: `${fileModifiedLocalDateTime.localDate}T${fileModifiedLocalDateTime.localTime}` }
+        : {}),
+      uploadLocalDateTime: `${uploadLocalDateTime.localDate}T${uploadLocalDateTime.localTime}`,
+      uploadContextTimeZone,
     };
     await album.createPhoto(photo);
 

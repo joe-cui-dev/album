@@ -1,0 +1,3 @@
+# Serve Photo Viewer Bootstrap in One Read
+
+Photo Viewer will use one authenticated, `private, no-store` GET read that returns the current Photo's Viewer fields and metadata, temporary Display Access with expiry, originating Viewer Sequence collection, live newer and older neighbour IDs, Archive membership, and chronology revision. This avoids the visible detail-then-access request waterfall for direct routes and every sequence step, while leaving the existing Photo Detail and Display Access endpoints available during client migration and for narrower callers. The aggregate read creates no durable state and remains scoped to the signed-in User's Personal Album.

@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "provenance": {
+    "generatedBy": "scripts/generate-smoke-fixtures.mjs",
+    "heicToolchain": "macOS sips -s format heic (genuine HEVC HEIC container)",
+    "privacy": "Synthetic colour fields only; no GPS, device-identifying, or private metadata."
+  },
+  "files": [
+    {
+      "file": "jpeg-exif-offset.jpg",
+      "kind": "jpeg",
+      "expectedChronology": {
+        "localDateTime": "2024-04-05T16:07:08",
+        "offset": "+10:00",
+        "source": "exif"
+      },
+      "metadata": {
+        "exifDate": "2024:04:05 16:07:08",
+        "offset": "+10:00"
+      },
+      "sha256": "3c61f380b3c2b464b1dbe2e832738d431ddfb0ff0381d020ba941910c92630f2",
+      "bytes": 902,
+      "signature": "jpeg",
+      "dimensions": {
+        "width": 320,
+        "height": 180
+      }
+    },
+    {
+      "file": "jpeg-exif-no-offset.jpg",
+      "kind": "jpeg",
+      "expectedChronology": {
+        "localDateTime": "2023-02-03T04:05:06",
+        "offset": null,
+        "source": "exif"
+      },
+      "metadata": {
+        "exifDate": "2023:02:03 04:05:06",
+        "offset": null
+      },
+      "sha256": "516570189e1ddf0e7e0bdb6dbf3fce2f6903b35e90142663c9fbaaaef4615941",
+      "bytes": 882,
+      "signature": "jpeg",
+      "dimensions": {
+        "width": 320,
+        "height": 180
+      }
+    },
+    {
+      "file": "png-file-modified.png",
+      "kind": "png",
+      "expectedChronology": {
+        "localDateTime": "2024-04-05T06:07:08",
+        "offset": null,
+        "source": "file_modified"
+      },
+      "metadata": {
+        "fileModifiedAt": "2024-04-05T06:07:08.000Z",
+        "exifDate": null
+      },
+      "sha256": "ef0c5f558e880d31c9a588a2e4aa5e911735d1e1685fcb5c6a2c498469baeb1a",
+      "bytes": 1286,
+      "signature": "png",
+      "dimensions": {
+        "width": 320,
+        "height": 180
+      }
+    },
+    {
+      "file": "heic-container.heic",
+      "kind": "heic",
+      "expectedChronology": {
+        "localDateTime": "2024-04-05T16:07:08",
+        "offset": "+10:00",
+        "source": "exif"
+      },
+      "metadata": {
+        "exifDate": "2024:04:05 16:07:08",
+        "offset": "+10:00"
+      },
+      "sha256": "0a5969f254f96dbee49ad078471228362a3bb952da3e8d756b9310f1a4867761",
+      "bytes": 1425,
+      "signature": "heif",
+      "dimensions": {
+        "width": 320,
+        "height": 180
+      }
+    },
+    {
+      "file": "undecodable.jpg",
+      "kind": "corrupt-jpeg",
+      "expectedChronology": null,
+      "metadata": {},
+      "sha256": "7ad3f1b1bda0d157b2aa059dc5de6ae904bebb83ef8510a0b8b1cf69ce2ebee5",
+      "bytes": 106,
+      "signature": "jpeg",
+      "dimensions": null
+    }
+  ]
+}

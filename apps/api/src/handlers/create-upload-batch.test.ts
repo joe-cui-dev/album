@@ -53,6 +53,70 @@ describe("handleCreateUploadBatch", () => {
     expect(JSON.parse(response.body ?? "{}")).toEqual({ message: "Files must be JPEG, PNG, or HEIC photos" });
   });
 
+  it("derives upload-context-local calendar values from a validated IANA time zone", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const ids = ["batch-1", "photo-1"];
+    const request: CreateUploadBatchRequest = {
+      files: [
+        {
+          fileName: "beach.jpg",
+          contentType: "image/jpeg",
+          fileSizeBytes: 1024,
+          fileModifiedAt: "2026-01-01T23:30:00.000Z",
+        },
+      ],
+      uploadContext: { timeZone: "Australia/Brisbane" },
+    };
+    const response = await handleCreateUploadBatch({
+      user,
+      album: store.personalAlbumOf(user.userId),
+      body: JSON.stringify(request),
+      deps: { ...validDeps(), newId: () => ids.shift() ?? "extra" },
+    });
+    expect(response.statusCode).toBe(200);
+    await expect(store.personalAlbumOf("user-1").getPhoto("photo-1")).resolves.toMatchObject({
+      uploadContextTimeZone: "Australia/Brisbane",
+      uploadLocalDateTime: "2026-05-26T11:02:03",
+      fileModifiedLocalDateTime: "2026-01-02T09:30:00",
+    });
+  });
+
+  it("rejects an invalid uploadContext.timeZone", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const request: CreateUploadBatchRequest = {
+      files: [{ fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024 }],
+      uploadContext: { timeZone: "Not/A_Zone" },
+    };
+    const response = await handleCreateUploadBatch({
+      user,
+      album: store.personalAlbumOf(user.userId),
+      body: JSON.stringify(request),
+      deps: validDeps(),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({
+      message: "uploadContext.timeZone must be a valid IANA time zone",
+    });
+  });
+
+  it("falls back to the legacy zone for an old v1 client that omits uploadContext", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const ids = ["batch-1", "photo-1"];
+    const request: CreateUploadBatchRequest = {
+      files: [{ fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024 }],
+    };
+    const response = await handleCreateUploadBatch({
+      user,
+      album: store.personalAlbumOf(user.userId),
+      body: JSON.stringify(request),
+      deps: { ...validDeps(), newId: () => ids.shift() ?? "extra" },
+    });
+    expect(response.statusCode).toBe(200);
+    await expect(store.personalAlbumOf("user-1").getPhoto("photo-1")).resolves.toMatchObject({
+      uploadContextTimeZone: "Australia/Brisbane",
+    });
+  });
+
   it("omits an invalid file modified time instead of storing it", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const inputs: unknown[] = [];

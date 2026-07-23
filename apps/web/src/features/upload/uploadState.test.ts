@@ -10,7 +10,7 @@ describe("isTerminalProcessingState", () => {
     },
   );
 
-  it.each<ProcessingState>(["uploadRequested", "uploaded", "processing"])(
+  it.each<ProcessingState>(["uploadRequested", "processing"])(
     "treats %s as non-terminal",
     (state) => {
       expect(isTerminalProcessingState(state)).toBe(false);

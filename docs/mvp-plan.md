@@ -4,9 +4,8 @@ This is the living roadmap for Personal Album. It records the intended MVP bound
 
 ## Status
 
-- Phases 1–5 are implemented.
-- Phase 6 core features are implemented and deployed.
-- Phase 7 infrastructure guardrails are largely implemented.
+- The experience foundation, chronology/scale foundation, browsing tracer, and supporting workflows are implemented locally.
+- Candidate verification is defined in [the stage 5 execution plan](./refinement-acceptance-execution-plan.md); its performance, production, and assisted gates remain deliberately unclaimed.
 - Production smoke testing has not been confirmed, so the MVP is not yet accepted.
 
 Implementation, deployment, and production verification are separate milestones. A feature is only accepted after it works in the production user journey.
@@ -20,6 +19,7 @@ The MVP supports a small family User Allowlist. Each Allowed User has one indepe
 - see processing progress and retry failures;
 - browse Ready Photos in a private Timeline;
 - view Photo Metadata;
+- adjust and revert Captured At without modifying the Original Photo;
 - archive and restore Photos;
 - view a Display Photo and download one Original Photo at a time.
 
@@ -48,30 +48,22 @@ Using the default API Gateway URL remains acceptable through MVP acceptance. A s
 - EXIF extraction with Captured At fallback.
 - Display Photo and Timeline Thumbnail generation.
 - Timeline API and responsive browsing UI.
-- Photo detail, Archive, temporary Display Access, and Original Download.
+- Photo Viewer, Archive/Restore/Undo, temporary Display Access, and Original Download.
+- Durable Processing Issues with conditional navigation and Retry Processing.
+- Ready-only Timeline/Archive projections without the legacy `uploaded` Processing State.
 - Shared photo object-key contracts and storage adapters.
 - CDK deployment, frontend hosting, operational logs helper, and automated tests.
+- Auth v2, exact-Origin admission, allowlist revalidation, Viewer refinement, chronology editor,
+  accessibility/resilience closure, smoke-fixture verifier, and the 20,000-Photo candidate profile harness.
 
 ## Remaining Before MVP Acceptance
 
-### Product consistency
-
-- Add Restore Photo so Archive is reversible.
-- Add a durable Processing Issues view so failed Photos remain discoverable after refresh or on another device.
-- Remove the unused `uploaded` Processing State.
-- Keep Timeline limited to Ready Photos and remove non-ready Processing State filters from its API and UI.
-
-### Security
-
-- Revalidate the User Allowlist on protected requests so removing a User revokes existing Sessions.
-- Add suitable Sign-In Code abuse controls without exposing allowlist membership.
-- Validate the request origin for state-changing browser requests while cross-site Session cookies are in use.
-
 ### Production acceptance
 
-- Complete the production smoke test in [deployment.md](./deployment.md).
-- Confirm real JPEG, PNG, and HEIC processing.
-- Confirm User isolation, mobile browsing, alarms, and budget notifications.
+- Pass the automated, performance, assisted-device, and security gates in the [stage 5 execution plan](./refinement-acceptance-execution-plan.md).
+- Deploy and observe auth v2 for 24 hours, then remove v1 in a separately authorised deployment.
+- Complete the production smoke test in [deployment.md](./deployment.md) with dedicated Users and versioned non-private fixtures.
+- Publish a passing dated record under `docs/acceptance/`, then and only then mark the MVP Accepted.
 
 ## After MVP
 

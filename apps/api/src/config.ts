@@ -8,9 +8,15 @@ const required = (name: string): string => {
 
 export const config = {
   userAllowlist: required("USER_ALLOWLIST"),
+  webOrigins: required("WEB_ORIGINS")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean),
   photosBucketName: required("PHOTOS_BUCKET_NAME"),
   metadataTableName: required("METADATA_TABLE_NAME"),
   processingQueueUrl: process.env.PROCESSING_QUEUE_URL,
+  photoMaintenanceQueueUrl: process.env.PHOTO_MAINTENANCE_QUEUE_URL,
+  signInDispatchQueueUrl: process.env.SIGN_IN_DISPATCH_QUEUE_URL,
   sessionSigningSecret: required("SESSION_SIGNING_SECRET"),
   sesFromEmail: process.env.SES_FROM_EMAIL,
   allowDevAuthCodes: process.env.ALLOW_DEV_AUTH_CODES === "true",
