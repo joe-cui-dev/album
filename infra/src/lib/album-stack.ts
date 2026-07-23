@@ -843,17 +843,6 @@ export class AlbumStack extends Stack {
     );
     dlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
 
-    const processingQueueAgeAlarm = new Alarm(this, "ProcessingQueueAgeAlarm", {
-      metric: processingQueue.metricApproximateAgeOfOldestMessage({
-        period: Duration.minutes(5),
-      }),
-      threshold: Duration.minutes(15).toSeconds(),
-      evaluationPeriods: 1,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
-    });
-    processingQueueAgeAlarm.addAlarmAction(new SnsAction(alarmTopic));
-
     const maintenanceDlqVisibleMessagesAlarm = new Alarm(
       this,
       "PhotoMaintenanceDlqVisibleMessagesAlarm",
@@ -887,59 +876,6 @@ export class AlbumStack extends Stack {
     signInDispatchDlqVisibleMessagesAlarm.addAlarmAction(
       new SnsAction(alarmTopic),
     );
-
-    for (const lambda of [
-      createUploadBatch,
-      uploadBatchStatus,
-      listTimelinePhotos,
-      getPhotoDetail,
-      displayAccessUrl,
-      originalDownloadUrl,
-      retryProcessing,
-      processingIssues,
-      processingIssuesSummary,
-      timelinePhotosV2,
-      archivePhotosV2,
-      albumNavigation,
-      timelineThumbnailAccess,
-      adjustCapturedAt,
-      revertCapturedAt,
-      archiveMembership,
-      restoreMembership,
-      session,
-      sessionV2,
-      dispatchSignInCode,
-      processPhoto,
-      photoMaintenanceWorker,
-      photoMaintenanceCoordinator,
-      phase2Reconciliation,
-    ]) {
-      const errorsAlarm = new Alarm(this, `${lambda.node.id}ErrorsAlarm`, {
-        metric: lambda.metricErrors({
-          period: Duration.minutes(5),
-        }),
-        threshold: 0,
-        evaluationPeriods: 1,
-        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-        treatMissingData: TreatMissingData.NOT_BREACHING,
-      });
-      errorsAlarm.addAlarmAction(new SnsAction(alarmTopic));
-
-      const throttlesAlarm = new Alarm(
-        this,
-        `${lambda.node.id}ThrottlesAlarm`,
-        {
-          metric: lambda.metricThrottles({
-            period: Duration.minutes(5),
-          }),
-          threshold: 0,
-          evaluationPeriods: 1,
-          comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-          treatMissingData: TreatMissingData.NOT_BREACHING,
-        },
-      );
-      throttlesAlarm.addAlarmAction(new SnsAction(alarmTopic));
-    }
 
     const api = new HttpApi(this, "AlbumApi", {
       corsPreflight: {
