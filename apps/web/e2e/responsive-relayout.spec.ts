@@ -36,5 +36,17 @@ test("keeps the loaded Timeline intact, with no duplicated rows, across a respon
   await expect(anchorLink).toBeVisible();
 
   // The one month marker is never duplicated by re-layout either.
-  await expect(page.getByRole("heading", { name: "January 2025" })).toHaveCount(1);
+  const monthMarker = page.getByRole("heading", { name: "January 2025" });
+  await expect(monthMarker).toHaveCount(1);
+
+  // Mobile stacks date navigation above the page heading, leaving the Timeline the full
+  // content width instead of preserving the desktop navigation column beside it.
+  const jumpButtonBox = await page.getByRole("button", { name: "Jump to date" }).boundingBox();
+  const pageHeadingBox = await page.getByRole("heading", { name: "Album", level: 1 }).boundingBox();
+  const monthMarkerBox = await monthMarker.boundingBox();
+  expect(jumpButtonBox).not.toBeNull();
+  expect(pageHeadingBox).not.toBeNull();
+  expect(monthMarkerBox).not.toBeNull();
+  expect(jumpButtonBox!.y + jumpButtonBox!.height).toBeLessThanOrEqual(pageHeadingBox!.y);
+  expect(monthMarkerBox!.width).toBeCloseTo(pageHeadingBox!.width, 0);
 });

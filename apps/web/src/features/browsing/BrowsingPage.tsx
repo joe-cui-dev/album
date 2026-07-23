@@ -114,7 +114,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
   }, []);
 
   return (
-    <main className="album-content flex gap-6 py-6">
+    <main className="album-content flex flex-col gap-4 py-4 md:flex-row md:gap-6 md:py-6">
       <DateNavigation
         jumpState={jumpState}
         onCancelJump={onCancelJump}
@@ -123,7 +123,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
         {...(visiblePeriodKey !== undefined ? { visiblePeriodKey } : {})}
         years={years}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 w-full flex-1">
         <h1 className="mb-4" ref={headingRef} tabIndex={-1}>
           {title}
         </h1>
