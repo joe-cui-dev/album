@@ -673,7 +673,13 @@ export class AlbumStack extends Stack {
         forceDockerBundling: true,
         nodeModules: ["sharp"],
       },
-      reservedConcurrentExecutions: 2,
+      // 128MB default gives ~1/12 vCPU; 2048MB gives a full vCPU so each photo's
+      // three sequential sharp renders run at full single-core speed.
+      memorySize: 2048,
+      // One invocation per photo (batchSize 1) plus 10 reserved slots lets a
+      // typical 5-15 photo batch process in parallel instead of queuing behind
+      // a 2-slot / 5-per-batch serial pipeline.
+      reservedConcurrentExecutions: 10,
       timeout: Duration.minutes(2),
       logGroup: new LogGroup(this, "ProcessPhotoLogGroup", {
         retention: RetentionDays.ONE_WEEK,
@@ -681,7 +687,7 @@ export class AlbumStack extends Stack {
     });
     processPhoto.addEventSource(
       new SqsEventSource(processingQueue, {
-        batchSize: 5,
+        batchSize: 1,
         reportBatchItemFailures: true,
       }),
     );
