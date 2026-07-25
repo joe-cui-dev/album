@@ -41,6 +41,7 @@ import {
   Bucket,
   EventType,
   HttpMethods,
+  StorageClass,
   type IBucket,
 } from "aws-cdk-lib/aws-s3";
 import { SqsDestination } from "aws-cdk-lib/aws-s3-notifications";
@@ -49,7 +50,11 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
-import { ORIGINALS_KEY_PREFIX } from "@album/shared";
+import {
+  DISPLAY_KEY_PREFIX,
+  ORIGINALS_KEY_PREFIX,
+  TIMELINE_THUMBNAILS_KEY_PREFIX,
+} from "@album/shared";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -119,6 +124,30 @@ export class AlbumStack extends Stack {
       lifecycleRules: [
         {
           abortIncompleteMultipartUploadAfter: Duration.days(1),
+        },
+        {
+          id: "OriginalPhotoNoncurrentVersionLifecycle",
+          enabled: true,
+          prefix: ORIGINALS_KEY_PREFIX,
+          noncurrentVersionTransitions: [
+            {
+              storageClass: StorageClass.INFREQUENT_ACCESS,
+              transitionAfter: Duration.days(30),
+            },
+          ],
+          noncurrentVersionExpiration: Duration.days(90),
+        },
+        {
+          id: "DisplayPhotoNoncurrentVersionLifecycle",
+          enabled: true,
+          prefix: DISPLAY_KEY_PREFIX,
+          noncurrentVersionExpiration: Duration.days(30),
+        },
+        {
+          id: "TimelineThumbnailNoncurrentVersionLifecycle",
+          enabled: true,
+          prefix: TIMELINE_THUMBNAILS_KEY_PREFIX,
+          noncurrentVersionExpiration: Duration.days(30),
         },
       ],
       enforceSSL: true,

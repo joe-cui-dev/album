@@ -204,6 +204,10 @@ _Avoid_: unarchive, recover deleted photo
 Retention intended to recover from accidental deletion or accidental metadata changes. It is not the same as multi-region disaster recovery.
 _Avoid_: backup, archive storage, disaster recovery
 
+**Noncurrent Photo Object Version**:
+An earlier S3 version of an Original Photo, Display Photo, or Timeline Thumbnail that remains after the same object key is overwritten. It is operational recovery material, not an Archived Photo, and lifecycle cleanup never targets the current object version.
+_Avoid_: Archived Photo, old photo, deleted photo
+
 **Cost Guardrail**:
 A limit, cleanup rule, or alert intended to reduce the risk of unexpected cloud costs for the whole app. Cost Guardrails are app-level protections rather than per-User quotas.
 _Avoid_: cost optimization, billing improvement, user quota

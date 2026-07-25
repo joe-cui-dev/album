@@ -12,7 +12,9 @@ export const timelineThumbnailLargeLongestEdgePixels = 640;
 export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
 
 export {
+  DISPLAY_KEY_PREFIX,
   ORIGINALS_KEY_PREFIX,
+  TIMELINE_THUMBNAILS_KEY_PREFIX,
   buildDisplayObjectKey,
   buildOriginalObjectKey,
   buildTimelineThumbnailLargeObjectKey,

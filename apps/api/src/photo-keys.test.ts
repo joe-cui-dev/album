@@ -1,5 +1,11 @@
 import {
+  DISPLAY_KEY_PREFIX,
+  ORIGINALS_KEY_PREFIX,
+  TIMELINE_THUMBNAILS_KEY_PREFIX,
+  buildDisplayObjectKey,
   buildOriginalObjectKey,
+  buildTimelineThumbnailLargeObjectKey,
+  buildTimelineThumbnailObjectKey,
   matchesOriginalObjectMetadata,
   originalUploadMetadata,
   parseOriginalObjectKey,
@@ -36,5 +42,16 @@ describe("photo object key contracts", () => {
         parts,
       ),
     ).toBe(false);
+  });
+
+  it("builds keys under their canonical prefix", () => {
+    expect(buildOriginalObjectKey(parts).startsWith(ORIGINALS_KEY_PREFIX)).toBe(true);
+    expect(buildDisplayObjectKey(parts).startsWith(DISPLAY_KEY_PREFIX)).toBe(true);
+    expect(buildTimelineThumbnailObjectKey(parts).startsWith(TIMELINE_THUMBNAILS_KEY_PREFIX)).toBe(
+      true,
+    );
+    expect(
+      buildTimelineThumbnailLargeObjectKey(parts).startsWith(TIMELINE_THUMBNAILS_KEY_PREFIX),
+    ).toBe(true);
   });
 });

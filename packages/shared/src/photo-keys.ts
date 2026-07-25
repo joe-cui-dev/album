@@ -1,4 +1,6 @@
 export const ORIGINALS_KEY_PREFIX = "originals/";
+export const DISPLAY_KEY_PREFIX = "display/";
+export const TIMELINE_THUMBNAILS_KEY_PREFIX = "timeline-thumbnails/";
 const originalObjectKeyPattern = new RegExp(
   `^${ORIGINALS_KEY_PREFIX}([^/]+)/([^/]+)/([^/]+)$`,
 );
@@ -34,19 +36,19 @@ export const buildDisplayObjectKey = ({
   userId,
   photoId,
 }: Pick<OriginalObjectKeyParts, "userId" | "photoId">): string =>
-  `display/${userId}/${photoId}.jpg`;
+  `${DISPLAY_KEY_PREFIX}${userId}/${photoId}.jpg`;
 
 export const buildTimelineThumbnailObjectKey = ({
   userId,
   photoId,
 }: Pick<OriginalObjectKeyParts, "userId" | "photoId">): string =>
-  `timeline-thumbnails/${userId}/${photoId}.jpg`;
+  `${TIMELINE_THUMBNAILS_KEY_PREFIX}${userId}/${photoId}.jpg`;
 
 export const buildTimelineThumbnailLargeObjectKey = ({
   userId,
   photoId,
 }: Pick<OriginalObjectKeyParts, "userId" | "photoId">): string =>
-  `timeline-thumbnails/${userId}/${photoId}-large.jpg`;
+  `${TIMELINE_THUMBNAILS_KEY_PREFIX}${userId}/${photoId}-large.jpg`;
 
 export const originalUploadMetadata = ({
   userId,
