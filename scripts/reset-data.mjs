@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const USER_PARTITION_PREFIX = "USER#";
+
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 loadDotEnv(join(rootDir, ".env"));
 
@@ -181,16 +183,11 @@ function assertAwsCli() {
 
 function discoverStackResources({ stackName, region, profile }) {
   const response = awsJson(
-    [
-      "cloudformation",
-      "describe-stack-resources",
-      "--stack-name",
-      stackName,
-    ],
+    ["cloudformation", "list-stack-resources", "--stack-name", stackName],
     { profile, region },
   );
 
-  return response.StackResources ?? [];
+  return response.StackResourceSummaries ?? [];
 }
 
 function emptyBucket(bucketName, context) {
@@ -272,7 +269,10 @@ function deleteObjects(bucketName, objects, context) {
 
 function emptyTable(tableName, context) {
   console.log(`\nDynamoDB ${tableName}`);
-  const keyAttributes = getTableKeyAttributes(tableName, context);
+  const { keyAttributes, partitionKeyAttribute } = getTableKeyAttributes(
+    tableName,
+    context,
+  );
   let total = 0;
   let exclusiveStartKey;
 
@@ -284,12 +284,17 @@ function emptyTable(tableName, context) {
       tableName,
       "--projection-expression",
       keyAttributes.map((_, index) => `#k${index}`).join(", "),
+      "--filter-expression",
+      "begins_with(#pk, :userPrefix)",
       "--expression-attribute-names",
-      JSON.stringify(
-        Object.fromEntries(
+      JSON.stringify({
+        ...Object.fromEntries(
           keyAttributes.map((attribute, index) => [`#k${index}`, attribute]),
         ),
-      ),
+        "#pk": partitionKeyAttribute,
+      }),
+      "--expression-attribute-values",
+      JSON.stringify({ ":userPrefix": { S: USER_PARTITION_PREFIX } }),
     ];
 
     const response = exclusiveStartKey
@@ -312,7 +317,7 @@ function emptyTable(tableName, context) {
     exclusiveStartKey = response.LastEvaluatedKey;
   } while (exclusiveStartKey);
 
-  console.log(`  items: ${total}`);
+  console.log(`  items under ${USER_PARTITION_PREFIX}*: ${total}`);
 }
 
 function getTableKeyAttributes(tableName, context) {
@@ -321,15 +326,17 @@ function getTableKeyAttributes(tableName, context) {
     context,
   );
 
-  const keyAttributes = response.Table?.KeySchema?.map(
-    (entry) => entry.AttributeName,
-  );
+  const keySchema = response.Table?.KeySchema ?? [];
+  const keyAttributes = keySchema.map((entry) => entry.AttributeName);
+  const partitionKeyAttribute = keySchema.find(
+    (entry) => entry.KeyType === "HASH",
+  )?.AttributeName;
 
-  if (!keyAttributes?.length) {
+  if (!keyAttributes.length || !partitionKeyAttribute) {
     fail(`Could not discover key schema for DynamoDB table ${tableName}.`);
   }
 
-  return keyAttributes;
+  return { keyAttributes, partitionKeyAttribute };
 }
 
 function batchDeleteItems(tableName, keyAttributes, items, context) {
@@ -478,7 +485,8 @@ function printHelp() {
 Deletes user/development data from resources in the CloudFormation stack:
   - S3 bucket object versions and delete markers, excluding web assets by default
   - incomplete S3 multipart uploads
-  - DynamoDB table items
+  - DynamoDB items under USER# partitions (photos, upload batches, timeline,
+    processing issues, etc.); sign-in codes and maintenance records are kept
   - SQS queue messages
 
 Options:
