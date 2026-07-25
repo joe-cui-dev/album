@@ -41,6 +41,46 @@ const createReadyPhoto = async (
   });
 };
 
+describe("PersonalAlbum contract", () => {
+  it("round-trips a created Photo through its User's Personal Album", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "summer.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    });
+
+    expect(await album.getPhoto("photo-1")).toMatchObject({
+      photoId: "photo-1",
+      userId: "user-1",
+      processingState: "uploadRequested",
+      archived: false,
+    });
+  });
+
+  it("keeps a User's Photos isolated from another User's Personal Album and lets Sha256 lookups exclude a candidate", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    const otherAlbum = store.personalAlbumOf("user-2");
+    await createReadyPhoto(album, "old");
+    await createReadyPhoto(album, "new");
+
+    await expect(otherAlbum.getPhoto("old")).resolves.toBeUndefined();
+    await expect(
+      album.findReadyPhotoBySha256({ sha256: "new-hash", excludePhotoId: "old" }),
+    ).resolves.toEqual({ photoId: "new" });
+    await expect(
+      album.findReadyPhotoBySha256({ sha256: "new-hash", excludePhotoId: "new" }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
   it("sets original/active chronology at revision 0 and writes the Active projection and Date Index", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");

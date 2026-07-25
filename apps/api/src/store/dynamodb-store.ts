@@ -173,39 +173,6 @@ export const createDynamoDbPersonalAlbumStore = ({
         );
         return asUploadBatch(result.Item);
       },
-      async listTimelinePhotos(input) {
-        const expressionValues: Record<string, string> = { ":pk": `USER#${userId}` };
-        const rangeIsSpecified = input.fromCapturedAt && input.toCapturedAt;
-        const result = await documentClient.send(
-          new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: rangeIsSpecified
-              ? "pk = :pk AND sk BETWEEN :fromSk AND :toSk"
-              : "pk = :pk AND begins_with(sk, :timeline)",
-            ExpressionAttributeValues: rangeIsSpecified
-              ? {
-                  ...expressionValues,
-                  ":fromSk": `TIMELINE#${input.fromCapturedAt}`,
-                  ":toSk": `TIMELINE#${input.toCapturedAt}`,
-                }
-              : { ...expressionValues, ":timeline": "TIMELINE#" },
-          }),
-        );
-        const keys = (result.Items ?? [])
-          .map((item) => (typeof item.photoId === "string" ? item.photoId : undefined))
-          .filter((photoId): photoId is string => photoId !== undefined);
-        const photos = await batchGetPhotos({ documentClient, tableName, userId, photoIds: keys });
-        return photos
-          .filter(
-            (photo) =>
-              input.processingState === undefined ||
-              photo.processingState === input.processingState,
-          )
-          .filter((photo) => input.archived === undefined || photo.archived === input.archived)
-          .sort((left, right) =>
-            (right.capturedAt ?? "").localeCompare(left.capturedAt ?? ""),
-          );
-      },
       async findReadyPhotoBySha256({ sha256, excludePhotoId }) {
         const result = await documentClient.send(
           new QueryCommand({
@@ -309,13 +276,6 @@ export const createDynamoDbPersonalAlbumStore = ({
           }),
         );
       },
-      async archivePhoto(photoId) {
-        await updatePhoto(documentClient, tableName, userId, photoId, {
-          UpdateExpression: "SET archived = :archived",
-          ExpressionAttributeValues: { ":archived": true },
-        });
-      },
-
       async publishReadyPhotoV2(input) {
         const photoResult = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: photoKey(userId, input.photoId) }),

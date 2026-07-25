@@ -180,29 +180,6 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
         async getUploadBatch(uploadBatchId) {
           return uploadBatchesOf(userId).get(uploadBatchId);
         },
-        async listTimelinePhotos(input) {
-          return [...timelineOf(userId).entries()]
-            .map(([, photoId]) => photosOf(userId).get(photoId))
-            .filter((candidate): candidate is Photo => candidate !== undefined)
-            .filter(
-              (candidate) =>
-                !input.fromCapturedAt || candidate.capturedAt! >= input.fromCapturedAt,
-            )
-            .filter(
-              (candidate) =>
-                !input.toCapturedAt || candidate.capturedAt! <= input.toCapturedAt,
-            )
-            .filter(
-              (candidate) =>
-                input.processingState === undefined ||
-                candidate.processingState === input.processingState,
-            )
-            .filter(
-              (candidate) =>
-                input.archived === undefined || candidate.archived === input.archived,
-            )
-            .sort((left, right) => right.capturedAt!.localeCompare(left.capturedAt!));
-        },
         async findReadyPhotoBySha256({ sha256, excludePhotoId }) {
           const match = [...photosOf(userId).values()].find(
             (candidate) =>
@@ -271,13 +248,6 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             );
           }
         },
-        async archivePhoto(photoId) {
-          const candidate = photo(photoId);
-          if (candidate) {
-            candidate.archived = true;
-          }
-        },
-
         async publishReadyPhotoV2(input) {
           const candidate = requirePhoto(userId, input.photoId);
           assertAttemptOwnership(candidate, input.attemptId);

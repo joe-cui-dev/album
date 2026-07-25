@@ -283,28 +283,6 @@ export interface GetProcessingIssuesSummaryResponse {
   openCount: number;
 }
 
-export interface TimelinePhoto {
-  photoId: string;
-  fileName: string;
-  capturedAt: string;
-  processingState: ProcessingState;
-  archived: boolean;
-  displayObjectKey?: string;
-  displayDimensions?: {
-    width: number;
-    height: number;
-  };
-  timelineThumbnailUrl?: string;
-  timelineThumbnailDimensions?: {
-    width: number;
-    height: number;
-  };
-}
-
-export interface ListTimelinePhotosResponse {
-  photos: TimelinePhoto[];
-}
-
 export interface PhotoDetail {
   photoId: string;
   fileName: string;
@@ -323,8 +301,6 @@ export interface PhotoDetail {
   chronology?: PhotoChronology;
 }
 
-export type GetPhotoDetailResponse = PhotoDetail;
-
 export interface ArchiveMembershipResponse {
   photoId: string;
   archived: boolean;
@@ -335,7 +311,7 @@ export interface CapturedAtAdjustmentRequest {
 }
 
 /** Full Photo detail, including chronology; the response ETag header carries the new revision. */
-export type CapturedAtAdjustmentResponse = GetPhotoDetailResponse;
+export type CapturedAtAdjustmentResponse = PhotoDetail;
 
 export interface CreateTemporaryPhotoUrlResponse {
   url: string;

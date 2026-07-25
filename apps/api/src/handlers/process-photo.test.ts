@@ -71,7 +71,7 @@ describe("handleProcessPhoto", () => {
     await expect(objects.readObjectBytes("display/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("display jpeg"));
     await expect(objects.readObjectBytes("timeline-thumbnails/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("timeline thumbnail jpeg"));
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready", sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9", displayObjectKey: "display/user-1/photo-1.jpg", timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg", capturedAt: "2026-01-02T03:04:05.000Z", capturedAtSource: "fileModifiedTime", metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } });
-    await expect(album.listTimelinePhotos({ processingState: "ready", archived: false })).resolves.toMatchObject([{ photoId: "photo-1" }]);
+    await expect(album.getTimelineProjectionsV2("active")).resolves.toMatchObject([{ photoId: "photo-1" }]);
   });
 
   it("writes both Timeline Thumbnail variants under separate physical keys", async () => {

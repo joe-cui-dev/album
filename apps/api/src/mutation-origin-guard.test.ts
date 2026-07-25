@@ -2,7 +2,7 @@ import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { archiveMembershipHandler, restoreMembershipHandler } from "./handlers/archive-membership.js";
 import { adjustCapturedAtHandler, revertCapturedAtHandler } from "./handlers/captured-at-adjustment.js";
 import { handler as createUploadBatchHandler } from "./handlers/create-upload-batch.js";
-import { displayAccessUrlHandler, originalDownloadUrlHandler } from "./handlers/photo-actions.js";
+import { originalDownloadUrlHandler } from "./handlers/photo-actions.js";
 import { handler as retryProcessingHandler } from "./handlers/retry-processing.js";
 import { handler as sessionHandler } from "./handlers/session.js";
 import { handler as sessionV2Handler } from "./handlers/session-v2.js";
@@ -22,7 +22,6 @@ const MUTATION_ROUTES: ReadonlyArray<{ name: string; method: string; handler: AP
   { name: "PUT /photos/{photoId}/captured-at-adjustment", method: "PUT", handler: adjustCapturedAtHandler },
   { name: "DELETE /photos/{photoId}/captured-at-adjustment", method: "DELETE", handler: revertCapturedAtHandler },
   { name: "POST /upload-batches", method: "POST", handler: createUploadBatchHandler },
-  { name: "POST /photos/{photoId}/display-access", method: "POST", handler: displayAccessUrlHandler },
   { name: "POST /photos/{photoId}/original-download", method: "POST", handler: originalDownloadUrlHandler },
   { name: "POST /photos/{photoId}/retry-processing", method: "POST", handler: retryProcessingHandler },
   { name: "POST /timeline-thumbnail-access", method: "POST", handler: timelineThumbnailAccessHandler },

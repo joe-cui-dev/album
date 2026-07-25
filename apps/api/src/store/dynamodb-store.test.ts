@@ -84,38 +84,20 @@ describe("DynamoDbPersonalAlbumStore commands", () => {
     expect(commands.indexOf(readyUpdate!)).toBeLessThan(commands.indexOf(timelineWrite!));
   });
 
-  it("uses both Timeline query shapes and retries unprocessed BatchGet keys", async () => {
-    const commands: Array<{ input: Record<string, unknown> }> = [];
+  it("retries unprocessed BatchGet keys until every requested Photo is resolved", async () => {
     let batchGets = 0;
     const documentClient = {
       send: async (command: { input: Record<string, unknown> }) => {
-        commands.push(command);
-        if ("KeyConditionExpression" in command.input) {
-          return { Items: [{ photoId: "photo-1" }] };
-        }
-        if ("RequestItems" in command.input) {
-          batchGets += 1;
-          return batchGets === 1
-            ? { Responses: { metadata: [] }, UnprocessedKeys: { metadata: { Keys: [{ pk: "USER#user-1", sk: "PHOTO#photo-1" }] } } }
-            : { Responses: { metadata: [] } };
-        }
-        return {};
+        batchGets += 1;
+        return batchGets === 1
+          ? { Responses: { metadata: [] }, UnprocessedKeys: { metadata: { Keys: [{ pk: "USER#user-1", sk: "PHOTO#photo-1" }] } } }
+          : { Responses: { metadata: [] } };
       },
     } as unknown as DynamoDBDocumentClient;
     const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata" }).personalAlbumOf("user-1");
 
-    await album.listTimelinePhotos({});
-    await album.listTimelinePhotos({
-      fromCapturedAt: "2026-01-01T00:00:00.000Z",
-      toCapturedAt: "2026-02-01T00:00:00.000Z",
-    });
+    await album.getPhotosByIds(["photo-1"]);
 
-    expect(commands.map((command) => command.input.KeyConditionExpression)).toEqual(
-      expect.arrayContaining([
-        "pk = :pk AND begins_with(sk, :timeline)",
-        "pk = :pk AND sk BETWEEN :fromSk AND :toSk",
-      ]),
-    );
-    expect(batchGets).toBe(3);
+    expect(batchGets).toBe(2);
   });
 });

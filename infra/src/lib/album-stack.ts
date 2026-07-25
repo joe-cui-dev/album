@@ -319,54 +319,6 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const listTimelinePhotos = new NodejsFunction(
-      this,
-      "ListTimelinePhotosHandler",
-      {
-        runtime: Runtime.NODEJS_22_X,
-        entry: join(
-          "..",
-          "apps",
-          "api",
-          "src",
-          "handlers",
-          "list-timeline-photos.ts",
-        ),
-        handler: "handler",
-        environment: commonEnvironment,
-        reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "ListTimelinePhotosLogGroup", {
-          retention: RetentionDays.ONE_WEEK,
-        }),
-      },
-    );
-
-    const getPhotoDetail = new NodejsFunction(this, "GetPhotoDetailHandler", {
-      runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
-      handler: "getPhotoDetailHandler",
-      environment: commonEnvironment,
-      reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "GetPhotoDetailLogGroup", {
-        retention: RetentionDays.ONE_WEEK,
-      }),
-    });
-
-    const displayAccessUrl = new NodejsFunction(
-      this,
-      "DisplayAccessUrlHandler",
-      {
-        runtime: Runtime.NODEJS_22_X,
-        entry: join("..", "apps", "api", "src", "handlers", "photo-actions.ts"),
-        handler: "displayAccessUrlHandler",
-        environment: commonEnvironment,
-        reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "DisplayAccessUrlLogGroup", {
-          retention: RetentionDays.ONE_WEEK,
-        }),
-      },
-    );
-
     const originalDownloadUrl = new NodejsFunction(
       this,
       "OriginalDownloadUrlHandler",
@@ -711,8 +663,6 @@ export class AlbumStack extends Stack {
 
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
-    photosBucket.grantRead(listTimelinePhotos);
-    photosBucket.grantRead(displayAccessUrl);
     photosBucket.grantRead(originalDownloadUrl);
     photosBucket.grantRead(viewerBootstrap);
     photosBucket.grantRead(timelinePhotosV2);
@@ -720,9 +670,6 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
-    metadataTable.grantReadData(listTimelinePhotos);
-    metadataTable.grantReadData(getPhotoDetail);
-    metadataTable.grantReadData(displayAccessUrl);
     metadataTable.grantReadData(originalDownloadUrl);
     metadataTable.grantReadData(viewerBootstrap);
     metadataTable.grantReadData(retryProcessing);
@@ -913,33 +860,6 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "UploadBatchStatusIntegration",
         uploadBatchStatus,
-      ),
-    });
-
-    api.addRoutes({
-      path: "/timeline",
-      methods: [HttpMethod.GET],
-      integration: new HttpLambdaIntegration(
-        "ListTimelinePhotosIntegration",
-        listTimelinePhotos,
-      ),
-    });
-
-    api.addRoutes({
-      path: "/photos/{photoId}",
-      methods: [HttpMethod.GET],
-      integration: new HttpLambdaIntegration(
-        "GetPhotoDetailIntegration",
-        getPhotoDetail,
-      ),
-    });
-
-    api.addRoutes({
-      path: "/photos/{photoId}/display-access",
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration(
-        "DisplayAccessUrlIntegration",
-        displayAccessUrl,
       ),
     });
 

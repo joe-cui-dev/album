@@ -1,11 +1,7 @@
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
 import type { PhotoObjectStore } from "../store/photo-objects.js";
 import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
-import {
-  handleCreateDisplayAccessUrl,
-  handleCreateOriginalDownloadUrl,
-  handleGetPhotoDetail,
-} from "./photo-actions.js";
+import { handleCreateOriginalDownloadUrl } from "./photo-actions.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
 const withPresignDownload = (
@@ -30,31 +26,6 @@ const createReadyAlbum = async () => {
 };
 
 describe("photo action handlers", () => {
-  it("returns read-only photo metadata for a signed-in user's photo", async () => {
-    const { album } = await createReadyAlbum();
-    const response = await handleGetPhotoDetail({ user, album, photoId: "photo-1" });
-    const body = JSON.parse(response.body ?? "{}");
-    expect(response.statusCode).toBe(200);
-    expect(body).toEqual({
-      photoId: "photo-1", fileName: "beach.jpg", format: "jpeg", fileSizeBytes: 1234,
-      capturedAt: "2025-01-02T10:00:00.000Z", capturedAtSource: "exif", processingState: "ready", archived: false,
-      metadata: { width: 4000, height: 3000, cameraMake: "Canon" }, displayDimensions: { width: 2048, height: 1536 },
-    });
-    expect(JSON.stringify(body).includes("originalObjectKey")).toBe(false);
-    expect(JSON.stringify(body).includes("displayObjectKey")).toBe(false);
-  });
-
-  it("creates a temporary display access URL only for ready photos with display output", async () => {
-    const { album } = await createReadyAlbum();
-    const response = await handleCreateDisplayAccessUrl({
-      user, album, photoId: "photo-1", deps: { photoObjects: withPresignDownload(async ({ objectKey }) => {
-        expect(objectKey).toBe("display/user-1/photo-1.jpg"); return { url: "https://temporary.example/display", expiresInSeconds: 300 };
-      }) },
-    });
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body ?? "{}")).toEqual({ url: "https://temporary.example/display", expiresInSeconds: 300 });
-  });
-
   it("creates a temporary original download URL for the signed-in user's original photo", async () => {
     const { album } = await createReadyAlbum();
     const response = await handleCreateOriginalDownloadUrl({
