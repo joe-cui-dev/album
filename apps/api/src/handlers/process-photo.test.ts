@@ -15,7 +15,7 @@ const createStore = async (state: "uploadRequested" | "processingFailed" = "uplo
   const store = createInMemoryPersonalAlbumStore();
   const album = store.personalAlbumOf("user-1");
   await album.createPhoto({ photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: objectKey, fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z", fileModifiedAt: "2026-01-02T03:04:05.000Z" });
-  if (state === "processingFailed") await album.markProcessingFailed({ photoId: "photo-1", failureCode: "failed", failureMessage: "failed" });
+  if (state === "processingFailed") await album.recordProcessingIssueV2({ photoId: "photo-1", fileName: "beach.jpg", reasonCode: "failed", attemptedAt: "2026-05-25T00:00:00.000Z" });
   return { store, album };
 };
 const validMetadata = { "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1" };
@@ -53,13 +53,24 @@ describe("handleProcessPhoto", () => {
   it("marks the matching Photo as processingFailed when S3 metadata does not match the original object key", async () => {
     const { store, album } = await createStore();
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects({ "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "different-photo" }), ...outputDeps() } });
-    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "processingFailed", failureCode: "metadataMismatch", failureMessage: "We couldn't verify this upload. Please try again." });
+    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "processingFailed", failureCode: "metadataMismatch" });
   });
 
   it("uses the processor-computed S3 hash to mark exact duplicates within the same Personal Album", async () => {
     const { store, album } = await createStore();
     await album.createPhoto({ photoId: "already-ready", uploadBatchId: "batch-0", originalObjectKey: "originals/user-1/batch-0/already-ready", fileName: "old.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-01-01T00:00:00.000Z" });
-    await album.markReady({ photoId: "already-ready", sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3", fileName: "old.jpg", displayObjectKey: "display/user-1/already-ready.jpg", displayDimensions: { width: 1, height: 1 }, timelineThumbnailObjectKey: "timeline-thumbnails/user-1/already-ready.jpg", timelineThumbnailDimensions: { width: 1, height: 1 }, capturedAt: "2026-01-01T00:00:00.000Z", capturedAtSource: "exif", metadata: {} });
+    await album.publishReadyPhotoV2({
+      photoId: "already-ready",
+      sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3",
+      fileName: "old.jpg",
+      displayObjectKey: "display/user-1/already-ready.jpg",
+      displayDimensions: { width: 1, height: 1 },
+      timelineThumbnails: { small: { objectKey: "timeline-thumbnails/user-1/already-ready.jpg", dimensions: { width: 1, height: 1 } }, large: { objectKey: "timeline-thumbnails/user-1/already-ready-large.jpg", dimensions: { width: 1, height: 1 } } },
+      metadata: {},
+      originalCapturedAt: { precision: "day", localDate: "2026-01-01" },
+      originalCapturedAtSource: "exif",
+      hadOpenProcessingIssue: false,
+    });
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(validMetadata, Buffer.from("uploaded original bytes")), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "exactDuplicate", sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3", duplicateOfPhotoId: "already-ready" });
   });
@@ -70,7 +81,7 @@ describe("handleProcessPhoto", () => {
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: objects, ...outputDeps() } });
     await expect(objects.readObjectBytes("display/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("display jpeg"));
     await expect(objects.readObjectBytes("timeline-thumbnails/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("timeline thumbnail jpeg"));
-    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready", sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9", displayObjectKey: "display/user-1/photo-1.jpg", timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg", capturedAt: "2026-01-02T03:04:05.000Z", capturedAtSource: "fileModifiedTime", metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } });
+    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready", sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9", displayObjectKey: "display/user-1/photo-1.jpg", metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } });
     await expect(album.getTimelineProjectionsV2("active")).resolves.toMatchObject([{ photoId: "photo-1" }]);
   });
 
@@ -119,12 +130,6 @@ describe("handleProcessPhoto", () => {
 
   it("resolves the Processing Issue when a retry succeeds", async () => {
     const { store, album } = await createStore("processingFailed");
-    await album.recordProcessingIssueV2({
-      photoId: "photo-1",
-      fileName: "beach.jpg",
-      reasonCode: "failed",
-      attemptedAt: "2026-05-25T00:00:00.000Z",
-    });
     await handleProcessPhoto({
       records: record({ type: "retryPhotoProcessing", userId: "user-1", photoId: "photo-1", originalObjectKey: objectKey, retryAttemptId: "retry-1" }),
       deps: { store, photoObjects: photoObjects(), ...outputDeps() },
@@ -144,40 +149,6 @@ describe("handleProcessPhoto", () => {
     await album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "message-1", startedAt: "2026-05-26T00:00:00.000Z" });
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready" });
-  });
-
-  it("completes the v2 write on redelivery after a crash between the v1 and v2 Ready writes", async () => {
-    const { store, album } = await createStore();
-    // Simulate a crash after markReady (v1) committed but before publishReadyPhotoV2 (v2) ran:
-    // the attempt is still claimed and the Photo is "ready" with no v2 chronology yet.
-    await album.claimProcessingAttempt({ photoId: "photo-1", attemptId: "message-1", startedAt: "2026-05-26T00:00:00.000Z" });
-    await album.markReady({
-      photoId: "photo-1",
-      sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9",
-      fileName: "beach.jpg",
-      displayObjectKey: "display/user-1/photo-1.jpg",
-      displayDimensions: { width: 2048, height: 1365 },
-      timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg",
-      timelineThumbnailDimensions: { width: 320, height: 213 },
-      capturedAt: "2026-01-02T03:04:05.000Z",
-      capturedAtSource: "fileModifiedTime",
-      metadata: {},
-    });
-    const beforeResume = await album.getPhoto("photo-1");
-    expect(beforeResume).toMatchObject({ processingState: "ready", processingAttemptId: "message-1" });
-    expect(beforeResume?.chronology).toBeUndefined();
-
-    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps() } });
-
-    const afterResume = await album.getPhoto("photo-1");
-    expect(afterResume).toMatchObject({ processingState: "ready", chronology: { active: { revision: 0 } } });
-    expect(afterResume?.processingAttemptId).toBeUndefined();
-  });
-
-  it("uses EXIF captured time from decoded photo metadata before file modified time", async () => {
-    const { store, album } = await createStore();
-    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps(), createDisplayPhoto: async () => ({ body: Buffer.from("display jpeg"), dimensions: { width: 1200, height: 800 }, metadata: { width: 1200, height: 800 }, capturedAt: "2025-12-24T10:11:12.000Z" }) } });
-    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ capturedAt: "2025-12-24T10:11:12.000Z", capturedAtSource: "exif" });
   });
 
   it("processes custom retry messages from the Retry Processing API", async () => {

@@ -58,10 +58,6 @@ export const toPhotoDetail = (photo: Photo): PhotoDetail => ({
   fileName: photo.fileName,
   format: photo.format,
   fileSizeBytes: photo.fileSizeBytes,
-  ...(photo.capturedAt ? { capturedAt: photo.capturedAt } : {}),
-  ...(photo.capturedAtSource
-    ? { capturedAtSource: photo.capturedAtSource }
-    : {}),
   processingState: photo.processingState,
   archived: photo.archived,
   ...(photo.metadata ? { metadata: photo.metadata } : {}),

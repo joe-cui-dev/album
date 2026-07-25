@@ -217,64 +217,9 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
       async markProcessingStarted(photoId) {
         await updatePhoto(documentClient, tableName, userId, photoId, {
-          UpdateExpression:
-            "SET processingState = :state REMOVE failureCode, failureMessage",
+          UpdateExpression: "SET processingState = :state REMOVE failureCode",
           ExpressionAttributeValues: { ":state": "processing" },
         });
-      },
-      async markProcessingFailed({ photoId, failureCode, failureMessage }) {
-        await updatePhoto(documentClient, tableName, userId, photoId, {
-          UpdateExpression:
-            "SET processingState = :state, failureCode = :code, failureMessage = :message",
-          ExpressionAttributeValues: {
-            ":state": "processingFailed",
-            ":code": failureCode,
-            ":message": failureMessage,
-          },
-        });
-      },
-      async markExactDuplicate({ photoId, sha256, duplicateOfPhotoId }) {
-        await updatePhoto(documentClient, tableName, userId, photoId, {
-          UpdateExpression:
-            "SET processingState = :state, sha256 = :sha256, duplicateOfPhotoId = :duplicateOfPhotoId REMOVE failureCode, failureMessage",
-          ExpressionAttributeValues: {
-            ":state": "exactDuplicate",
-            ":sha256": sha256,
-            ":duplicateOfPhotoId": duplicateOfPhotoId,
-          },
-        });
-      },
-      async markReady(input) {
-        await updatePhoto(documentClient, tableName, userId, input.photoId, {
-          UpdateExpression:
-            "SET processingState = :state, sha256 = :sha256, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, timelineThumbnailObjectKey = :timelineThumbnailObjectKey, timelineThumbnailDimensions = :timelineThumbnailDimensions, capturedAt = :capturedAt, capturedAtSource = :capturedAtSource, #metadata = :metadata REMOVE failureCode, failureMessage",
-          ExpressionAttributeNames: { "#metadata": "metadata" },
-          ExpressionAttributeValues: {
-            ":state": "ready",
-            ":sha256": input.sha256,
-            ":displayObjectKey": input.displayObjectKey,
-            ":displayDimensions": input.displayDimensions,
-            ":timelineThumbnailObjectKey": input.timelineThumbnailObjectKey,
-            ":timelineThumbnailDimensions": input.timelineThumbnailDimensions,
-            ":capturedAt": input.capturedAt,
-            ":capturedAtSource": input.capturedAtSource,
-            ":metadata": input.metadata,
-          },
-        });
-        await documentClient.send(
-          new PutCommand({
-            TableName: tableName,
-            Item: {
-              pk: `USER#${userId}`,
-              sk: `TIMELINE#${input.capturedAt}#${input.photoId}`,
-              userId,
-              photoId: input.photoId,
-              capturedAt: input.capturedAt,
-              fileName: input.fileName,
-              processingState: "ready",
-            },
-          }),
-        );
       },
       async publishReadyPhotoV2(input) {
         const photoResult = await documentClient.send(
@@ -300,7 +245,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               TableName: tableName,
               Key: photoKey(userId, input.photoId),
               UpdateExpression:
-                "SET processingState = :state, sha256 = :sha256, fileName = :fileName, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, timelineThumbnails = :timelineThumbnails, #metadata = :metadata, chronology = :chronology REMOVE failureCode, failureMessage, processingAttemptId, processingStartedAt",
+                "SET processingState = :state, sha256 = :sha256, fileName = :fileName, displayObjectKey = :displayObjectKey, displayDimensions = :displayDimensions, timelineThumbnails = :timelineThumbnails, #metadata = :metadata, chronology = :chronology REMOVE failureCode, processingAttemptId, processingStartedAt",
               ExpressionAttributeNames: { "#metadata": "metadata" },
               ExpressionAttributeValues: {
                 ":state": "ready",
@@ -359,7 +304,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               TableName: tableName,
               Key: photoKey(userId, input.photoId),
               UpdateExpression:
-                "SET processingState = :state, sha256 = :sha256, duplicateOfPhotoId = :duplicateOfPhotoId REMOVE failureCode, failureMessage, processingAttemptId, processingStartedAt",
+                "SET processingState = :state, sha256 = :sha256, duplicateOfPhotoId = :duplicateOfPhotoId REMOVE failureCode, processingAttemptId, processingStartedAt",
               ExpressionAttributeValues: {
                 ":state": "exactDuplicate",
                 ":sha256": input.sha256,

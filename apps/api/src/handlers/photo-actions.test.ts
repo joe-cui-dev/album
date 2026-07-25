@@ -16,11 +16,17 @@ const createReadyAlbum = async () => {
     fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 1234,
     uploadRequestedAt: "2025-01-02T10:00:00.000Z",
   });
-  await album.markReady({
+  await album.publishReadyPhotoV2({
     photoId: "photo-1", sha256: "hash", fileName: "beach.jpg", displayObjectKey: "display/user-1/photo-1.jpg",
-    displayDimensions: { width: 2048, height: 1536 }, timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg",
-    timelineThumbnailDimensions: { width: 320, height: 240 }, capturedAt: "2025-01-02T10:00:00.000Z", capturedAtSource: "exif",
+    displayDimensions: { width: 2048, height: 1536 },
+    timelineThumbnails: {
+      small: { objectKey: "timeline-thumbnails/user-1/photo-1.jpg", dimensions: { width: 320, height: 240 } },
+      large: { objectKey: "timeline-thumbnails/user-1/photo-1-large.jpg", dimensions: { width: 640, height: 480 } },
+    },
     metadata: { width: 4000, height: 3000, cameraMake: "Canon" },
+    originalCapturedAt: { precision: "day", localDate: "2025-01-02" },
+    originalCapturedAtSource: "exif",
+    hadOpenProcessingIssue: false,
   });
   return { store, album };
 };

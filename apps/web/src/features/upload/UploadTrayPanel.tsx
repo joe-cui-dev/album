@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type Ref
 import { Minus, Trash2, Upload, X } from "lucide-react";
 import { Link } from "react-router";
 import { uiMessages } from "../../lib/uiMessages.js";
+import { messageForReasonCode } from "../processing-issues/reasonMessage.js";
 import type {
   UploadTray as UploadTrayModule,
   UploadTrayCompletion,
@@ -274,8 +275,8 @@ function TransferList({ transfers }: { transfers: UploadTrayTransfer[] }) {
           <p className="upload-tray-transfer-state">{labelForTransfer(transfer)}</p>
           {transfer.transferState === "uploading" ? <progress max={100} value={transfer.progress} /> : null}
           {transfer.transferError ? <p className="upload-tray-warning">{transfer.transferError}</p> : null}
-          {transfer.processingState === "processingFailed" && transfer.failureMessage ? (
-            <p className="upload-tray-warning">{transfer.failureMessage}</p>
+          {transfer.processingState === "processingFailed" && transfer.failureCode ? (
+            <p className="upload-tray-warning">{messageForReasonCode(transfer.failureCode)}</p>
           ) : null}
         </li>
       ))}

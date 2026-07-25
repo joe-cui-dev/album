@@ -76,7 +76,6 @@ const toPhotoStatus = (photo: import("@album/shared").Photo): UploadBatchPhotoSt
     processingState: photo.processingState,
     exactDuplicate: photo.processingState === "exactDuplicate",
     ...(photo.failureCode ? { failureCode: photo.failureCode as ProcessingIssueReasonCode } : {}),
-    ...(photo.failureMessage ? { failureMessage: photo.failureMessage } : {}),
     ...(photo.processingState === "ready" && photo.chronology
       ? { timelineAnchor: timelineAnchorOf(photo.chronology.active.capturedAt) }
       : {}),

@@ -7,7 +7,6 @@ const seedPhoto = async (state: "processingFailed" | "ready") => {
   const album = store.personalAlbumOf(user.userId);
   await album.createPhoto({ photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1", fileName: state === "ready" ? "ready.jpg" : "broken.heic", format: "heic", contentType: "image/heic", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z" });
   if (state === "processingFailed") {
-    await album.markProcessingFailed({ photoId: "photo-1", failureCode: "unsupportedImage", failureMessage: "We couldn't process this photo." });
     await album.recordProcessingIssueV2({
       photoId: "photo-1",
       fileName: "broken.heic",
@@ -15,7 +14,18 @@ const seedPhoto = async (state: "processingFailed" | "ready") => {
       attemptedAt: "2026-05-26T01:02:03.000Z",
     });
   }
-  else await album.markReady({ photoId: "photo-1", sha256: "hash", fileName: "ready.jpg", displayObjectKey: "display/user-1/photo-1.jpg", displayDimensions: { width: 1, height: 1 }, timelineThumbnailObjectKey: "timeline-thumbnails/user-1/photo-1.jpg", timelineThumbnailDimensions: { width: 1, height: 1 }, capturedAt: "2026-05-26T01:02:03.000Z", capturedAtSource: "exif", metadata: {} });
+  else await album.publishReadyPhotoV2({
+    photoId: "photo-1",
+    fileName: "ready.jpg",
+    sha256: "hash",
+    displayObjectKey: "display/user-1/photo-1.jpg",
+    displayDimensions: { width: 1, height: 1 },
+    timelineThumbnails: { small: { objectKey: "timeline-thumbnails/user-1/photo-1.jpg", dimensions: { width: 1, height: 1 } }, large: { objectKey: "timeline-thumbnails/user-1/photo-1-large.jpg", dimensions: { width: 1, height: 1 } } },
+    metadata: {},
+    originalCapturedAt: { precision: "day", localDate: "2026-05-26" },
+    originalCapturedAtSource: "exif",
+    hadOpenProcessingIssue: false,
+  });
   return store;
 };
 

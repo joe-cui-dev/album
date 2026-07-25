@@ -1,5 +1,5 @@
 import type { SQSBatchResponse, SQSEvent, SQSHandler } from "aws-lambda";
-import type { CapturedAtSource, Dimensions, Photo, PhotoMetadata } from "@album/shared";
+import type { Dimensions, Photo, PhotoMetadata } from "@album/shared";
 import {
   displayPhotoLongestEdgePixels,
   buildDisplayObjectKey,
@@ -160,11 +160,6 @@ export const handleProcessPhoto = async ({
       if (!matchesOriginalObjectMetadata(metadata, keyParts)) {
         const photo = await album.getPhoto(keyParts.photoId);
         if (photo) {
-          await album.markProcessingFailed({
-            photoId: keyParts.photoId,
-            failureCode: "metadataMismatch",
-            failureMessage: "We couldn't verify this upload. Please try again.",
-          });
           await album.recordProcessingIssueV2({
             photoId: keyParts.photoId,
             fileName: photo.fileName ?? keyParts.photoId,
@@ -188,10 +183,8 @@ export const handleProcessPhoto = async ({
         });
         continue;
       }
-      // A Ready/Exact Duplicate Photo is only cleanly finished once its v1 and v2
-      // writes both completed and its attempt was released; a redelivery whose v2
-      // write never ran (e.g. a crash between the two) must still be able to
-      // resume and complete the v2 side. claimProcessingAttempt below still
+      // A Ready/Exact Duplicate Photo is only cleanly finished once its
+      // processing attempt was released. claimProcessingAttempt below still
       // rejects a different live attempt.
       const isCleanlyFinished =
         (photo.processingState === "ready" || photo.processingState === "exactDuplicate") &&
@@ -231,11 +224,6 @@ export const handleProcessPhoto = async ({
         excludePhotoId: keyParts.photoId,
       });
       if (duplicate) {
-        await album.markExactDuplicate({
-          photoId: keyParts.photoId,
-          sha256,
-          duplicateOfPhotoId: duplicate.photoId,
-        });
         await album.publishExactDuplicateV2({
           photoId: keyParts.photoId,
           sha256,
@@ -262,11 +250,6 @@ export const handleProcessPhoto = async ({
             error: error instanceof Error ? error.message : String(error),
           }),
         );
-        await album.markProcessingFailed({
-          photoId: keyParts.photoId,
-          failureCode: "unsupportedImage",
-          failureMessage: "We couldn't process this photo.",
-        });
         await album.recordProcessingIssueV2({
           photoId: keyParts.photoId,
           fileName: photo.fileName ?? keyParts.photoId,
@@ -280,7 +263,6 @@ export const handleProcessPhoto = async ({
       const displayObjectKey = buildDisplayObjectKey(keyParts);
       const timelineThumbnailObjectKey = buildTimelineThumbnailObjectKey(keyParts);
       const timelineThumbnailLargeObjectKey = buildTimelineThumbnailLargeObjectKey(keyParts);
-      const capturedAt = resolveCapturedAt(photo, displayPhoto);
       const fileModifiedLocalDateTime = resolveFileModifiedLocalDateTime(photo);
       const { capturedAt: originalCapturedAt, source: originalCapturedAtSource } =
         resolveOriginalCapturedAt({
@@ -301,18 +283,6 @@ export const handleProcessPhoto = async ({
       await deps.photoObjects.writeJpegObject({
         objectKey: timelineThumbnailLargeObjectKey,
         body: timelineThumbnailLarge.body,
-      });
-      await album.markReady({
-        photoId: keyParts.photoId,
-        fileName: photo.fileName ?? keyParts.photoId,
-        sha256,
-        displayObjectKey,
-        displayDimensions: displayPhoto.dimensions,
-        timelineThumbnailObjectKey,
-        timelineThumbnailDimensions: timelineThumbnail.dimensions,
-        capturedAt: capturedAt.value,
-        capturedAtSource: capturedAt.source,
-        metadata: displayPhoto.metadata,
       });
       await album.publishReadyPhotoV2({
         photoId: keyParts.photoId,
@@ -689,28 +659,6 @@ const parseGpsLocation = ({
     longitude:
       longitudeSign *
       (longitudeDegrees + longitudeMinutes / 60 + longitudeSeconds / 3600),
-  };
-};
-
-const resolveCapturedAt = (
-  photo: Pick<Photo, "fileModifiedAt" | "uploadRequestedAt">,
-  displayPhoto: DisplayPhotoResult,
-): { value: string; source: CapturedAtSource } => {
-  if (displayPhoto.capturedAt) {
-    return {
-      value: displayPhoto.capturedAt,
-      source: "exif",
-    };
-  }
-  if (photo.fileModifiedAt) {
-    return {
-      value: photo.fileModifiedAt,
-      source: "fileModifiedTime",
-    };
-  }
-  return {
-    value: photo.uploadRequestedAt ?? new Date(0).toISOString(),
-    source: "uploadTime",
   };
 };
 

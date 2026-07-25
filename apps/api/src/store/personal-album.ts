@@ -1,6 +1,5 @@
 import type {
   CapturedAt,
-  CapturedAtSource,
   Dimensions,
   OriginalCapturedAtSource,
   Photo,
@@ -76,28 +75,6 @@ export interface PersonalAlbum {
     photoIds: string[];
   }): Promise<void>;
   markProcessingStarted(photoId: string): Promise<void>;
-  markProcessingFailed(input: {
-    photoId: string;
-    failureCode: string;
-    failureMessage: string;
-  }): Promise<void>;
-  markExactDuplicate(input: {
-    photoId: string;
-    sha256: string;
-    duplicateOfPhotoId: string;
-  }): Promise<void>;
-  markReady(input: {
-    photoId: string;
-    sha256: string;
-    fileName: string;
-    displayObjectKey: string;
-    displayDimensions: { width: number; height: number };
-    timelineThumbnailObjectKey: string;
-    timelineThumbnailDimensions: { width: number; height: number };
-    capturedAt: string;
-    capturedAtSource: CapturedAtSource;
-    metadata: PhotoMetadata;
-  }): Promise<void>;
   // --- v2 store transaction model (Phase 2 WP2) ---
 
   /**

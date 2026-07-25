@@ -98,7 +98,6 @@ export interface Photo {
   uploadBatchId: string;
   originalObjectKey: string;
   displayObjectKey?: string;
-  timelineThumbnailObjectKey?: string;
   fileName: string;
   format: PhotoFormat;
   contentType?: string;
@@ -107,11 +106,8 @@ export interface Photo {
   clientSha256?: string;
   uploadRequestedAt?: string;
   fileModifiedAt?: string;
-  capturedAt?: string;
-  capturedAtSource?: CapturedAtSource;
   processingState: ProcessingState;
   failureCode?: string;
-  failureMessage?: string;
   /** Set when this Photo was identified as an Exact Duplicate of another; the matching Photo may since have been archived or removed. */
   duplicateOfPhotoId?: string;
   archived: boolean;
@@ -120,11 +116,7 @@ export interface Photo {
     width: number;
     height: number;
   };
-  timelineThumbnailDimensions?: {
-    width: number;
-    height: number;
-  };
-  /** Nested alongside the legacy flat capturedAt/capturedAtSource fields, which stay untouched for the v1 reader. */
+  /** Present once processing has published this Photo as Ready. */
   chronology?: PhotoChronology;
   timelineThumbnails?: TimelineThumbnails;
   processingAttemptId?: string;
@@ -245,7 +237,6 @@ export interface UploadBatchPhotoStatus {
   processingState: ProcessingState;
   exactDuplicate: boolean;
   failureCode?: ProcessingIssueReasonCode;
-  failureMessage?: string;
   /** The "YYYY-MM" / "YYYY-unknown" navigation key for a Ready Photo, derived server-side from its active chronology. */
   timelineAnchor?: string;
   /** Present when this Photo is an Exact Duplicate and the matching Photo has been identified; may be absent if that Photo has since been archived. */
@@ -288,8 +279,6 @@ export interface PhotoDetail {
   fileName: string;
   format: PhotoFormat;
   fileSizeBytes: number;
-  capturedAt?: string;
-  capturedAtSource?: CapturedAtSource;
   processingState: ProcessingState;
   archived: boolean;
   metadata?: PhotoMetadata;

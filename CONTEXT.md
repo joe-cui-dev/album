@@ -168,6 +168,10 @@ _Avoid_: broken upload, invalid photo
 An independently durable, unresolved need for User attention created when a Photo first enters Processing Failed. It retains its identity while Retry Processing is underway and across failed attempts, then resolves when the Photo becomes Ready or an Exact Duplicate that needs no further User action.
 _Avoid_: Processing State, error log, upload error
 
+**Processing Issue Reason**:
+The durable cause recorded when a Photo enters Processing Failed, identifying why it needs the User's attention. The wording shown to the User is presentation chosen when the Processing Issue is displayed, not part of the recorded reason.
+_Avoid_: failure message, error text, error string
+
 **Processing Issues**:
 A durable, cursor-paginated view of a User's open Processing Issues so they remain discoverable and retryable after a page refresh or on another device. An exact open count controls whether it appears as a navigation destination; it is separate from the Timeline and is not a complete Upload Batch history.
 _Avoid_: failed timeline, upload history, error log

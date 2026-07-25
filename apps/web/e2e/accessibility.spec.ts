@@ -231,7 +231,7 @@ test("Upload Tray per-file failure renders without axe violations", async ({ moc
           fileName: "beach.jpg",
           processingState: "processingFailed",
           exactDuplicate: false,
-          failureMessage: "This file isn't a supported image format.",
+          failureCode: "unsupportedImage",
         },
         { photoId: batch.uploads[1]!.photoId, fileName: "cliff.jpg", processingState: "processing", exactDuplicate: false },
       ]),

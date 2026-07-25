@@ -35,7 +35,6 @@ export interface UploadTrayTransfer {
   exactDuplicate: boolean;
   duplicateOfPhotoId?: string;
   failureCode?: ProcessingIssueReasonCode;
-  failureMessage?: string;
   timelineAnchor?: string;
 }
 
@@ -122,10 +121,9 @@ const isCancelled = (error: unknown): boolean => {
 /** The optional per-Photo fields a status response may carry, shared by a live poll and a recovery fetch. */
 const optionalStatusFields = (
   photo: UploadBatchPhotoStatus,
-): Pick<UploadTrayTransfer, "duplicateOfPhotoId" | "failureCode" | "failureMessage" | "timelineAnchor"> => ({
+): Pick<UploadTrayTransfer, "duplicateOfPhotoId" | "failureCode" | "timelineAnchor"> => ({
   ...(photo.duplicateOfPhotoId !== undefined ? { duplicateOfPhotoId: photo.duplicateOfPhotoId } : {}),
   ...(photo.failureCode !== undefined ? { failureCode: photo.failureCode } : {}),
-  ...(photo.failureMessage !== undefined ? { failureMessage: photo.failureMessage } : {}),
   ...(photo.timelineAnchor !== undefined ? { timelineAnchor: photo.timelineAnchor } : {}),
 });
 
