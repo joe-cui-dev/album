@@ -81,7 +81,7 @@ export const handleRetryProcessing = async ({
   }
 
   const retryAttemptId = deps.newRetryAttemptId();
-  const reserved = await album.reserveProcessingIssueRetryV2({
+  const reserved = await album.reserveProcessingIssueRetry({
     photoId: photo.photoId,
     retryAttemptId,
     reservedAt: now.toISOString(),
@@ -98,12 +98,12 @@ export const handleRetryProcessing = async ({
       retryAttemptId,
     });
   } catch (error) {
-    await album.releaseProcessingIssueRetryV2({ photoId: photo.photoId, retryAttemptId });
+    await album.releaseProcessingIssueRetry({ photoId: photo.photoId, retryAttemptId });
     throw error;
   }
   let current: { retryAttemptId: string };
   try {
-    current = await album.beginProcessingIssueRetryV2({
+    current = await album.beginProcessingIssueRetry({
       photoId: photo.photoId,
       retryAttemptId,
       attemptedAt: now.toISOString(),

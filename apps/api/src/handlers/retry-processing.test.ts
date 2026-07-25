@@ -5,16 +5,16 @@ const user = { userId: "user-1", email: "user@example.com" };
 const seedPhoto = async (state: "processingFailed" | "ready") => {
   const store = createInMemoryPersonalAlbumStore();
   const album = store.personalAlbumOf(user.userId);
-  await album.createPhoto({ photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1", fileName: state === "ready" ? "ready.jpg" : "broken.heic", format: "heic", contentType: "image/heic", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z" });
+  await album.createPhoto({ photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1", fileName: state === "ready" ? "ready.jpg" : "broken.heic", format: "heic", contentType: "image/heic", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z", uploadLocalDateTime: "2026-05-26T01:02:03", uploadContextTimeZone: "UTC" });
   if (state === "processingFailed") {
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "broken.heic",
       reasonCode: "unsupportedImage",
       attemptedAt: "2026-05-26T01:02:03.000Z",
     });
   }
-  else await album.publishReadyPhotoV2({
+  else await album.publishReadyPhoto({
     photoId: "photo-1",
     fileName: "ready.jpg",
     sha256: "hash",
@@ -47,7 +47,7 @@ describe("handleRetryProcessing", () => {
   it("returns the existing in-flight attempt without sending a second message", async () => {
     const store = await seedPhoto("processingFailed");
     const album = store.personalAlbumOf(user.userId);
-    await album.beginProcessingIssueRetryV2({
+    await album.beginProcessingIssueRetry({
       photoId: "photo-1",
       retryAttemptId: "in-flight",
       attemptedAt: "2026-05-26T01:02:04.000Z",

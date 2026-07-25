@@ -9,15 +9,19 @@ const withPresignUpload = (
   presignUpload: PhotoObjectStore["presignUpload"],
 ): PhotoObjectStore => ({ ...createInMemoryPhotoObjectStore(), presignUpload });
 const validDeps = () => ({ now: () => new Date("2026-05-26T01:02:03.000Z"), newId: () => "unused", photoObjects: withPresignUpload(async () => ({ url: "https://upload.example/photo", expiresInSeconds: 900 })) });
+const uploadContext = { timeZone: "Australia/Brisbane" };
 
 describe("handleCreateUploadBatch", () => {
   it("creates the upload batch and one canonical Photo per requested file", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const ids = ["batch-1", "photo-1", "photo-2"];
-    const request: CreateUploadBatchRequest = { files: [
-      { fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, clientSha256: "client-hash", fileModifiedAt: "2026-01-02T03:04:05.000Z" },
-      { fileName: "scan.png", contentType: "image/png", fileSizeBytes: 2048 },
-    ] };
+    const request: CreateUploadBatchRequest = {
+      files: [
+        { fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, clientSha256: "client-hash", fileModifiedAt: "2026-01-02T03:04:05.000Z" },
+        { fileName: "scan.png", contentType: "image/png", fileSizeBytes: 2048 },
+      ],
+      uploadContext,
+    };
     const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify(request), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", photoObjects: withPresignUpload(async ({ objectKey }) => ({ url: `https://upload/${objectKey}`, expiresInSeconds: 900 })) } });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body ?? "{}") as { uploadBatchId: string; uploads: Array<{ photoId: string; objectKey: string; uploadUrl: string }> };
@@ -34,21 +38,21 @@ describe("handleCreateUploadBatch", () => {
 
   it("rejects upload batches with more than 100 files", async () => {
     const store = createInMemoryPersonalAlbumStore();
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: Array.from({ length: 101 }, (_, index) => ({ fileName: `photo-${index}.jpg`, contentType: "image/jpeg", fileSizeBytes: 1024 })) } satisfies CreateUploadBatchRequest), deps: validDeps() });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: Array.from({ length: 101 }, (_, index) => ({ fileName: `photo-${index}.jpg`, contentType: "image/jpeg", fileSizeBytes: 1024 })), uploadContext } satisfies CreateUploadBatchRequest), deps: validDeps() });
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ message: "Upload batches can contain at most 100 files" });
   });
 
   it("rejects files larger than 50 MB", async () => {
     const store = createInMemoryPersonalAlbumStore();
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "too-large.jpg", contentType: "image/jpeg", fileSizeBytes: 50 * 1024 * 1024 + 1 }] } satisfies CreateUploadBatchRequest), deps: validDeps() });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "too-large.jpg", contentType: "image/jpeg", fileSizeBytes: 50 * 1024 * 1024 + 1 }], uploadContext } satisfies CreateUploadBatchRequest), deps: validDeps() });
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ message: "Each file must be 50 MB or smaller" });
   });
 
   it("rejects files whose MIME type and extension are not a supported photo format", async () => {
     const store = createInMemoryPersonalAlbumStore();
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "not-a-photo.gif", contentType: "image/gif", fileSizeBytes: 1024 }] } satisfies CreateUploadBatchRequest), deps: validDeps() });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "not-a-photo.gif", contentType: "image/gif", fileSizeBytes: 1024 }], uploadContext } satisfies CreateUploadBatchRequest), deps: validDeps() });
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ message: "Files must be JPEG, PNG, or HEIC photos" });
   });
@@ -99,21 +103,20 @@ describe("handleCreateUploadBatch", () => {
     });
   });
 
-  it("falls back to the legacy zone for an old v1 client that omits uploadContext", async () => {
+  it("rejects a missing uploadContext", async () => {
     const store = createInMemoryPersonalAlbumStore();
-    const ids = ["batch-1", "photo-1"];
-    const request: CreateUploadBatchRequest = {
+    const request = {
       files: [{ fileName: "beach.jpg", contentType: "image/jpeg", fileSizeBytes: 1024 }],
     };
     const response = await handleCreateUploadBatch({
       user,
       album: store.personalAlbumOf(user.userId),
       body: JSON.stringify(request),
-      deps: { ...validDeps(), newId: () => ids.shift() ?? "extra" },
+      deps: validDeps(),
     });
-    expect(response.statusCode).toBe(200);
-    await expect(store.personalAlbumOf("user-1").getPhoto("photo-1")).resolves.toMatchObject({
-      uploadContextTimeZone: "Australia/Brisbane",
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body ?? "{}")).toEqual({
+      message: "uploadContext.timeZone must be a valid IANA time zone",
     });
   });
 
@@ -121,7 +124,7 @@ describe("handleCreateUploadBatch", () => {
     const store = createInMemoryPersonalAlbumStore();
     const inputs: unknown[] = [];
     const ids = ["batch-1", "photo-1"];
-    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "photo.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, fileModifiedAt: "not-a-date" }] } satisfies CreateUploadBatchRequest), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", photoObjects: withPresignUpload(async (input) => { inputs.push(input); return { url: "https://upload.example/photo", expiresInSeconds: 900 }; }) } });
+    const response = await handleCreateUploadBatch({ user, album: store.personalAlbumOf(user.userId), body: JSON.stringify({ files: [{ fileName: "photo.jpg", contentType: "image/jpeg", fileSizeBytes: 1024, fileModifiedAt: "not-a-date" }], uploadContext } satisfies CreateUploadBatchRequest), deps: { ...validDeps(), newId: () => ids.shift() ?? "extra", photoObjects: withPresignUpload(async (input) => { inputs.push(input); return { url: "https://upload.example/photo", expiresInSeconds: 900 }; }) } });
     expect(response.statusCode).toBe(200);
     await expect(store.personalAlbumOf("user-1").getPhoto("photo-1")).resolves.not.toHaveProperty("fileModifiedAt");
     expect(inputs[0]).toEqual({ objectKey: "originals/user-1/batch-1/photo-1", contentType: "image/jpeg", metadata: { "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1", "original-file-name": "photo.jpg" } });

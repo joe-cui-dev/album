@@ -22,8 +22,10 @@ const readyAlbum = async () => {
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId: "photo-1",
     fileName: "photo-1.jpg",
     sha256: "hash",
@@ -44,25 +46,25 @@ describe("handleSetArchiveMembership", () => {
     const response = await handleSetArchiveMembership({ user, album, photoId: "photo-1", archived: true });
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body ?? "{}")).toEqual({ photoId: "photo-1", archived: true });
-    await expect(album.getTimelineProjectionsV2("active")).resolves.toEqual([]);
-    await expect(album.getTimelineProjectionsV2("archived")).resolves.toHaveLength(1);
+    await expect(album.getTimelineProjections("active")).resolves.toEqual([]);
+    await expect(album.getTimelineProjections("archived")).resolves.toHaveLength(1);
   });
 
   it("restores an Archived Photo back to Active", async () => {
     const album = await readyAlbum();
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
 
     const response = await handleSetArchiveMembership({ user, album, photoId: "photo-1", archived: false });
     expect(response.statusCode).toBe(200);
-    await expect(album.getTimelineProjectionsV2("active")).resolves.toHaveLength(1);
-    await expect(album.getTimelineProjectionsV2("archived")).resolves.toEqual([]);
+    await expect(album.getTimelineProjections("active")).resolves.toHaveLength(1);
+    await expect(album.getTimelineProjections("archived")).resolves.toEqual([]);
   });
 
   it("is idempotent when already in the target collection", async () => {
     const album = await readyAlbum();
     const response = await handleSetArchiveMembership({ user, album, photoId: "photo-1", archived: false });
     expect(response.statusCode).toBe(200);
-    await expect(album.getTimelineProjectionsV2("active")).resolves.toHaveLength(1);
+    await expect(album.getTimelineProjections("active")).resolves.toHaveLength(1);
   });
 
   it("returns 409 for a Photo that is not Ready", async () => {
@@ -77,6 +79,8 @@ describe("handleSetArchiveMembership", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
     const response = await handleSetArchiveMembership({ user, album, photoId: "not-ready", archived: true });
     expect(response.statusCode).toBe(409);

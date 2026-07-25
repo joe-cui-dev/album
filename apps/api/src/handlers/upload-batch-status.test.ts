@@ -5,12 +5,12 @@ describe("handleGetUploadBatchStatus", () => {
   it("returns counts and lightweight per-photo status for the signed-in user's batch", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
-    const createPhoto = (photoId: string, fileName: string) => album.createPhoto({ photoId, uploadBatchId: "batch-1", originalObjectKey: `originals/user-1/batch-1/${photoId}`, fileName, format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z" });
+    const createPhoto = (photoId: string, fileName: string) => album.createPhoto({ photoId, uploadBatchId: "batch-1", originalObjectKey: `originals/user-1/batch-1/${photoId}`, fileName, format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z", uploadLocalDateTime: "2026-05-26T01:02:03", uploadContextTimeZone: "UTC" });
     await createPhoto("photo-1", "ready.jpg");
     await createPhoto("photo-2", "duplicate.jpg");
     await createPhoto("photo-3", "broken.heic");
     await album.createUploadBatch({ uploadBatchId: "batch-1", createdAt: "2026-05-26T01:02:03.000Z", photoIds: ["photo-1", "photo-2", "photo-3"] });
-    await album.publishReadyPhotoV2({
+    await album.publishReadyPhoto({
       photoId: "photo-1",
       fileName: "ready.jpg",
       sha256: "ready",
@@ -22,8 +22,8 @@ describe("handleGetUploadBatchStatus", () => {
       originalCapturedAtSource: "exif",
       hadOpenProcessingIssue: false,
     });
-    await album.publishExactDuplicateV2({ photoId: "photo-2", sha256: "duplicate", duplicateOfPhotoId: "photo-1", hadOpenProcessingIssue: false });
-    await album.recordProcessingIssueV2({ photoId: "photo-3", fileName: "broken.heic", reasonCode: "unsupportedImage", attemptedAt: "2026-05-26T01:02:03.000Z" });
+    await album.publishExactDuplicate({ photoId: "photo-2", sha256: "duplicate", duplicateOfPhotoId: "photo-1", hadOpenProcessingIssue: false });
+    await album.recordProcessingIssue({ photoId: "photo-3", fileName: "broken.heic", reasonCode: "unsupportedImage", attemptedAt: "2026-05-26T01:02:03.000Z" });
 
     const response = await handleGetUploadBatchStatus({ user: { userId: "user-1", email: "user@example.com" }, album, uploadBatchId: "batch-1" });
     expect(response.statusCode).toBe(200);
@@ -41,14 +41,14 @@ describe("handleGetUploadBatchStatus", () => {
     expect(JSON.stringify(body).includes("displayObjectKey")).toBe(false);
   });
 
-  it("includes timelineAnchor for a v2 Ready photo and duplicateOfPhotoId for an Exact Duplicate", async () => {
+  it("includes timelineAnchor for a Ready photo and duplicateOfPhotoId for an Exact Duplicate", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
-    const createPhoto = (photoId: string, fileName: string) => album.createPhoto({ photoId, uploadBatchId: "batch-1", originalObjectKey: `originals/user-1/batch-1/${photoId}`, fileName, format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z" });
+    const createPhoto = (photoId: string, fileName: string) => album.createPhoto({ photoId, uploadBatchId: "batch-1", originalObjectKey: `originals/user-1/batch-1/${photoId}`, fileName, format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z", uploadLocalDateTime: "2026-05-26T01:02:03", uploadContextTimeZone: "UTC" });
     await createPhoto("photo-1", "ready.jpg");
     await createPhoto("photo-2", "duplicate.jpg");
     await album.createUploadBatch({ uploadBatchId: "batch-1", createdAt: "2026-05-26T01:02:03.000Z", photoIds: ["photo-1", "photo-2"] });
-    await album.publishReadyPhotoV2({
+    await album.publishReadyPhoto({
       photoId: "photo-1",
       fileName: "ready.jpg",
       sha256: "ready",
@@ -60,7 +60,7 @@ describe("handleGetUploadBatchStatus", () => {
       originalCapturedAtSource: "exif",
       hadOpenProcessingIssue: false,
     });
-    await album.publishExactDuplicateV2({ photoId: "photo-2", sha256: "duplicate", duplicateOfPhotoId: "photo-1", hadOpenProcessingIssue: false });
+    await album.publishExactDuplicate({ photoId: "photo-2", sha256: "duplicate", duplicateOfPhotoId: "photo-1", hadOpenProcessingIssue: false });
 
     const response = await handleGetUploadBatchStatus({ user: { userId: "user-1", email: "user@example.com" }, album, uploadBatchId: "batch-1" });
     const body = JSON.parse(response.body ?? "{}");

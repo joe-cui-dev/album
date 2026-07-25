@@ -2,6 +2,8 @@
 
 Status: Approved for implementation, 21 July 2026
 
+> **2026-07-25 supersession note:** Slice 1's v1/v2 dual-contract Auth rollout (retain v1, cut Web to v2, observe 24 hours, then remove v1) is superseded by [ADR-0074](./adr/0074-use-unversioned-canonical-contracts-for-the-first-party-app.md). The pre-MVP cleanup closed the compatibility window in one atomic cutover instead: the asynchronous Sign-In flow is now the sole canonical contract at unversioned routes, with no `/v2` alias or dual-write period. The security behaviours this plan specifies (cooldown, rolling limit, attempt exhaustion, uniform admission/rejection, no sensitive logs) remain the acceptance bar; only the rollout mechanics below are historical.
+
 This plan implements stage 5 of [Personal Light Table Design](./personal-light-table-design.md): the blocking refinement and acceptance gate for the MVP. The design document is the behavioural authority; this plan supplies execution order, code entry points, verification, and rollout checkpoints without restating every interaction rule.
 
 ## Start Here

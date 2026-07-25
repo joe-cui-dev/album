@@ -60,7 +60,7 @@ export const handleListProcessingIssues = async ({
   if (query.cursor !== undefined && !cursor) {
     return badRequest("cursor is invalid");
   }
-  const page = await album.queryProcessingIssuesV2({
+  const page = await album.queryProcessingIssues({
     limit,
     ...(cursor ? { after: { sortKey: cursor.after } } : {}),
   });

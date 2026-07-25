@@ -18,7 +18,6 @@ export const config = {
   signInDispatchQueueUrl: process.env.SIGN_IN_DISPATCH_QUEUE_URL,
   sessionSigningSecret: required("SESSION_SIGNING_SECRET"),
   sesFromEmail: process.env.SES_FROM_EMAIL,
-  allowDevAuthCodes: process.env.ALLOW_DEV_AUTH_CODES === "true",
   sessionCookieName: process.env.SESSION_COOKIE_NAME ?? "album_session",
   sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS ?? "2592000"),
   signInCodeTtlSeconds: Number(process.env.SIGN_IN_CODE_TTL_SECONDS ?? "600"),

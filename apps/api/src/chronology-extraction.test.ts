@@ -1,5 +1,4 @@
 import {
-  FALLBACK_TIME_ZONE,
   buildExifDateTimeCandidate,
   deriveLocalDateTime,
   isValidIanaTimeZone,
@@ -38,13 +37,6 @@ describe("deriveLocalDateTime", () => {
     expect(deriveLocalDateTime("2025-12-31T23:30:00.000Z", "Australia/Brisbane")).toEqual({
       localDate: "2026-01-01",
       localTime: "09:30:00",
-    });
-  });
-
-  it("handles the legacy fallback zone constant", () => {
-    expect(deriveLocalDateTime("2026-01-01T00:00:00.000Z", FALLBACK_TIME_ZONE)).toEqual({
-      localDate: "2026-01-01",
-      localTime: "10:00:00",
     });
   });
 });

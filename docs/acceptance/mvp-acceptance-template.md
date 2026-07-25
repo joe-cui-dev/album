@@ -65,7 +65,7 @@ All rows are blocking unless marked *(non-blocking)*. Status is Pass, Fail, or B
 | Exact-Origin guard rejects missing/null/malformed/credential-bearing/path-bearing/suffix/substring/wildcard Origins on every mutation route | | |
 | Allowlist revalidated on every protected request (removed ID, changed Email for same ID, changed ID for same Email, malformed config) | | |
 | `GET /session` re-validates the allowlist | | |
-| Auth v2 request/verify response shapes are indistinguishable by allowlist membership | | |
+| Sign-In request/verify response shapes are indistinguishable by allowlist membership | | |
 | Sign-in code cooldown (60s) and rolling limit (5/hour) enforced | | |
 | Sign-in code attempt exhaustion (5 wrong attempts) enforced | | |
 | Sign-in code expiry (10 minutes) enforced | | |
@@ -78,11 +78,9 @@ All rows are blocking unless marked *(non-blocking)*. Status is Pass, Fail, or B
 
 | Item | Status | Evidence |
 | --- | --- | --- |
-| Deploy queue/worker/v2/Web while retaining v1 | Blocked | Requires separate production authorization |
-| Focused v2 smoke passes post-deploy | Blocked | Requires separate production authorization |
-| 24-hour v2 observation window completed with no regression | Blocked | Requires separate production authorization |
-| v1 request/verify routes removed in a second deploy | Blocked | Requires separate production authorization |
-| Stale tabs required to refresh confirmed | Blocked | Requires separate production authorization |
+| Single atomic cutover deploy (queue/worker/canonical Sign-In/Web, no `/v2` alias) | Blocked | Requires separate production authorization |
+| Focused Sign-In smoke passes post-deploy | Blocked | Requires separate production authorization |
+| Existing valid Sessions confirmed usable after refresh | Blocked | Requires separate production authorization |
 
 ## 7. Production smoke (require separate User authorization)
 

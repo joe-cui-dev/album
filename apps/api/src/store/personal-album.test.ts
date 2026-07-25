@@ -14,7 +14,7 @@ const thumbnails = {
 const createReadyPhoto = async (
   album: PersonalAlbum,
   photoId: string,
-  input: Partial<Parameters<PersonalAlbum["publishReadyPhotoV2"]>[0]> = {},
+  input: Partial<Parameters<PersonalAlbum["publishReadyPhoto"]>[0]> = {},
 ) => {
   await album.createPhoto({
     photoId,
@@ -25,8 +25,10 @@ const createReadyPhoto = async (
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId,
     fileName: `${photoId}.jpg`,
     sha256: `${photoId}-hash`,
@@ -54,6 +56,8 @@ describe("PersonalAlbum contract", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
     expect(await album.getPhoto("photo-1")).toMatchObject({
@@ -81,7 +85,7 @@ describe("PersonalAlbum contract", () => {
   });
 });
 
-describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
+describe("PersonalAlbum contract: publishReadyPhoto", () => {
   it("sets original/active chronology at revision 0 and writes the Active projection and Date Index", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
@@ -93,13 +97,13 @@ describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
     });
     expect(photo?.timelineThumbnails).toEqual(thumbnails);
 
-    const projections = await album.getTimelineProjectionsV2("active");
+    const projections = await album.getTimelineProjections("active");
     expect(projections).toEqual([
       expect.objectContaining({ photoId: "photo-1", collection: "active", capturedAt: june15 }),
     ]);
-    expect(await album.getTimelineProjectionsV2("archived")).toEqual([]);
+    expect(await album.getTimelineProjections("archived")).toEqual([]);
 
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
   });
 
   it("resolves an open Processing Issue and decrements the exact open count", async () => {
@@ -113,8 +117,10 @@ describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "unsupportedImage",
@@ -138,6 +144,8 @@ describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
     await album.claimProcessingAttempt({
       photoId: "photo-1",
@@ -151,7 +159,7 @@ describe("PersonalAlbum v2 contract: publishReadyPhotoV2", () => {
   });
 });
 
-describe("PersonalAlbum v2 contract: publishExactDuplicateV2", () => {
+describe("PersonalAlbum contract: publishExactDuplicate", () => {
   it("marks the Photo as an Exact Duplicate without creating a projection", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await album.createPhoto({
@@ -163,9 +171,11 @@ describe("PersonalAlbum v2 contract: publishExactDuplicateV2", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
-    await album.publishExactDuplicateV2({
+    await album.publishExactDuplicate({
       photoId: "photo-2",
       sha256: "dup-hash",
       duplicateOfPhotoId: "photo-1",
@@ -174,23 +184,23 @@ describe("PersonalAlbum v2 contract: publishExactDuplicateV2", () => {
 
     const photo = await album.getPhoto("photo-2");
     expect(photo?.processingState).toBe("exactDuplicate");
-    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
+    expect(await album.getTimelineProjections("active")).toEqual([]);
   });
 });
 
-describe("PersonalAlbum v2 contract: setArchiveMembershipV2", () => {
+describe("PersonalAlbum contract: setArchiveMembership", () => {
   it("moves a Ready Photo between collections and transfers its Date Index count", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
 
-    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
-    expect(await album.getTimelineProjectionsV2("archived")).toEqual([
+    expect(await album.getTimelineProjections("active")).toEqual([]);
+    expect(await album.getTimelineProjections("archived")).toEqual([
       expect.objectContaining({ photoId: "photo-1", collection: "archived" }),
     ]);
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({});
-    expect(await album.getDateIndexV2("archived", 2024)).toEqual({ "06": 1 });
+    expect(await album.getDateIndex("active", 2024)).toEqual({});
+    expect(await album.getDateIndex("archived", 2024)).toEqual({ "06": 1 });
     expect((await album.getPhoto("photo-1"))?.archived).toBe(true);
   });
 
@@ -198,38 +208,38 @@ describe("PersonalAlbum v2 contract: setArchiveMembershipV2", () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: false });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: false });
 
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
-    expect(await album.getTimelineProjectionsV2("active")).toHaveLength(1);
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getTimelineProjections("active")).toHaveLength(1);
   });
 
   it("moves Restore (Archived -> Active) symmetrically", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
 
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: false });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: false });
 
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
-    expect(await album.getDateIndexV2("archived", 2024)).toEqual({});
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getDateIndex("archived", 2024)).toEqual({});
     expect((await album.getPhoto("photo-1"))?.archived).toBe(false);
   });
 });
 
-describe("PersonalAlbum v2 contract: replaceActiveChronologyV2 (Adjust Captured At)", () => {
+describe("PersonalAlbum contract: replaceActiveChronology (Adjust Captured At)", () => {
   it("moves the projection and Date Index count to the new period and bumps the revision", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    const result = await album.replaceActiveChronologyV2({
+    const result = await album.replaceActiveChronology({
       photoId: "photo-1",
       capturedAt: july04,
       expectedRevision: 0,
     });
 
     expect(result).toEqual({ revision: 1 });
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "07": 1 });
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "07": 1 });
     const photo = await album.getPhoto("photo-1");
     expect(photo?.chronology?.active).toEqual({ capturedAt: july04, source: "userAdjusted", revision: 1 });
     expect(photo?.chronology?.original).toEqual({ capturedAt: june15, source: "exif" });
@@ -238,61 +248,61 @@ describe("PersonalAlbum v2 contract: replaceActiveChronologyV2 (Adjust Captured 
   it("does not advance the revision on an identical retry", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
 
-    const result = await album.replaceActiveChronologyV2({
+    const result = await album.replaceActiveChronology({
       photoId: "photo-1",
       capturedAt: july04,
       expectedRevision: 1,
     });
 
     expect(result).toEqual({ revision: 1 });
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "07": 1 });
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "07": 1 });
   });
 
   it("throws StaleChronologyRevisionError when expectedRevision is stale", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
 
     await expect(
-      album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: june15, expectedRevision: 0 }),
+      album.replaceActiveChronology({ photoId: "photo-1", capturedAt: june15, expectedRevision: 0 }),
     ).rejects.toBeInstanceOf(StaleChronologyRevisionError);
   });
 
   it("moves the projection within an Archived Photo without changing its collection", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
 
-    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
 
-    expect(await album.getTimelineProjectionsV2("archived")).toEqual([
+    expect(await album.getTimelineProjections("archived")).toEqual([
       expect.objectContaining({ photoId: "photo-1", capturedAt: july04 }),
     ]);
-    expect(await album.getTimelineProjectionsV2("active")).toEqual([]);
+    expect(await album.getTimelineProjections("active")).toEqual([]);
   });
 });
 
-describe("PersonalAlbum v2 contract: revertActiveChronologyV2", () => {
+describe("PersonalAlbum contract: revertActiveChronology", () => {
   it("restores the original value, source, and Date Index period", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.replaceActiveChronologyV2({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
 
-    const result = await album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 1 });
+    const result = await album.revertActiveChronology({ photoId: "photo-1", expectedRevision: 1 });
 
     expect(result).toEqual({ revision: 2 });
     const photo = await album.getPhoto("photo-1");
     expect(photo?.chronology?.active).toEqual({ capturedAt: june15, source: "exif", revision: 2 });
-    expect(await album.getDateIndexV2("active", 2024)).toEqual({ "06": 1 });
+    expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
   });
 
   it("is a no-op that does not advance the revision when already at the original value", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    const result = await album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 0 });
+    const result = await album.revertActiveChronology({ photoId: "photo-1", expectedRevision: 0 });
 
     expect(result).toEqual({ revision: 0 });
   });
@@ -302,12 +312,12 @@ describe("PersonalAlbum v2 contract: revertActiveChronologyV2", () => {
     await createReadyPhoto(album, "photo-1");
 
     await expect(
-      album.revertActiveChronologyV2({ photoId: "photo-1", expectedRevision: 5 }),
+      album.revertActiveChronology({ photoId: "photo-1", expectedRevision: 5 }),
     ).rejects.toBeInstanceOf(StaleChronologyRevisionError);
   });
 });
 
-describe("PersonalAlbum v2 contract: Processing Issues", () => {
+describe("PersonalAlbum contract: Processing Issues", () => {
   it("creates an Issue on first failure and increments the open count", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await album.createPhoto({
@@ -319,9 +329,11 @@ describe("PersonalAlbum v2 contract: Processing Issues", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "unsupportedImage",
@@ -352,15 +364,17 @@ describe("PersonalAlbum v2 contract: Processing Issues", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "unsupportedImage",
       attemptedAt: "2026-07-19T00:01:00.000Z",
     });
 
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "corruptFile",
@@ -380,7 +394,7 @@ describe("PersonalAlbum v2 contract: Processing Issues", () => {
   });
 });
 
-describe("PersonalAlbum v2 contract: claimProcessingAttempt", () => {
+describe("PersonalAlbum contract: claimProcessingAttempt", () => {
   it("claims a fresh attempt, resumes the same attempt, and rejects a conflicting attempt", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await album.createPhoto({
@@ -392,6 +406,8 @@ describe("PersonalAlbum v2 contract: claimProcessingAttempt", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
     await expect(
@@ -411,11 +427,13 @@ describe("PersonalAlbum v2 contract: claimProcessingAttempt", () => {
       photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1",
       fileName: "photo-1.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42,
       uploadRequestedAt: "2026-07-20T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1", fileName: "photo-1.jpg", reasonCode: "failed", attemptedAt: "2026-07-20T00:01:00.000Z",
     });
-    await album.reserveProcessingIssueRetryV2({
+    await album.reserveProcessingIssueRetry({
       photoId: "photo-1", retryAttemptId: "attempt-A",
       reservedAt: "2026-07-20T00:01:00.000Z", reservationExpiresAt: "2026-07-20T00:06:00.000Z",
     });

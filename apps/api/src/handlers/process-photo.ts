@@ -13,8 +13,6 @@ import {
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import {
-  FALLBACK_TIME_ZONE,
-  deriveLocalDateTime,
   resolveOriginalCapturedAt,
   type ExifDateTimeCandidate,
 } from "../chronology-extraction.js";
@@ -116,7 +114,7 @@ const bestEffortRecordFinalProcessingIssues = async (
       const album = processAlbum(deps, parts.userId);
       const photo = await album.getPhoto(parts.photoId);
       if (!photo || photo.processingState === "ready" || photo.processingState === "exactDuplicate") return;
-      await album.recordProcessingIssueV2({
+      await album.recordProcessingIssue({
         photoId: photo.photoId,
         fileName: photo.fileName,
         reasonCode: "finalProcessingFailure",
@@ -160,7 +158,7 @@ export const handleProcessPhoto = async ({
       if (!matchesOriginalObjectMetadata(metadata, keyParts)) {
         const photo = await album.getPhoto(keyParts.photoId);
         if (photo) {
-          await album.recordProcessingIssueV2({
+          await album.recordProcessingIssue({
             photoId: keyParts.photoId,
             fileName: photo.fileName ?? keyParts.photoId,
             reasonCode: "metadataMismatch",
@@ -224,7 +222,7 @@ export const handleProcessPhoto = async ({
         excludePhotoId: keyParts.photoId,
       });
       if (duplicate) {
-        await album.publishExactDuplicateV2({
+        await album.publishExactDuplicate({
           photoId: keyParts.photoId,
           sha256,
           duplicateOfPhotoId: duplicate.photoId,
@@ -250,7 +248,7 @@ export const handleProcessPhoto = async ({
             error: error instanceof Error ? error.message : String(error),
           }),
         );
-        await album.recordProcessingIssueV2({
+        await album.recordProcessingIssue({
           photoId: keyParts.photoId,
           fileName: photo.fileName ?? keyParts.photoId,
           reasonCode: "unsupportedImage",
@@ -284,7 +282,7 @@ export const handleProcessPhoto = async ({
         objectKey: timelineThumbnailLargeObjectKey,
         body: timelineThumbnailLarge.body,
       });
-      await album.publishReadyPhotoV2({
+      await album.publishReadyPhoto({
         photoId: keyParts.photoId,
         fileName: photo.fileName ?? keyParts.photoId,
         sha256,
@@ -350,28 +348,13 @@ const parseRecordBody = (
 };
 
 const resolveFileModifiedLocalDateTime = (
-  photo: Pick<Photo, "fileModifiedAt" | "fileModifiedLocalDateTime">,
-): { localDate: string; localTime: string } | undefined => {
-  if (photo.fileModifiedLocalDateTime) {
-    return parseLocalDateTime(photo.fileModifiedLocalDateTime);
-  }
-  if (photo.fileModifiedAt) {
-    return deriveLocalDateTime(photo.fileModifiedAt, FALLBACK_TIME_ZONE);
-  }
-  return undefined;
-};
+  photo: Pick<Photo, "fileModifiedLocalDateTime">,
+): { localDate: string; localTime: string } | undefined =>
+  photo.fileModifiedLocalDateTime ? parseLocalDateTime(photo.fileModifiedLocalDateTime) : undefined;
 
 const resolveUploadLocalDateTime = (
-  photo: Pick<Photo, "uploadRequestedAt" | "uploadLocalDateTime">,
-): { localDate: string; localTime: string } => {
-  if (photo.uploadLocalDateTime) {
-    return parseLocalDateTime(photo.uploadLocalDateTime);
-  }
-  return deriveLocalDateTime(
-    photo.uploadRequestedAt ?? new Date(0).toISOString(),
-    FALLBACK_TIME_ZONE,
-  );
-};
+  photo: Pick<Photo, "uploadLocalDateTime">,
+): { localDate: string; localTime: string } => parseLocalDateTime(photo.uploadLocalDateTime);
 
 const parseLocalDateTime = (value: string): { localDate: string; localTime: string } => {
   const [localDate, localTime] = value.split("T");

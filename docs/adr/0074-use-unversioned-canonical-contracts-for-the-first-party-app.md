@@ -1,0 +1,5 @@
+# Use Unversioned Canonical Contracts for the First-Party App
+
+While the Personal Album has only its same-repository first-party Web client and no external compatibility promise, API routes, shared contracts, storage modules, and implementation names use unversioned canonical language. A breaking rollout may introduce a temporary additive version only when observation or rollback genuinely requires coexistence, but the old contract and migration suffix are removed after cutover; if the app later exposes an external API, its compatibility and versioning policy will be designed separately rather than inferred from these internal migrations.
+
+The 2026-07-25 pre-MVP cleanup is one atomic cutover with no `/v2` aliases, dual reads, or dual writes: API routes, the first-party Web client, shared types, durable keys, infrastructure names, and tests move together. Existing valid Sessions remain usable after refresh, and rollback is a source revert plus redeploy rather than a permanent compatibility layer.

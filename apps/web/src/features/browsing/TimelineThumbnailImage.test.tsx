@@ -1,10 +1,10 @@
 import { fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { TimelineThumbnailSourcesV2 } from "@album/shared";
+import type { TimelineThumbnailSources } from "@album/shared";
 import { renderApp } from "../../test/test-utils.js";
 import { TimelineThumbnailImage } from "./TimelineThumbnailImage.js";
 
-const sources = (url: string): TimelineThumbnailSourcesV2 => ({
+const sources = (url: string): TimelineThumbnailSources => ({
   large: { url, dimensions: { width: 640, height: 320 } },
 });
 

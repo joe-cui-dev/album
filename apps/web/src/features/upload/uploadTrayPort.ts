@@ -34,7 +34,7 @@ export const createHttpUploadTrayPort = (): UploadTrayPort => {
     createUploadBatch: ({ files, uploadContext, signal }) =>
       albumTransport.request("/upload-batches", {
         method: "POST",
-        body: { files, ...(uploadContext ? { uploadContext } : {}) },
+        body: { files, uploadContext },
         signal,
       }),
 

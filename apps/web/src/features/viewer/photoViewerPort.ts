@@ -17,6 +17,6 @@ export interface PhotoViewerPort {
 export const createHttpPhotoViewerPort = (): PhotoViewerPort => ({
   loadViewerBootstrap: ({ photoId, collection, signal }) => {
     const suffix = collection !== undefined ? `?collection=${collection}` : "";
-    return albumTransport.request(`/v2/photos/${photoId}/viewer${suffix}`, { signal });
+    return albumTransport.request(`/photos/${photoId}/viewer${suffix}`, { signal });
   },
 });

@@ -11,7 +11,7 @@ import {
   timelinePeriodUpperBoundSortKey,
   timelineProjectionPrefix,
   timelineProjectionSortKey,
-} from "./v2-keys.js";
+} from "./projection-keys.js";
 
 describe("timelineProjectionSortKey", () => {
   it("embeds the collection, chronology key, Added At, and Photo ID", () => {
@@ -23,7 +23,7 @@ describe("timelineProjectionSortKey", () => {
         addedAt: "2026-07-19T00:00:00.000Z",
         photoId: "photo-1",
       }),
-    ).toBe("TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
+    ).toBe("TIMELINE#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
   });
 
   it("uses ARCHIVED for the archived collection", () => {
@@ -35,14 +35,14 @@ describe("timelineProjectionSortKey", () => {
         addedAt: "2026-07-19T00:00:00.000Z",
         photoId: "photo-1",
       }),
-    ).toBe("TIMELINE_V2#ARCHIVED#2024.--.--.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
+    ).toBe("TIMELINE#ARCHIVED#2024.--.--.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
   });
 });
 
 describe("dateIndexSortKey", () => {
   it("pads the year to four digits and includes the collection", () => {
-    expect(dateIndexSortKey({ collection: "active", year: 8 })).toBe("DATE_INDEX_V2#ACTIVE#0008");
-    expect(dateIndexSortKey({ collection: "archived", year: 2024 })).toBe("DATE_INDEX_V2#ARCHIVED#2024");
+    expect(dateIndexSortKey({ collection: "active", year: 8 })).toBe("DATE_INDEX#ACTIVE#0008");
+    expect(dateIndexSortKey({ collection: "archived", year: 2024 })).toBe("DATE_INDEX#ARCHIVED#2024");
   });
 });
 
@@ -87,10 +87,10 @@ describe("PROCESSING_ISSUES_SUMMARY_SORT_KEY", () => {
 
 describe("timelineProjectionPrefix / dateIndexPrefix", () => {
   it("matches the prefix embedded in the full sort keys", () => {
-    expect(timelineProjectionPrefix("active")).toBe("TIMELINE_V2#ACTIVE#");
-    expect(timelineProjectionPrefix("archived")).toBe("TIMELINE_V2#ARCHIVED#");
-    expect(dateIndexPrefix("active")).toBe("DATE_INDEX_V2#ACTIVE#");
-    expect(dateIndexPrefix("archived")).toBe("DATE_INDEX_V2#ARCHIVED#");
+    expect(timelineProjectionPrefix("active")).toBe("TIMELINE#ACTIVE#");
+    expect(timelineProjectionPrefix("archived")).toBe("TIMELINE#ARCHIVED#");
+    expect(dateIndexPrefix("active")).toBe("DATE_INDEX#ACTIVE#");
+    expect(dateIndexPrefix("archived")).toBe("DATE_INDEX#ARCHIVED#");
   });
 });
 

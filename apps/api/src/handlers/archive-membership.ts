@@ -45,7 +45,7 @@ export const handleSetArchiveMembership = async ({
   }
 
   try {
-    await album.setArchiveMembershipV2({ photoId, archived });
+    await album.setArchiveMembership({ photoId, archived });
   } catch (error) {
     return mapConcurrentModificationError(error);
   }

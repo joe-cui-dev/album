@@ -2,11 +2,11 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { getCapturedAtComponents, type AnchorPeriod, type ListCollectionPhotosV2Response, type TimelinePhotoV2 } from "@album/shared";
+import { getCapturedAtComponents, type AnchorPeriod, type ListCollectionPhotosResponse, type TimelinePhoto } from "@album/shared";
 import { conservativeExpiresAt } from "../access-expiry.js";
 import { decodeTimelineCursor, encodeTimelineCursor } from "../cursor.js";
 import { buildTimelineThumbnailSources } from "../thumbnail-sources.js";
-import { parseStartAt, timelinePeriodUpperBoundSortKey, type PhotoCollection } from "../store/v2-keys.js";
+import { parseStartAt, timelinePeriodUpperBoundSortKey, type PhotoCollection } from "../store/projection-keys.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, conflict, ok } from "../http.js";
@@ -30,8 +30,8 @@ interface ListCollectionDeps {
   photoObjects: PhotoObjectStore;
 }
 
-export const timelinePhotosV2Handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
-  handleListCollectionPhotosV2({
+export const timelinePhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleListCollectionPhotos({
     ...context,
     collection: "active",
     query: event.queryStringParameters ?? {},
@@ -39,8 +39,8 @@ export const timelinePhotosV2Handler: APIGatewayProxyHandlerV2 = withAuth((conte
   }),
 );
 
-export const archivePhotosV2Handler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
-  handleListCollectionPhotosV2({
+export const archivePhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleListCollectionPhotos({
     ...context,
     collection: "archived",
     query: event.queryStringParameters ?? {},
@@ -48,7 +48,7 @@ export const archivePhotosV2Handler: APIGatewayProxyHandlerV2 = withAuth((contex
   }),
 );
 
-export const handleListCollectionPhotosV2 = async ({
+export const handleListCollectionPhotos = async ({
   album,
   collection,
   query,
@@ -83,14 +83,14 @@ export const handleListCollectionPhotosV2 = async ({
       return badRequest("startAt is invalid");
     }
     const periodKey = period.month !== undefined ? String(period.month).padStart(2, "0") : "unknown";
-    const counts = await album.getDateIndexV2(collection, period.year);
+    const counts = await album.getDateIndex(collection, period.year);
     if (!counts[periodKey]) {
       return conflict("empty_period", "This period is now empty. Refresh navigation and try again.");
     }
     atOrBefore = { sortKey: timelinePeriodUpperBoundSortKey(collection, period) };
   }
 
-  const page = await album.queryTimelinePageV2({
+  const page = await album.queryTimelinePage({
     collection,
     limit,
     ...(after ? { after } : {}),
@@ -98,7 +98,7 @@ export const handleListCollectionPhotosV2 = async ({
   });
 
   const resolved = await Promise.all(
-    page.projections.map((projection) => toTimelinePhotoV2(projection, deps)),
+    page.projections.map((projection) => toTimelinePhoto(projection, deps)),
   );
   const photos = resolved.map(({ photo }) => photo);
   const firstProjection = page.projections[0];
@@ -113,7 +113,7 @@ export const handleListCollectionPhotosV2 = async ({
       ...(resolved.length
         ? { expiresAt: conservativeExpiresAt(resolved.map(({ expiresInSeconds }) => expiresInSeconds)) }
         : {}),
-    } satisfies ListCollectionPhotosV2Response,
+    } satisfies ListCollectionPhotosResponse,
     { headers: NO_STORE_HEADERS },
   );
 };
@@ -131,10 +131,10 @@ const anchorPeriodOf = (projection: TimelineProjection): AnchorPeriod => {
   return month !== undefined ? { year, month } : { year };
 };
 
-const toTimelinePhotoV2 = async (
+const toTimelinePhoto = async (
   projection: TimelineProjection,
   deps: ListCollectionDeps,
-): Promise<{ photo: TimelinePhotoV2; expiresInSeconds: number }> => {
+): Promise<{ photo: TimelinePhoto; expiresInSeconds: number }> => {
   const [small, large] = await Promise.all([
     deps.photoObjects.presignDownload({ objectKey: projection.timelineThumbnails.small.objectKey }),
     deps.photoObjects.presignDownload({ objectKey: projection.timelineThumbnails.large.objectKey }),

@@ -55,13 +55,16 @@ The generator documents its genuine HEIC toolchain and prints the SHA-256 values
 byte-unique run variants. Retain hashes only, never fixture contents or production
 identifiers, in the [acceptance record](./acceptance/mvp-acceptance-template.md).
 
-## Auth v2 rollout checkpoint
+## Sign-In cutover checkpoint
 
-Deploy the queue worker, auth v2 endpoints, and Web client while retaining auth v1.
-Run the focused v2 smoke and observe the production candidate for 24 hours. Only then
-remove v1 request/verify endpoints in a second deploy and require stale tabs to refresh.
-This rollout, the allowlist, and any email sends require separate production approval;
-local verification does not authorise them.
+Deploy the queue worker, the canonical Sign-In endpoints, and the Web client together in
+one atomic cutover (ADR-0074): no `/v2` alias, dual read, or dual write. Existing valid
+Sessions remain usable after a refresh; a stale tab that still holds the old sign-in
+request/verify contract simply needs to refresh before signing in again. Run a focused
+Sign-In smoke immediately after deploy -- request a Code, confirm delivery, verify, and
+confirm the Session persists across refresh -- before moving on to the full production
+smoke test below. This deploy, the allowlist, and any email sends require separate
+production approval; local verification does not authorise them.
 
 ## Production Smoke Test (requires separate authorization)
 

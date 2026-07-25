@@ -10,14 +10,14 @@ describe("albumTransport.request", () => {
   it("returns the parsed body on success", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ ok: true }));
 
-    await expect(albumTransport.request("/v2/timeline")).resolves.toEqual({ ok: true });
+    await expect(albumTransport.request("/timeline")).resolves.toEqual({ ok: true });
   });
 
   it("classifies an aborted fetch as cancelled", async () => {
     const abortError = new DOMException("Aborted", "AbortError");
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(abortError);
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "cancelled",
     });
   });
@@ -25,7 +25,7 @@ describe("albumTransport.request", () => {
   it("classifies a fetch rejection as network failure", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "network",
     });
   });
@@ -35,7 +35,7 @@ describe("albumTransport.request", () => {
       new Response("<html></html>", { status: 200, headers: { "Content-Type": "text/html" } }),
     );
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "non_json",
     });
   });
@@ -45,7 +45,7 @@ describe("albumTransport.request", () => {
     const listener = vi.fn();
     window.addEventListener(sessionExpiredEvent, listener);
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "auth_lost",
       status: 401,
     });
@@ -58,7 +58,7 @@ describe("albumTransport.request", () => {
       Response.json({ code: "empty_period", message: "This period is now empty." }, { status: 409 }),
     );
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "empty_period",
       status: 409,
     });
@@ -83,7 +83,7 @@ describe("albumTransport.request", () => {
       ),
     );
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "photo_collection_changed",
       currentCollection: "archived",
     });
@@ -92,7 +92,7 @@ describe("albumTransport.request", () => {
   it("falls back to an unexpected code for an unrecognised error body", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ message: "boom" }, { status: 500 }));
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toMatchObject({
+    await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "unexpected",
       status: 500,
     });
@@ -101,6 +101,6 @@ describe("albumTransport.request", () => {
   it("throws an instance of AlbumTransportError", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ message: "boom" }, { status: 500 }));
 
-    await expect(albumTransport.request("/v2/timeline")).rejects.toBeInstanceOf(AlbumTransportError);
+    await expect(albumTransport.request("/timeline")).rejects.toBeInstanceOf(AlbumTransportError);
   });
 });

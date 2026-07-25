@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AlbumNavigationResponse,
   GetProcessingIssuesSummaryResponse,
-  ListCollectionPhotosV2Response,
+  ListCollectionPhotosResponse,
   ViewerBootstrapResponse,
 } from "@album/shared";
 import { App } from "./App.js";
@@ -24,9 +24,9 @@ const emptyNavigation: AlbumNavigationResponse = {
 
 const emptySummary: GetProcessingIssuesSummaryResponse = { openCount: 0 };
 
-const emptyCollectionPage: ListCollectionPhotosV2Response = { photos: [] };
+const emptyCollectionPage: ListCollectionPhotosResponse = { photos: [] };
 
-const onePhotoCollectionPage: ListCollectionPhotosV2Response = {
+const onePhotoCollectionPage: ListCollectionPhotosResponse = {
   photos: [
     {
       photoId: "photo-1",
@@ -67,8 +67,8 @@ const viewerBootstrap: ViewerBootstrapResponse = {
  * `mockResolvedValueOnce` chain.
  */
 const mockSignedInFetch = (overrides: {
-  timeline?: ListCollectionPhotosV2Response;
-  archive?: ListCollectionPhotosV2Response;
+  timeline?: ListCollectionPhotosResponse;
+  archive?: ListCollectionPhotosResponse;
   navigation?: AlbumNavigationResponse;
   summary?: GetProcessingIssuesSummaryResponse;
   viewer?: ViewerBootstrapResponse;
@@ -83,10 +83,10 @@ const mockSignedInFetch = (overrides: {
     if (url.pathname === "/session" && method === "DELETE") {
       return Response.json({ signedIn: false });
     }
-    if (url.pathname === "/v2/timeline" && method === "GET") {
+    if (url.pathname === "/timeline" && method === "GET") {
       return Response.json(overrides.timeline ?? emptyCollectionPage);
     }
-    if (url.pathname === "/v2/archive" && method === "GET") {
+    if (url.pathname === "/archive" && method === "GET") {
       return Response.json(overrides.archive ?? emptyCollectionPage);
     }
     if (url.pathname === "/album-navigation" && method === "GET") {
@@ -95,7 +95,7 @@ const mockSignedInFetch = (overrides: {
     if (url.pathname === "/processing-issues/summary" && method === "GET") {
       return Response.json(overrides.summary ?? emptySummary);
     }
-    if (/^\/v2\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET" && overrides.viewer) {
+    if (/^\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET" && overrides.viewer) {
       return Response.json(overrides.viewer);
     }
 
@@ -209,7 +209,7 @@ describe("App", () => {
 
     expect(await screen.findByLabelText("Sign-in code")).toBeInTheDocument();
     expect(fetch).toHaveBeenLastCalledWith(
-      `${apiBaseUrl}/v2/session/sign-in-code`,
+      `${apiBaseUrl}/session/sign-in-code`,
       {
         method: "POST",
         body: JSON.stringify({ email: "joe@example.com" }),

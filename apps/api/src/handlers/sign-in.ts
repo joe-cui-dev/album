@@ -5,10 +5,10 @@ import type {
 import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { randomUUID } from "node:crypto";
 import type {
-  RequestSignInCodeV2Request,
-  RequestSignInCodeV2Response,
-  VerifySignInCodeV2Request,
-  VerifySignInCodeV2Response,
+  RequestSignInCodeRequest,
+  RequestSignInCodeResponse,
+  VerifySignInCodeRequest,
+  VerifySignInCodeResponse,
 } from "@album/shared";
 import { findAllowedUserByEmail, normalizeEmail } from "../allowlist.js";
 import { createSessionCookie } from "../auth.js";
@@ -16,18 +16,18 @@ import { config } from "../config.js";
 import { badRequest, json, ok } from "../http.js";
 import { guardMutationOrigin } from "../origin.js";
 import { hashSignInCode } from "../sign-in-code-crypto.js";
-import { signInDispatchStore } from "../store/configured-store.js";
-import type { SignInDispatchStore } from "../store/sign-in-dispatch.js";
+import { signInChallengeStore } from "../store/configured-store.js";
+import type { SignInChallengeStore } from "../store/sign-in-challenge.js";
 
 const sqs = new SQSClient({});
 
-interface RequestSignInCodeV2Deps {
+interface RequestSignInCodeDeps {
   enqueueDispatch: (message: { requestId: string; email: string }) => Promise<void>;
   newRequestId: () => string;
 }
 
-interface VerifySignInCodeV2Deps {
-  signInDispatch: SignInDispatchStore;
+interface VerifySignInCodeDeps {
+  signInChallenges: SignInChallengeStore;
   now: () => Date;
 }
 
@@ -35,16 +35,16 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const originError = guardMutationOrigin(event, config.webOrigins);
   if (originError) return originError;
 
-  if (event.routeKey === "POST /v2/session/sign-in-code") {
-    return handleRequestSignInCodeV2({ body: event.body, deps: requestSignInCodeV2Deps });
+  if (event.routeKey === "POST /session/sign-in-code") {
+    return handleRequestSignInCode({ body: event.body, deps: requestSignInCodeDeps });
   }
-  if (event.routeKey === "POST /v2/session/verify") {
-    return handleVerifySignInCodeV2({ body: event.body, deps: verifySignInCodeV2Deps });
+  if (event.routeKey === "POST /session/verify") {
+    return handleVerifySignInCode({ body: event.body, deps: verifySignInCodeDeps });
   }
   return json(404, { message: "Not found" });
 };
 
-const requestSignInCodeV2Deps: RequestSignInCodeV2Deps = {
+const requestSignInCodeDeps: RequestSignInCodeDeps = {
   newRequestId: randomUUID,
   enqueueDispatch: async (message) => {
     if (!config.signInDispatchQueueUrl) {
@@ -59,47 +59,47 @@ const requestSignInCodeV2Deps: RequestSignInCodeV2Deps = {
   },
 };
 
-const verifySignInCodeV2Deps: VerifySignInCodeV2Deps = {
-  signInDispatch: signInDispatchStore,
+const verifySignInCodeDeps: VerifySignInCodeDeps = {
+  signInChallenges: signInChallengeStore,
   now: () => new Date(),
 };
 
 /**
- * Never checks the allowlist and always enqueues (execution plan Slice 1.4: "check the
- * allowlist only in the worker"; "non-allowed messages are no-ops with the same public
- * admission path") -- the response is identical whether or not the Email is Allowed.
+ * Never checks the allowlist and always enqueues (ADR-0071: "check the allowlist only in the
+ * worker"; non-allowed requests follow the same public admission path) -- the response is
+ * identical whether or not the Email is Allowed.
  */
-export const handleRequestSignInCodeV2 = async ({
+export const handleRequestSignInCode = async ({
   body,
   deps,
 }: {
   body: string | undefined;
-  deps: RequestSignInCodeV2Deps;
+  deps: RequestSignInCodeDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  const request = parseJson<RequestSignInCodeV2Request>(body);
+  const request = parseJson<RequestSignInCodeRequest>(body);
   if (!request?.email) return badRequest("Email is required");
 
   await deps.enqueueDispatch({ requestId: deps.newRequestId(), email: normalizeEmail(request.email) });
-  return ok({ accepted: true } satisfies RequestSignInCodeV2Response);
+  return ok({ accepted: true } satisfies RequestSignInCodeResponse);
 };
 
-/** A uniform 403 for every rejection reason (execution plan Slice 1.4: "treat missing,
- * expired, wrong, exhausted, and non-allowed identically"). */
+/** A uniform 403 for every rejection reason (ADR-0071: "verification uses Email Address plus
+ * Code and one generic invalid-or-expired result"). */
 const invalidOrExpiredCode = (): APIGatewayProxyStructuredResultV2 =>
   json(403, { code: "sign_in_invalid", message: "Invalid or expired sign-in code" });
 
-export const handleVerifySignInCodeV2 = async ({
+export const handleVerifySignInCode = async ({
   body,
   deps,
 }: {
   body: string | undefined;
-  deps: VerifySignInCodeV2Deps;
+  deps: VerifySignInCodeDeps;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
-  const request = parseJson<VerifySignInCodeV2Request>(body);
+  const request = parseJson<VerifySignInCodeRequest>(body);
   if (!request?.email || !request.code) return badRequest("Email and code are required");
 
   const email = normalizeEmail(request.email);
-  const outcome = await deps.signInDispatch.recordAttempt({
+  const outcome = await deps.signInChallenges.recordAttempt({
     email,
     candidateHash: hashSignInCode(request.code),
     now: deps.now(),
@@ -111,7 +111,7 @@ export const handleVerifySignInCodeV2 = async ({
   const user = findAllowedUserByEmail(email);
   if (!user) return invalidOrExpiredCode();
 
-  return ok({ signedIn: true, user } satisfies VerifySignInCodeV2Response, { cookies: [createSessionCookie(user)] });
+  return ok({ signedIn: true, user } satisfies VerifySignInCodeResponse, { cookies: [createSessionCookie(user)] });
 };
 
 const parseJson = <T>(body: string | undefined): T | undefined => {

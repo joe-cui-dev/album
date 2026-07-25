@@ -110,11 +110,11 @@ test("measures the 20,000-Photo Timeline candidate profile", async ({ browserNam
       const previous = beforeByHref.get(item.href);
       return !previous || (previous.width === item.rect.width && previous.height === item.rect.height);
     });
-    const requests = mock.requests.filter((request) => new URL(request.url()).pathname === "/v2/timeline");
+    const requests = mock.requests.filter((request) => new URL(request.url()).pathname === "/timeline");
     if (requests.length >= PHOTO_COUNT / PAGE_SIZE) break;
   }
 
-  await expect.poll(() => mock.requests.filter((request) => new URL(request.url()).pathname === "/v2/timeline").length).toBe(PHOTO_COUNT / PAGE_SIZE);
+  await expect.poll(() => mock.requests.filter((request) => new URL(request.url()).pathname === "/timeline").length).toBe(PHOTO_COUNT / PAGE_SIZE);
   await client.send("HeapProfiler.collectGarbage");
   const finalHeap = await client.send("Runtime.getHeapUsage") as { usedSize: number };
   const mountedPhotoNodes = await page.locator('a[href*="/photos/"], a[href*="/photos/"] img').count();

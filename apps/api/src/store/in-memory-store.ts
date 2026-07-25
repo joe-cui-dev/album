@@ -16,7 +16,7 @@ import {
   omitZeroCounts,
   timelineProjectionPrefix,
   timelineProjectionSortKey,
-} from "./v2-keys.js";
+} from "./projection-keys.js";
 
 export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
   const photosByUser = new Map<string, Map<string, Photo>>();
@@ -143,7 +143,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
     delete candidate.processingStartedAt;
   };
 
-  const requireV2Ready = (
+  const requireReadyPhoto = (
     candidate: Photo,
   ): { chronology: NonNullable<Photo["chronology"]>; addedAt: string; timelineThumbnails: NonNullable<Photo["timelineThumbnails"]> } => {
     if (
@@ -152,7 +152,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
       !candidate.uploadRequestedAt ||
       !candidate.timelineThumbnails
     ) {
-      throw new Error(`Photo ${candidate.photoId} has no v2 Timeline projection`);
+      throw new Error(`Photo ${candidate.photoId} has no Timeline projection`);
     }
     return {
       chronology: candidate.chronology,
@@ -198,7 +198,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             delete candidate.failureCode;
           }
         },
-        async publishReadyPhotoV2(input) {
+        async publishReadyPhoto(input) {
           const candidate = requirePhoto(userId, input.photoId);
           assertAttemptOwnership(candidate, input.attemptId);
           const addedAt = candidate.uploadRequestedAt;
@@ -245,7 +245,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           }
         },
 
-        async publishExactDuplicateV2(input) {
+        async publishExactDuplicate(input) {
           const candidate = requirePhoto(userId, input.photoId);
           assertAttemptOwnership(candidate, input.attemptId);
 
@@ -260,9 +260,9 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           }
         },
 
-        async setArchiveMembershipV2({ photoId, archived }) {
+        async setArchiveMembership({ photoId, archived }) {
           const candidate = requirePhoto(userId, photoId);
-          const { chronology, addedAt, timelineThumbnails } = requireV2Ready(candidate);
+          const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (candidate.archived === archived) {
             return;
           }
@@ -286,9 +286,9 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           candidate.archived = archived;
         },
 
-        async replaceActiveChronologyV2({ photoId, capturedAt, expectedRevision }) {
+        async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
           const candidate = requirePhoto(userId, photoId);
-          const { chronology, addedAt, timelineThumbnails } = requireV2Ready(candidate);
+          const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (chronology.active.revision !== expectedRevision) {
             throw new StaleChronologyRevisionError(photoId);
           }
@@ -316,9 +316,9 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return { revision: chronology.active.revision };
         },
 
-        async revertActiveChronologyV2({ photoId, expectedRevision }) {
+        async revertActiveChronology({ photoId, expectedRevision }) {
           const candidate = requirePhoto(userId, photoId);
-          const { chronology, addedAt, timelineThumbnails } = requireV2Ready(candidate);
+          const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (chronology.active.revision !== expectedRevision) {
             throw new StaleChronologyRevisionError(photoId);
           }
@@ -354,7 +354,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return { revision: chronology.active.revision };
         },
 
-        async recordProcessingIssueV2({ photoId, fileName, reasonCode, attemptedAt, attemptId }) {
+        async recordProcessingIssue({ photoId, fileName, reasonCode, attemptedAt, attemptId }) {
           const candidate = requirePhoto(userId, photoId);
           assertAttemptOwnership(candidate, attemptId);
 
@@ -389,7 +389,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return issuesOf(userId).get(photoId);
         },
 
-        async beginProcessingIssueRetryV2({ photoId, retryAttemptId, attemptedAt }) {
+        async beginProcessingIssueRetry({ photoId, retryAttemptId, attemptedAt }) {
           const candidate = requirePhoto(userId, photoId);
           const issue = issuesOf(userId).get(photoId);
           if (!issue || candidate.processingState !== "processingFailed") {
@@ -405,7 +405,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return { retryAttemptId };
         },
 
-        async reserveProcessingIssueRetryV2({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
+        async reserveProcessingIssueRetry({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
           const candidate = requirePhoto(userId, photoId);
           const issue = issuesOf(userId).get(photoId);
           if (!issue || candidate.processingState !== "processingFailed") {
@@ -421,7 +421,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return { retryAttemptId };
         },
 
-        async releaseProcessingIssueRetryV2({ photoId, retryAttemptId }) {
+        async releaseProcessingIssueRetry({ photoId, retryAttemptId }) {
           const issue = issuesOf(userId).get(photoId);
           if (issue?.status === "failed" && issue.retryAttemptId === retryAttemptId) {
             delete issue.retryAttemptId;
@@ -429,7 +429,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           }
         },
 
-        async queryProcessingIssuesV2({ limit, after }) {
+        async queryProcessingIssues({ limit, after }) {
           const entries = [...issuesOf(userId).values()]
             .map((issue) => ({
               issue,
@@ -469,17 +469,17 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return "claimed";
         },
 
-        async getTimelineProjectionsV2(collection) {
+        async getTimelineProjections(collection) {
           return [...projectionsOf(userId).values()].filter(
             (projection) => projection.collection === collection,
           );
         },
 
-        async getDateIndexV2(collection, year) {
+        async getDateIndex(collection, year) {
           return omitZeroCounts({ ...(dateIndexOf(userId).get(dateIndexSortKey({ collection, year })) ?? {}) });
         },
 
-        async queryTimelinePageV2({ collection, limit, after, atOrBefore }) {
+        async queryTimelinePage({ collection, limit, after, atOrBefore }) {
           const prefix = timelineProjectionPrefix(collection);
           const entries = [...projectionsOf(userId).entries()]
             .filter(([sk]) => sk.startsWith(prefix))
@@ -502,7 +502,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           };
         },
 
-        async queryAdjacentProjectionV2({ collection, capturedAt, addedAt, photoId, direction }) {
+        async queryAdjacentProjection({ collection, capturedAt, addedAt, photoId, direction }) {
           const sortKey = timelineProjectionSortKey({ collection, capturedAt, addedAt, photoId });
           const prefix = timelineProjectionPrefix(collection);
           const entries = [...projectionsOf(userId).entries()]
@@ -514,7 +514,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return [...entries].reverse().find(([sk]) => sk < sortKey)?.[1];
         },
 
-        async listDateIndexYearsV2(collection) {
+        async listDateIndexYears(collection) {
           const prefix = dateIndexPrefix(collection);
           return [...dateIndexOf(userId).entries()]
             .filter(([sk]) => sk.startsWith(prefix))

@@ -2,21 +2,21 @@ import { decodeTimelineCursor, encodeTimelineCursor } from "./cursor.js";
 
 describe("cursor codec", () => {
   it("round-trips through encode/decode for the matching collection", () => {
-    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1" });
+    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1" });
     expect(decodeTimelineCursor(encoded, "active")).toEqual({
       v: 1,
       collection: "active",
-      after: "TIMELINE_V2#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1",
+      after: "TIMELINE#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1",
     });
   });
 
   it("is opaque (not human-decodable without decoding)", () => {
-    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE_V2#ACTIVE#x" });
-    expect(encoded).not.toContain("TIMELINE_V2");
+    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE#ACTIVE#x" });
+    expect(encoded).not.toContain("TIMELINE");
   });
 
   it("rejects a cursor scoped to a different collection", () => {
-    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE_V2#ACTIVE#x" });
+    const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE#ACTIVE#x" });
     expect(decodeTimelineCursor(encoded, "archived")).toBeUndefined();
   });
 

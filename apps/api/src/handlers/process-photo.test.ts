@@ -14,8 +14,21 @@ const record = (body: Record<string, unknown> = { Records: [{ s3: { object: { ke
 const createStore = async (state: "uploadRequested" | "processingFailed" = "uploadRequested") => {
   const store = createInMemoryPersonalAlbumStore();
   const album = store.personalAlbumOf("user-1");
-  await album.createPhoto({ photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: objectKey, fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-05-26T01:02:03.000Z", fileModifiedAt: "2026-01-02T03:04:05.000Z" });
-  if (state === "processingFailed") await album.recordProcessingIssueV2({ photoId: "photo-1", fileName: "beach.jpg", reasonCode: "failed", attemptedAt: "2026-05-25T00:00:00.000Z" });
+  await album.createPhoto({
+    photoId: "photo-1",
+    uploadBatchId: "batch-1",
+    originalObjectKey: objectKey,
+    fileName: "beach.jpg",
+    format: "jpeg",
+    contentType: "image/jpeg",
+    fileSizeBytes: 42,
+    uploadRequestedAt: "2026-05-26T01:02:03.000Z",
+    fileModifiedAt: "2026-01-02T03:04:05.000Z",
+    fileModifiedLocalDateTime: "2026-01-02T13:04:05",
+    uploadLocalDateTime: "2026-05-26T11:02:03",
+    uploadContextTimeZone: "Australia/Brisbane",
+  });
+  if (state === "processingFailed") await album.recordProcessingIssue({ photoId: "photo-1", fileName: "beach.jpg", reasonCode: "failed", attemptedAt: "2026-05-25T00:00:00.000Z" });
   return { store, album };
 };
 const validMetadata = { "user-id": "user-1", "upload-batch-id": "batch-1", "photo-id": "photo-1" };
@@ -58,8 +71,8 @@ describe("handleProcessPhoto", () => {
 
   it("uses the processor-computed S3 hash to mark exact duplicates within the same Personal Album", async () => {
     const { store, album } = await createStore();
-    await album.createPhoto({ photoId: "already-ready", uploadBatchId: "batch-0", originalObjectKey: "originals/user-1/batch-0/already-ready", fileName: "old.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-01-01T00:00:00.000Z" });
-    await album.publishReadyPhotoV2({
+    await album.createPhoto({ photoId: "already-ready", uploadBatchId: "batch-0", originalObjectKey: "originals/user-1/batch-0/already-ready", fileName: "old.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 42, uploadRequestedAt: "2026-01-01T00:00:00.000Z", uploadLocalDateTime: "2026-01-01T10:00:00", uploadContextTimeZone: "Australia/Brisbane" });
+    await album.publishReadyPhoto({
       photoId: "already-ready",
       sha256: "acb0eceee37f7978363e33aabc1d415a92e79f9d58bea527d4eae0a8ac1ed3d3",
       fileName: "old.jpg",
@@ -82,7 +95,7 @@ describe("handleProcessPhoto", () => {
     await expect(objects.readObjectBytes("display/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("display jpeg"));
     await expect(objects.readObjectBytes("timeline-thumbnails/user-1/photo-1.jpg")).resolves.toEqual(Buffer.from("timeline thumbnail jpeg"));
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ processingState: "ready", sha256: "1b48e21282963dfba2ffff3a4c331471242fe42fd0a51161e56df72085c445c9", displayObjectKey: "display/user-1/photo-1.jpg", metadata: { width: 3000, height: 2000, cameraMake: "Fuji" } });
-    await expect(album.getTimelineProjectionsV2("active")).resolves.toMatchObject([{ photoId: "photo-1" }]);
+    await expect(album.getTimelineProjections("active")).resolves.toMatchObject([{ photoId: "photo-1" }]);
   });
 
   it("writes both Timeline Thumbnail variants under separate physical keys", async () => {
@@ -93,7 +106,7 @@ describe("handleProcessPhoto", () => {
     await expect(objects.readObjectBytes("timeline-thumbnails/user-1/photo-1-large.jpg")).resolves.toEqual(Buffer.from("timeline thumbnail large jpeg"));
   });
 
-  it("initializes v2 original/active chronology at revision 0 for a legacy Photo without a stored upload-context zone", async () => {
+  it("initializes original/active chronology at revision 0 from the persisted fileModifiedLocalDateTime", async () => {
     const { store, album } = await createStore();
     await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps() } });
     await expect(album.getPhoto("photo-1")).resolves.toMatchObject({
@@ -123,9 +136,35 @@ describe("handleProcessPhoto", () => {
         large: { objectKey: "timeline-thumbnails/user-1/photo-1-large.jpg", dimensions: { width: 640, height: 427 } },
       },
     });
-    await expect(album.getTimelineProjectionsV2("active")).resolves.toEqual([
+    await expect(album.getTimelineProjections("active")).resolves.toEqual([
       expect.objectContaining({ photoId: "photo-1" }),
     ]);
+  });
+
+  it("falls back to the persisted uploadLocalDateTime when there is no file-modified instant", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: objectKey,
+      fileName: "beach.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-05-26T01:02:03.000Z",
+      uploadLocalDateTime: "2026-05-26T11:02:03",
+      uploadContextTimeZone: "Australia/Brisbane",
+    });
+    await handleProcessPhoto({ records: record(), deps: { store, photoObjects: photoObjects(), ...outputDeps() } });
+    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({
+      chronology: {
+        original: {
+          capturedAt: { precision: "dateTime", localDate: "2026-05-26", localTime: "11:02:03", timeResolution: "second" },
+          source: "uploadTime",
+        },
+      },
+    });
   });
 
   it("resolves the Processing Issue when a retry succeeds", async () => {

@@ -1,9 +1,9 @@
-import type { ListCollectionPhotosV2Response, PhotoCollection } from "@album/shared";
+import type { ListCollectionPhotosResponse, PhotoCollection } from "@album/shared";
 import { AlbumTransportError } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
 
 export type DateJumpResult =
-  | { outcome: "committed"; page: ListCollectionPhotosV2Response }
+  | { outcome: "committed"; page: ListCollectionPhotosResponse }
   | { outcome: "empty_period" }
   | { outcome: "cancelled" }
   | { outcome: "failed" };

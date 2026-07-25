@@ -86,9 +86,6 @@ export class AlbumStack extends Stack {
       "SESSION_SIGNING_SECRET",
     );
     const sesFromEmail = optionalConfig(this, "sesFromEmail", "SES_FROM_EMAIL");
-    const allowDevAuthCodes =
-      optionalConfig(this, "allowDevAuthCodes", "ALLOW_DEV_AUTH_CODES") ??
-      "false";
     const monthlyBudgetUsd = Number(
       this.node.tryGetContext("monthlyBudgetUsd") ?? "10",
     );
@@ -247,9 +244,9 @@ export class AlbumStack extends Stack {
       { prefix: ORIGINALS_KEY_PREFIX },
     );
 
-    // Auth v2's asynchronous dispatch queue (execution plan Slice 1.4 / ADR-0071): the
-    // admission handler only ever enqueues a request identity + Email, never a Code, and
-    // the allowlist check happens solely in the worker below.
+    // The canonical Sign-In's asynchronous dispatch queue (ADR-0071): the admission handler
+    // only ever enqueues a request identity + Email, never a Code, and the allowlist check
+    // happens solely in the worker below.
     const signInDispatchDlq = new Queue(this, "SignInDispatchDlq", {
       retentionPeriod: Duration.days(14),
       encryption: QueueEncryption.SQS_MANAGED,
@@ -271,7 +268,6 @@ export class AlbumStack extends Stack {
       METADATA_TABLE_NAME: metadataTable.tableName,
       PROCESSING_QUEUE_URL: processingQueue.queueUrl,
       SESSION_SIGNING_SECRET: sessionSigningSecret,
-      ALLOW_DEV_AUTH_CODES: allowDevAuthCodes,
       ...(sesFromEmail ? { SES_FROM_EMAIL: sesFromEmail } : {}),
     };
 
@@ -396,9 +392,9 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const timelinePhotosV2 = new NodejsFunction(
+    const timelinePhotos = new NodejsFunction(
       this,
-      "TimelinePhotosV2Handler",
+      "TimelinePhotosHandler",
       {
         runtime: Runtime.NODEJS_22_X,
         entry: join(
@@ -407,18 +403,18 @@ export class AlbumStack extends Stack {
           "api",
           "src",
           "handlers",
-          "list-collection-photos-v2.ts",
+          "list-collection-photos.ts",
         ),
-        handler: "timelinePhotosV2Handler",
+        handler: "timelinePhotosHandler",
         environment: commonEnvironment,
         reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "TimelinePhotosV2LogGroup", {
+        logGroup: new LogGroup(this, "TimelinePhotosLogGroup", {
           retention: RetentionDays.ONE_WEEK,
         }),
       },
     );
 
-    const archivePhotosV2 = new NodejsFunction(this, "ArchivePhotosV2Handler", {
+    const archivePhotos = new NodejsFunction(this, "ArchivePhotosHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join(
         "..",
@@ -426,12 +422,12 @@ export class AlbumStack extends Stack {
         "api",
         "src",
         "handlers",
-        "list-collection-photos-v2.ts",
+        "list-collection-photos.ts",
       ),
-      handler: "archivePhotosV2Handler",
+      handler: "archivePhotosHandler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ArchivePhotosV2LogGroup", {
+      logGroup: new LogGroup(this, "ArchivePhotosLogGroup", {
         retention: RetentionDays.ONE_WEEK,
       }),
     });
@@ -593,13 +589,13 @@ export class AlbumStack extends Stack {
       }),
     });
 
-    const sessionV2 = new NodejsFunction(this, "SessionV2Handler", {
+    const signIn = new NodejsFunction(this, "SignInHandler", {
       runtime: Runtime.NODEJS_22_X,
-      entry: join("..", "apps", "api", "src", "handlers", "session-v2.ts"),
+      entry: join("..", "apps", "api", "src", "handlers", "sign-in.ts"),
       handler: "handler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "SessionV2LogGroup", {
+      logGroup: new LogGroup(this, "SignInLogGroup", {
         retention: RetentionDays.ONE_WEEK,
       }),
     });
@@ -665,8 +661,8 @@ export class AlbumStack extends Stack {
     photosBucket.grantReadWrite(processPhoto);
     photosBucket.grantRead(originalDownloadUrl);
     photosBucket.grantRead(viewerBootstrap);
-    photosBucket.grantRead(timelinePhotosV2);
-    photosBucket.grantRead(archivePhotosV2);
+    photosBucket.grantRead(timelinePhotos);
+    photosBucket.grantRead(archivePhotos);
     photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
@@ -675,34 +671,27 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(retryProcessing);
     metadataTable.grantReadData(processingIssues);
     metadataTable.grantReadData(processingIssuesSummary);
-    metadataTable.grantReadData(timelinePhotosV2);
-    metadataTable.grantReadData(archivePhotosV2);
+    metadataTable.grantReadData(timelinePhotos);
+    metadataTable.grantReadData(archivePhotos);
     metadataTable.grantReadData(albumNavigation);
     metadataTable.grantReadData(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(adjustCapturedAt);
     metadataTable.grantReadWriteData(revertCapturedAt);
     metadataTable.grantReadWriteData(archiveMembership);
     metadataTable.grantReadWriteData(restoreMembership);
-    metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
     processingQueue.grantSendMessages(retryProcessing);
-    session.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["ses:SendEmail"],
-        resources: ["*"],
-      }),
-    );
     dispatchSignInCode.addToRolePolicy(
       new PolicyStatement({
         actions: ["ses:SendEmail"],
         resources: ["*"],
       }),
     );
-    metadataTable.grantReadWriteData(sessionV2);
+    metadataTable.grantReadWriteData(signIn);
     metadataTable.grantReadWriteData(dispatchSignInCode);
     // Least privilege: the admission handler only ever sends; the worker only ever consumes.
-    signInDispatchQueue.grantSendMessages(sessionV2);
+    signInDispatchQueue.grantSendMessages(signIn);
     signInDispatchQueue.grantConsumeMessages(dispatchSignInCode);
 
     const alarmTopic = new Topic(this, "AlarmTopic");
@@ -788,51 +777,36 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration("SessionIntegration", session),
     });
 
-    api.addRoutes({
+    const signInCodeRoutes = api.addRoutes({
       path: "/session/sign-in-code",
       methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration("SessionCodeIntegration", session),
+      integration: new HttpLambdaIntegration(
+        "SignInCodeIntegration",
+        signIn,
+      ),
     });
 
-    api.addRoutes({
+    const signInVerifyRoutes = api.addRoutes({
       path: "/session/verify",
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration(
-        "SessionVerifyIntegration",
-        session,
+        "SignInVerifyIntegration",
+        signIn,
       ),
     });
 
-    const sessionV2CodeRoutes = api.addRoutes({
-      path: "/v2/session/sign-in-code",
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration(
-        "SessionV2CodeIntegration",
-        sessionV2,
-      ),
-    });
-
-    const sessionV2VerifyRoutes = api.addRoutes({
-      path: "/v2/session/verify",
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration(
-        "SessionV2VerifyIntegration",
-        sessionV2,
-      ),
-    });
-
-    // Per-route throttles for the two public, unauthenticated auth v2 endpoints (execution
-    // plan Slice 1.4: request ~1/s burst 5, verify ~5/s burst 10). The L2 HttpApi construct
-    // has no per-route throttle API, so this reaches the default stage's L1 escape hatch.
-    // This assignment overwrites the whole map -- if a later route needs its own throttle,
-    // add its key here rather than setting `.routeSettings` again elsewhere.
+    // Per-route throttles for the two public, unauthenticated Sign-In endpoints (ADR-0071:
+    // request ~1/s burst 5, verify ~5/s burst 10). The L2 HttpApi construct has no per-route
+    // throttle API, so this reaches the default stage's L1 escape hatch. This assignment
+    // overwrites the whole map -- if a later route needs its own throttle, add its key here
+    // rather than setting `.routeSettings` again elsewhere.
     const defaultStage = api.defaultStage!.node.defaultChild as CfnStage;
     defaultStage.routeSettings = {
-      "POST /v2/session/sign-in-code": {
+      "POST /session/sign-in-code": {
         ThrottlingRateLimit: 1,
         ThrottlingBurstLimit: 5,
       },
-      "POST /v2/session/verify": {
+      "POST /session/verify": {
         ThrottlingRateLimit: 5,
         ThrottlingBurstLimit: 10,
       },
@@ -841,8 +815,8 @@ export class AlbumStack extends Stack {
     // ordering relationship from those JSON keys. Ensure the routes exist before
     // it applies the Default Stage settings that reference them.
     api.defaultStage!.node.addDependency(
-      ...sessionV2CodeRoutes,
-      ...sessionV2VerifyRoutes,
+      ...signInCodeRoutes,
+      ...signInVerifyRoutes,
     );
 
     api.addRoutes({
@@ -900,20 +874,20 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/v2/timeline",
+      path: "/timeline",
       methods: [HttpMethod.GET],
       integration: new HttpLambdaIntegration(
-        "TimelinePhotosV2Integration",
-        timelinePhotosV2,
+        "TimelinePhotosIntegration",
+        timelinePhotos,
       ),
     });
 
     api.addRoutes({
-      path: "/v2/archive",
+      path: "/archive",
       methods: [HttpMethod.GET],
       integration: new HttpLambdaIntegration(
-        "ArchivePhotosV2Integration",
-        archivePhotosV2,
+        "ArchivePhotosIntegration",
+        archivePhotos,
       ),
     });
 
@@ -936,7 +910,7 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/v2/photos/{photoId}/viewer",
+      path: "/photos/{photoId}/viewer",
       methods: [HttpMethod.GET],
       integration: new HttpLambdaIntegration(
         "ViewerBootstrapIntegration",

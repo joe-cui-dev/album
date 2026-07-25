@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TimelinePhotoV2 } from "@album/shared";
+import type { TimelinePhoto } from "@album/shared";
 import { AlbumTransportError } from "../../lib/albumTransport.js";
 import { createBrowsingWindow, type BrowsingWindow } from "./browsingWindow.js";
 import { createTestAlbumBrowsingPort, type TestAlbumBrowsingPort } from "./testAlbumBrowsingPort.js";
@@ -8,8 +8,8 @@ const layout = { containerWidth: 1000, spacing: 10, targetRowHeight: 200 };
 
 const photo = (
   photoId: string,
-  overrides: Partial<TimelinePhotoV2> = {},
-): TimelinePhotoV2 => ({
+  overrides: Partial<TimelinePhoto> = {},
+): TimelinePhoto => ({
   photoId,
   fileName: `${photoId}.jpg`,
   capturedAt: { precision: "day", localDate: "2024-06-15" },

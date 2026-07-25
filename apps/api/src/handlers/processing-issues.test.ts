@@ -20,8 +20,10 @@ describe("handleListProcessingIssues", () => {
         contentType: "image/jpeg",
         fileSizeBytes: 42,
         uploadRequestedAt: addedAt,
+        uploadLocalDateTime: "2026-01-01T00:00:00",
+        uploadContextTimeZone: "UTC",
       });
-      await album.recordProcessingIssueV2({
+      await album.recordProcessingIssue({
         photoId,
         fileName: `${photoId}.jpg`,
         reasonCode: "unsupportedImage",
@@ -60,8 +62,10 @@ describe("handleGetProcessingIssuesSummary", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "unsupportedImage",

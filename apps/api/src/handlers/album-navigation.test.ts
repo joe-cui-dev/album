@@ -24,8 +24,10 @@ describe("handleGetAlbumNavigation", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.publishReadyPhotoV2({
+    await album.publishReadyPhoto({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       sha256: "hash",
@@ -47,8 +49,10 @@ describe("handleGetAlbumNavigation", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-2",
       fileName: "photo-2.jpg",
       reasonCode: "unsupportedImage",

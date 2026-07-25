@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
-import type { ListCollectionPhotosV2Response, PhotoCollection } from "@album/shared";
+import type { ListCollectionPhotosResponse, PhotoCollection } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { createHttpAlbumBrowsingPort } from "./httpAlbumBrowsingPort.js";
@@ -29,7 +29,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
 
   // Set by a committed date Jump just before its URL update re-renders this component with a new `key`,
   // so the freshly probed page seeds the window instead of being fetched a second time.
-  const pendingJumpPageRef = useRef<{ anchor: string; page: ListCollectionPhotosV2Response } | undefined>(undefined);
+  const pendingJumpPageRef = useRef<{ anchor: string; page: ListCollectionPhotosResponse } | undefined>(undefined);
 
   const windowRef = useRef<{ key: string; window: BrowsingWindow } | undefined>(undefined);
   if (!windowRef.current || windowRef.current.key !== key) {

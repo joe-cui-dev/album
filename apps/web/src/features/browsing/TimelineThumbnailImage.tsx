@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { TimelineThumbnailSourcesV2 } from "@album/shared";
+import type { TimelineThumbnailSources } from "@album/shared";
 
 interface TimelineThumbnailImageProps {
-  sources: TimelineThumbnailSourcesV2;
+  sources: TimelineThumbnailSources;
   width: number;
   height: number;
   fetchPriority: "high" | "auto" | "low";
@@ -70,9 +70,9 @@ export function TimelineThumbnailImage({
   );
 }
 
-const buildSrcSet = (sources: TimelineThumbnailSourcesV2): string => {
+const buildSrcSet = (sources: TimelineThumbnailSources): string => {
   const entries = [sources.small, sources.large].filter(
-    (source): source is TimelineThumbnailSourcesV2["large"] => source !== undefined,
+    (source): source is TimelineThumbnailSources["large"] => source !== undefined,
   );
   return entries.map((source) => `${source.url} ${source.dimensions.width}w`).join(", ");
 };

@@ -1,4 +1,4 @@
-import { getCapturedAtComponents, type CapturedAt, type PhotoCollection, type TimelinePhotoV2 } from "@album/shared";
+import { getCapturedAtComponents, type CapturedAt, type PhotoCollection, type TimelinePhoto } from "@album/shared";
 import { AlbumTransportError, type AlbumTransportErrorCode } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
 import { createIncrementalJustifiedRows, type JustifiedLayoutItem, type JustifiedRowsOptions } from "./justifiedRows.js";
@@ -9,7 +9,7 @@ export interface PhotoDescriptor {
   capturedAt: CapturedAt;
   addedAt: string;
   displayDimensions: { width: number; height: number };
-  timelineThumbnailSources: TimelinePhotoV2["timelineThumbnailSources"];
+  timelineThumbnailSources: TimelinePhoto["timelineThumbnailSources"];
   aspectRatio: number;
   periodKey: string;
 }
@@ -85,7 +85,7 @@ export interface BrowsingWindowOptions {
    * date-Jump probe). When present, it seeds the window directly instead of
    * issuing a second, redundant initial load for the same anchor.
    */
-  initialPage?: { photos: TimelinePhotoV2[]; nextCursor?: string; expiresAt?: string };
+  initialPage?: { photos: TimelinePhoto[]; nextCursor?: string; expiresAt?: string };
 }
 
 const RENEWAL_LEAD_MS = 60_000;
@@ -147,7 +147,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     return month !== undefined ? `${paddedYear}-${String(month).padStart(2, "0")}` : `${paddedYear}-unknown`;
   };
 
-  const toDescriptor = (photo: TimelinePhotoV2): PhotoDescriptor => ({
+  const toDescriptor = (photo: TimelinePhoto): PhotoDescriptor => ({
     photoId: photo.photoId,
     fileName: photo.fileName,
     capturedAt: photo.capturedAt,
@@ -159,7 +159,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
   });
 
   const applyPage = (page: {
-    photos: TimelinePhotoV2[];
+    photos: TimelinePhoto[];
     nextCursor?: string;
     expiresAt?: string;
   }): void => {

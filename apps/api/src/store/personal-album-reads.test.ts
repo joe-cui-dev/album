@@ -23,8 +23,10 @@ const createReadyPhoto = async (
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: addedAt,
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId,
     fileName: `${photoId}.jpg`,
     sha256: `${photoId}-hash`,
@@ -40,18 +42,18 @@ const createReadyPhoto = async (
 
 const day = (localDate: string): CapturedAt => ({ precision: "day", localDate });
 
-describe("queryTimelinePageV2", () => {
+describe("queryTimelinePage", () => {
   it("returns pages newest first and a lastSortKey only when the page is full", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "jan", day("2024-01-01"));
     await createReadyPhoto(album, "jun", day("2024-06-15"));
     await createReadyPhoto(album, "dec", day("2024-12-31"));
 
-    const firstPage = await album.queryTimelinePageV2({ collection: "active", limit: 2 });
+    const firstPage = await album.queryTimelinePage({ collection: "active", limit: 2 });
     expect(firstPage.projections.map((p) => p.photoId)).toEqual(["dec", "jun"]);
     expect(firstPage.lastSortKey).toBeDefined();
 
-    const secondPage = await album.queryTimelinePageV2({
+    const secondPage = await album.queryTimelinePage({
       collection: "active",
       limit: 2,
       after: { sortKey: firstPage.lastSortKey! },
@@ -64,13 +66,13 @@ describe("queryTimelinePageV2", () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
     await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembershipV2({ photoId: "archived-1", archived: true });
+    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
 
     await expect(
-      album.queryTimelinePageV2({ collection: "active", limit: 10 }),
+      album.queryTimelinePage({ collection: "active", limit: 10 }),
     ).resolves.toMatchObject({ projections: [{ photoId: "active-1" }] });
     await expect(
-      album.queryTimelinePageV2({ collection: "archived", limit: 10 }),
+      album.queryTimelinePage({ collection: "archived", limit: 10 }),
     ).resolves.toMatchObject({ projections: [{ photoId: "archived-1" }] });
   });
 
@@ -80,8 +82,8 @@ describe("queryTimelinePageV2", () => {
     await createReadyPhoto(album, "jun", day("2024-06-15"));
     await createReadyPhoto(album, "jan", day("2024-01-01"));
 
-    const { timelinePeriodUpperBoundSortKey } = await import("./v2-keys.js");
-    const anchored = await album.queryTimelinePageV2({
+    const { timelinePeriodUpperBoundSortKey } = await import("./projection-keys.js");
+    const anchored = await album.queryTimelinePage({
       collection: "active",
       limit: 10,
       atOrBefore: { sortKey: timelinePeriodUpperBoundSortKey("active", { year: 2024, month: 6 }) },
@@ -94,21 +96,21 @@ describe("queryTimelinePageV2", () => {
     await createReadyPhoto(album, "a", day("2024-01-01"));
     await createReadyPhoto(album, "b", day("2024-01-02"));
 
-    const first = await album.queryTimelinePageV2({ collection: "active", limit: 10 });
-    const second = await album.queryTimelinePageV2({ collection: "active", limit: 10 });
+    const first = await album.queryTimelinePage({ collection: "active", limit: 10 });
+    const second = await album.queryTimelinePage({ collection: "active", limit: 10 });
     expect(second.projections).toEqual(first.projections);
   });
 
   it("live insertion of a newer Photo appears ahead of an in-progress older cursor", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "old", day("2024-01-01"));
-    const firstPage = await album.queryTimelinePageV2({ collection: "active", limit: 1 });
+    const firstPage = await album.queryTimelinePage({ collection: "active", limit: 1 });
     expect(firstPage.projections.map((p) => p.photoId)).toEqual(["old"]);
 
     await createReadyPhoto(album, "new", day("2024-06-01"));
 
     // Continuing strictly after "old" never re-surfaces it or the new newer Photo.
-    const nextPage = await album.queryTimelinePageV2({
+    const nextPage = await album.queryTimelinePage({
       collection: "active",
       limit: 10,
       after: { sortKey: firstPage.lastSortKey! },
@@ -117,26 +119,26 @@ describe("queryTimelinePageV2", () => {
   });
 });
 
-describe("listDateIndexYearsV2", () => {
+describe("listDateIndexYears", () => {
   it("lists only non-empty years, sorted ascending", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "y2024", day("2024-06-15"));
     await createReadyPhoto(album, "y2020", day("2020-01-01"));
 
-    await expect(album.listDateIndexYearsV2("active")).resolves.toEqual([
+    await expect(album.listDateIndexYears("active")).resolves.toEqual([
       { year: 2020, counts: { "01": 1 } },
       { year: 2024, counts: { "06": 1 } },
     ]);
-    await expect(album.listDateIndexYearsV2("archived")).resolves.toEqual([]);
+    await expect(album.listDateIndexYears("archived")).resolves.toEqual([]);
   });
 
   it("omits a year whose counters were all transferred away", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "solo", day("2024-06-15"));
-    await album.setArchiveMembershipV2({ photoId: "solo", archived: true });
+    await album.setArchiveMembership({ photoId: "solo", archived: true });
 
-    await expect(album.listDateIndexYearsV2("active")).resolves.toEqual([]);
-    await expect(album.listDateIndexYearsV2("archived")).resolves.toEqual([
+    await expect(album.listDateIndexYears("active")).resolves.toEqual([]);
+    await expect(album.listDateIndexYears("archived")).resolves.toEqual([
       { year: 2024, counts: { "06": 1 } },
     ]);
   });
@@ -145,12 +147,12 @@ describe("listDateIndexYearsV2", () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "june-photo", day("2024-06-15"));
     await createReadyPhoto(album, "july-photo", day("2024-07-01"));
-    await album.setArchiveMembershipV2({ photoId: "july-photo", archived: true });
+    await album.setArchiveMembership({ photoId: "july-photo", archived: true });
 
-    await expect(album.listDateIndexYearsV2("active")).resolves.toEqual([
+    await expect(album.listDateIndexYears("active")).resolves.toEqual([
       { year: 2024, counts: { "06": 1 } },
     ]);
-    await expect(album.getDateIndexV2("active", 2024)).resolves.toEqual({ "06": 1 });
+    await expect(album.getDateIndex("active", 2024)).resolves.toEqual({ "06": 1 });
   });
 });
 
@@ -166,10 +168,12 @@ describe("getProcessingIssuesSummary", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
     await expect(album.getProcessingIssuesSummary()).resolves.toBe(0);
 
-    await album.recordProcessingIssueV2({
+    await album.recordProcessingIssue({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       reasonCode: "unsupportedImage",
@@ -177,7 +181,7 @@ describe("getProcessingIssuesSummary", () => {
     });
     await expect(album.getProcessingIssuesSummary()).resolves.toBe(1);
 
-    await album.publishReadyPhotoV2({
+    await album.publishReadyPhoto({
       photoId: "photo-1",
       fileName: "photo-1.jpg",
       sha256: "hash",
@@ -193,7 +197,7 @@ describe("getProcessingIssuesSummary", () => {
   });
 });
 
-describe("queryAdjacentProjectionV2", () => {
+describe("queryAdjacentProjection", () => {
   it("finds the nearest newer and older neighbours in collection order", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "jan", day("2024-01-01"));
@@ -201,7 +205,7 @@ describe("queryAdjacentProjectionV2", () => {
     await createReadyPhoto(album, "dec", day("2024-12-31"));
 
     await expect(
-      album.queryAdjacentProjectionV2({
+      album.queryAdjacentProjection({
         collection: "active",
         capturedAt: day("2024-06-15"),
         addedAt: "2026-01-01T00:00:00.000Z",
@@ -211,7 +215,7 @@ describe("queryAdjacentProjectionV2", () => {
     ).resolves.toMatchObject({ photoId: "dec" });
 
     await expect(
-      album.queryAdjacentProjectionV2({
+      album.queryAdjacentProjection({
         collection: "active",
         capturedAt: day("2024-06-15"),
         addedAt: "2026-01-01T00:00:00.000Z",
@@ -226,7 +230,7 @@ describe("queryAdjacentProjectionV2", () => {
     await createReadyPhoto(album, "solo", day("2024-06-15"));
 
     await expect(
-      album.queryAdjacentProjectionV2({
+      album.queryAdjacentProjection({
         collection: "active",
         capturedAt: day("2024-06-15"),
         addedAt: "2026-01-01T00:00:00.000Z",
@@ -235,7 +239,7 @@ describe("queryAdjacentProjectionV2", () => {
       }),
     ).resolves.toBeUndefined();
     await expect(
-      album.queryAdjacentProjectionV2({
+      album.queryAdjacentProjection({
         collection: "active",
         capturedAt: day("2024-06-15"),
         addedAt: "2026-01-01T00:00:00.000Z",
@@ -249,10 +253,10 @@ describe("queryAdjacentProjectionV2", () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
     await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembershipV2({ photoId: "archived-1", archived: true });
+    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
 
     await expect(
-      album.queryAdjacentProjectionV2({
+      album.queryAdjacentProjection({
         collection: "active",
         capturedAt: day("2024-01-01"),
         addedAt: "2026-01-01T00:00:00.000Z",

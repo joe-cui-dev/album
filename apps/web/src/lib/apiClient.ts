@@ -3,11 +3,11 @@ import type {
   CreateUploadBatchResponse,
   GetSessionResponse,
   GetUploadBatchStatusResponse,
-  RequestSignInCodeV2Request,
-  RequestSignInCodeV2Response,
+  RequestSignInCodeRequest,
+  RequestSignInCodeResponse,
   RetryProcessingResponse,
-  VerifySignInCodeV2Request,
-  VerifySignInCodeV2Response,
+  VerifySignInCodeRequest,
+  VerifySignInCodeResponse,
 } from "@album/shared";
 import { apiBaseUrl } from "./config.js";
 import { sessionExpiredEvent } from "./sessionEvents.js";
@@ -57,13 +57,13 @@ const messageForNonJsonResponse = (contentType: string): string => {
 export const apiClient = {
   getSession: () => request<GetSessionResponse>("/session"),
   signOut: () => request<GetSessionResponse>("/session", { method: "DELETE" }),
-  requestSignInCode: (body: RequestSignInCodeV2Request) =>
-    request<RequestSignInCodeV2Response>("/v2/session/sign-in-code", {
+  requestSignInCode: (body: RequestSignInCodeRequest) =>
+    request<RequestSignInCodeResponse>("/session/sign-in-code", {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  verifySignInCode: (body: VerifySignInCodeV2Request) =>
-    request<VerifySignInCodeV2Response>("/v2/session/verify", {
+  verifySignInCode: (body: VerifySignInCodeRequest) =>
+    request<VerifySignInCodeResponse>("/session/verify", {
       method: "POST",
       body: JSON.stringify(body),
     }),

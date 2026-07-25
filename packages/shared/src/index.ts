@@ -123,8 +123,8 @@ export interface Photo {
   processingStartedAt?: string;
   /** Upload-context-local calendar values derived once at upload time so reads never reinterpret them. */
   fileModifiedLocalDateTime?: string;
-  uploadLocalDateTime?: string;
-  uploadContextTimeZone?: string;
+  uploadLocalDateTime: string;
+  uploadContextTimeZone: string;
 }
 
 export interface PhotoChronology {
@@ -156,48 +156,25 @@ export interface GetSessionResponse {
   user?: SessionUser;
 }
 
+/**
+ * Dispatched asynchronously through a private queue (ADR-0071): the response never varies
+ * by allowlist membership, and verification looks a Sign-In Challenge up by Email Address
+ * alone rather than by a public code identifier.
+ */
 export interface RequestSignInCodeRequest {
   email: string;
 }
 
 export interface RequestSignInCodeResponse {
   accepted: true;
-  codeId?: string;
-  devCode?: string;
 }
 
 export interface VerifySignInCodeRequest {
   email: string;
-  codeId: string;
   code: string;
 }
 
 export interface VerifySignInCodeResponse {
-  signedIn: true;
-  user: SessionUser;
-}
-
-/**
- * Auth v2 (execution plan Slice 1.3 / ADR-0071): dispatched asynchronously through a private
- * queue, so there is no public code ID -- the response never varies by allowlist membership,
- * and verification looks a Sign-In Code up by Email Address alone. Kept alongside the v1
- * types above for the 24-hour compatibility observation window (Slice 1.6); v1 is removed
- * only as a separately authorised production step.
- */
-export interface RequestSignInCodeV2Request {
-  email: string;
-}
-
-export interface RequestSignInCodeV2Response {
-  accepted: true;
-}
-
-export interface VerifySignInCodeV2Request {
-  email: string;
-  code: string;
-}
-
-export interface VerifySignInCodeV2Response {
   signedIn: true;
   user: SessionUser;
 }
@@ -210,8 +187,7 @@ export interface CreateUploadBatchRequest {
     clientSha256?: string;
     fileModifiedAt?: string;
   }>;
-  /** Absent for old v1 clients, which stay on the explicit v1 compatibility path. */
-  uploadContext?: {
+  uploadContext: {
     timeZone: string;
   };
 }
@@ -286,7 +262,7 @@ export interface PhotoDetail {
     width: number;
     height: number;
   };
-  /** Present once the Photo has v2 chronology; the response ETag header carries chronology.active.revision. */
+  /** Present once the Photo has chronology; the response ETag header carries chronology.active.revision. */
   chronology?: PhotoChronology;
 }
 
@@ -307,24 +283,24 @@ export interface CreateTemporaryPhotoUrlResponse {
   expiresInSeconds: number;
 }
 
-export interface TimelineThumbnailSourceV2 {
+export interface TimelineThumbnailSource {
   url: string;
   dimensions: Dimensions;
 }
 
-export interface TimelineThumbnailSourcesV2 {
-  large: TimelineThumbnailSourceV2;
+export interface TimelineThumbnailSources {
+  large: TimelineThumbnailSource;
   /** Omitted when its actual width equals Large's (equal-width sources collapse to Large). */
-  small?: TimelineThumbnailSourceV2;
+  small?: TimelineThumbnailSource;
 }
 
-export interface TimelinePhotoV2 {
+export interface TimelinePhoto {
   photoId: string;
   fileName: string;
   capturedAt: CapturedAt;
   addedAt: string;
   displayDimensions: Dimensions;
-  timelineThumbnailSources: TimelineThumbnailSourcesV2;
+  timelineThumbnailSources: TimelineThumbnailSources;
 }
 
 export interface AnchorPeriod {
@@ -333,8 +309,8 @@ export interface AnchorPeriod {
   month?: number;
 }
 
-export interface ListCollectionPhotosV2Response {
-  photos: TimelinePhotoV2[];
+export interface ListCollectionPhotosResponse {
+  photos: TimelinePhoto[];
   nextCursor?: string;
   anchorPeriod?: AnchorPeriod;
   /** Conservative expiry shared by every Thumbnail source in this page; absent when the page is empty. */
@@ -358,7 +334,7 @@ export interface TimelineThumbnailAccessRequest {
 }
 
 export interface TimelineThumbnailAccessResponse {
-  photos: Array<{ photoId: string; timelineThumbnailSources: TimelineThumbnailSourcesV2 }>;
+  photos: Array<{ photoId: string; timelineThumbnailSources: TimelineThumbnailSources }>;
   /** Conservative expiry shared by every renewed source in this response. */
   expiresAt: string;
 }

@@ -15,8 +15,8 @@ export const handleGetAlbumNavigation = async ({
   album,
 }: AuthedContext): Promise<APIGatewayProxyStructuredResultV2> => {
   const [timelineYears, archiveYears, processingIssueCount] = await Promise.all([
-    album.listDateIndexYearsV2("active"),
-    album.listDateIndexYearsV2("archived"),
+    album.listDateIndexYears("active"),
+    album.listDateIndexYears("archived"),
     album.getProcessingIssuesSummary(),
   ]);
 

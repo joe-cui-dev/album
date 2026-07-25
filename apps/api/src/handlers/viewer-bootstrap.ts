@@ -101,14 +101,14 @@ const queryNeighbours = (
   collection: PhotoCollection,
 ): Promise<[TimelineProjection | undefined, TimelineProjection | undefined]> =>
   Promise.all([
-    album.queryAdjacentProjectionV2({
+    album.queryAdjacentProjection({
       collection,
       capturedAt: photo.chronology!.active.capturedAt,
       addedAt: photo.uploadRequestedAt!,
       photoId: photo.photoId,
       direction: "newer",
     }),
-    album.queryAdjacentProjectionV2({
+    album.queryAdjacentProjection({
       collection,
       capturedAt: photo.chronology!.active.capturedAt,
       addedAt: photo.uploadRequestedAt!,

@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
-import type { TimelinePhotoV2 } from "@album/shared";
+import type { TimelinePhoto } from "@album/shared";
 import { renderApp } from "../../test/test-utils.js";
 import { BrowsingGrid } from "./BrowsingGrid.js";
 import { createBrowsingWindow, type BrowsingWindow } from "./browsingWindow.js";
@@ -14,7 +14,7 @@ const renderWithRouter = (node: ReactNode) => renderApp(<RouterProvider router={
 
 const layout = { containerWidth: 1000, spacing: 4, targetRowHeight: 200 };
 
-const photo = (photoId: string, overrides: Partial<TimelinePhotoV2> = {}): TimelinePhotoV2 => ({
+const photo = (photoId: string, overrides: Partial<TimelinePhoto> = {}): TimelinePhoto => ({
   photoId,
   fileName: `${photoId}.jpg`,
   capturedAt: { precision: "month", localDate: "2024-07" },

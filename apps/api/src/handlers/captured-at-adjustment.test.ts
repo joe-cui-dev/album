@@ -23,8 +23,10 @@ const readyAlbum = async () => {
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId: "photo-1",
     fileName: "photo-1.jpg",
     sha256: "hash",
@@ -126,6 +128,8 @@ describe("handleAdjustCapturedAt", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
     const response = await handleAdjustCapturedAt({
       user,
@@ -152,7 +156,7 @@ describe("handleAdjustCapturedAt", () => {
 
   it("applies to an Archived Photo", async () => {
     const album = await readyAlbum();
-    await album.setArchiveMembershipV2({ photoId: "photo-1", archived: true });
+    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
 
     const response = await handleAdjustCapturedAt({
       user,
@@ -162,7 +166,7 @@ describe("handleAdjustCapturedAt", () => {
       body: JSON.stringify({ capturedAt: july04 }),
     });
     expect(response.statusCode).toBe(200);
-    await expect(album.getTimelineProjectionsV2("archived")).resolves.toEqual([
+    await expect(album.getTimelineProjections("archived")).resolves.toEqual([
       expect.objectContaining({ photoId: "photo-1", capturedAt: july04 }),
     ]);
   });

@@ -8,14 +8,14 @@ import type {
   GetProcessingIssuesSummaryResponse,
   GetSessionResponse,
   GetUploadBatchStatusResponse,
-  ListCollectionPhotosV2Response,
+  ListCollectionPhotosResponse,
   ListProcessingIssuesResponse,
   ProcessingIssue,
-  RequestSignInCodeV2Response,
+  RequestSignInCodeResponse,
   RetryProcessingResponse,
-  TimelinePhotoV2,
+  TimelinePhoto,
   TimelineThumbnailAccessResponse,
-  VerifySignInCodeV2Response,
+  VerifySignInCodeResponse,
   ViewerBootstrapResponse,
 } from "@album/shared";
 
@@ -39,12 +39,12 @@ export const defaultSession = (): GetSessionResponse => ({
 export const signedOutSession = (): GetSessionResponse => ({ signedIn: false });
 
 export const requestSignInCodeAccepted = (
-  overrides: Partial<RequestSignInCodeV2Response> = {},
-): RequestSignInCodeV2Response => ({ accepted: true, ...overrides });
+  overrides: Partial<RequestSignInCodeResponse> = {},
+): RequestSignInCodeResponse => ({ accepted: true, ...overrides });
 
 export const verifySignInCodeAccepted = (
-  overrides: Partial<VerifySignInCodeV2Response> = {},
-): VerifySignInCodeV2Response => ({
+  overrides: Partial<VerifySignInCodeResponse> = {},
+): VerifySignInCodeResponse => ({
   signedIn: true,
   user: { userId: "user-1", email: "joe@example.com" },
   ...overrides,
@@ -64,7 +64,7 @@ export const navigationWithYears = (
   processingIssueCount: 0,
 });
 
-export const emptyCollectionPage = (): ListCollectionPhotosV2Response => ({ photos: [] });
+export const emptyCollectionPage = (): ListCollectionPhotosResponse => ({ photos: [] });
 
 let photoCounter = 0;
 /** Resets the auto-incrementing photo id/file name counter between tests. */
@@ -72,7 +72,7 @@ export const resetPhotoCounter = (): void => {
   photoCounter = 0;
 };
 
-export const buildPhoto = (overrides: Partial<TimelinePhotoV2> = {}): TimelinePhotoV2 => {
+export const buildPhoto = (overrides: Partial<TimelinePhoto> = {}): TimelinePhoto => {
   photoCounter += 1;
   const photoId = overrides.photoId ?? `photo-${photoCounter}`;
   return {
@@ -88,9 +88,9 @@ export const buildPhoto = (overrides: Partial<TimelinePhotoV2> = {}): TimelinePh
 };
 
 export const collectionPage = (
-  photos: TimelinePhotoV2[],
-  overrides: Partial<ListCollectionPhotosV2Response> = {},
-): ListCollectionPhotosV2Response => ({
+  photos: TimelinePhoto[],
+  overrides: Partial<ListCollectionPhotosResponse> = {},
+): ListCollectionPhotosResponse => ({
   photos,
   expiresAt: FAR_FUTURE_EXPIRY,
   ...overrides,
@@ -336,25 +336,25 @@ export class AlbumApiMock {
       if (url.pathname === "/session" && method === "DELETE") {
         return this.signOut.handle(route, request);
       }
-      if (url.pathname === "/v2/session/sign-in-code" && method === "POST") {
+      if (url.pathname === "/session/sign-in-code" && method === "POST") {
         return this.requestSignInCode.handle(route, request);
       }
-      if (url.pathname === "/v2/session/verify" && method === "POST") {
+      if (url.pathname === "/session/verify" && method === "POST") {
         return this.verifySignInCode.handle(route, request);
       }
       if (url.pathname === "/album-navigation" && method === "GET") {
         return this.navigation.handle(route, request);
       }
-      if (url.pathname === "/v2/timeline" && method === "GET") {
+      if (url.pathname === "/timeline" && method === "GET") {
         return this.timeline.handle(route, request);
       }
-      if (url.pathname === "/v2/archive" && method === "GET") {
+      if (url.pathname === "/archive" && method === "GET") {
         return this.archive.handle(route, request);
       }
       if (url.pathname === "/timeline-thumbnail-access" && method === "POST") {
         return this.thumbnailAccess.handle(route, request);
       }
-      if (/^\/v2\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET") {
+      if (/^\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET") {
         return this.viewer.handle(route, request);
       }
       if (/^\/photos\/[^/]+\/archive$/.test(url.pathname) && method === "PUT") {

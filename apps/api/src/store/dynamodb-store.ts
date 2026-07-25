@@ -42,7 +42,7 @@ import {
   processingIssueSortKey,
   timelineProjectionPrefix,
   timelineProjectionSortKey,
-} from "./v2-keys.js";
+} from "./projection-keys.js";
 
 const photoKey = (userId: string, photoId: string) => ({
   pk: `USER#${userId}`,
@@ -69,8 +69,8 @@ const issueSummaryKey = (userId: string) => ({
   sk: PROCESSING_ISSUES_SUMMARY_SORT_KEY,
 });
 
-/** Reads a Photo and guards that it has a v2 Timeline/Archive projection to move. */
-const readV2ReadyPhoto = async (
+/** Reads a Photo and guards that it has a Timeline/Archive projection to move. */
+const readReadyPhoto = async (
   documentClient: DynamoDBDocumentClient,
   tableName: string,
   userId: string,
@@ -92,7 +92,7 @@ const readV2ReadyPhoto = async (
     typeof item.uploadRequestedAt !== "string" ||
     !item.timelineThumbnails
   ) {
-    throw new Error(`Photo ${photoId} has no v2 Timeline projection`);
+    throw new Error(`Photo ${photoId} has no Timeline projection`);
   }
   return {
     item,
@@ -221,7 +221,7 @@ export const createDynamoDbPersonalAlbumStore = ({
           ExpressionAttributeValues: { ":state": "processing" },
         });
       },
-      async publishReadyPhotoV2(input) {
+      async publishReadyPhoto(input) {
         const photoResult = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: photoKey(userId, input.photoId) }),
         );
@@ -297,7 +297,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         await documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
       },
 
-      async publishExactDuplicateV2(input) {
+      async publishExactDuplicate(input) {
         const transactItems: NonNullable<TransactWriteCommandInput["TransactItems"]> = [
           {
             Update: {
@@ -335,8 +335,8 @@ export const createDynamoDbPersonalAlbumStore = ({
         await documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
       },
 
-      async setArchiveMembershipV2({ photoId, archived }) {
-        const { item, chronology, addedAt, currentArchived } = await readV2ReadyPhoto(
+      async setArchiveMembership({ photoId, archived }) {
+        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -404,8 +404,8 @@ export const createDynamoDbPersonalAlbumStore = ({
         }
       },
 
-      async replaceActiveChronologyV2({ photoId, capturedAt, expectedRevision }) {
-        const { item, chronology, addedAt, currentArchived } = await readV2ReadyPhoto(
+      async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
+        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -484,8 +484,8 @@ export const createDynamoDbPersonalAlbumStore = ({
         return { revision: nextRevision };
       },
 
-      async revertActiveChronologyV2({ photoId, expectedRevision }) {
-        const { item, chronology, addedAt, currentArchived } = await readV2ReadyPhoto(
+      async revertActiveChronology({ photoId, expectedRevision }) {
+        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -569,7 +569,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         return { revision: nextRevision };
       },
 
-      async recordProcessingIssueV2({ photoId, fileName, reasonCode, attemptedAt, attemptId }) {
+      async recordProcessingIssue({ photoId, fileName, reasonCode, attemptedAt, attemptId }) {
         const photoResult = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
         );
@@ -658,7 +658,7 @@ export const createDynamoDbPersonalAlbumStore = ({
           : undefined;
       },
 
-      async beginProcessingIssueRetryV2({ photoId, retryAttemptId, attemptedAt }) {
+      async beginProcessingIssueRetry({ photoId, retryAttemptId, attemptedAt }) {
         const photoResult = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
         );
@@ -704,7 +704,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         }
       },
 
-      async reserveProcessingIssueRetryV2({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
+      async reserveProcessingIssueRetry({ photoId, retryAttemptId, reservedAt, reservationExpiresAt }) {
         const issue = await this.getProcessingIssue(photoId);
         if (!issue) throw new Error(`Photo ${photoId} has no open Processing Issue`);
         if (
@@ -730,7 +730,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         }
       },
 
-      async releaseProcessingIssueRetryV2({ photoId, retryAttemptId }) {
+      async releaseProcessingIssueRetry({ photoId, retryAttemptId }) {
         const issue = await this.getProcessingIssue(photoId);
         if (!issue) return;
         try {
@@ -747,7 +747,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         }
       },
 
-      async queryProcessingIssuesV2({ limit, after }) {
+      async queryProcessingIssues({ limit, after }) {
         const prefix = "PROCESSING_ISSUE#";
         const result = await documentClient.send(
           new QueryCommand({
@@ -830,7 +830,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         }
       },
 
-      async getTimelineProjectionsV2(collection) {
+      async getTimelineProjections(collection) {
         const result = await documentClient.send(
           new QueryCommand({
             TableName: tableName,
@@ -844,7 +844,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         return (result.Items ?? []).map((item) => toTimelineProjection(item, collection));
       },
 
-      async getDateIndexV2(collection, year) {
+      async getDateIndex(collection, year) {
         const result = await documentClient.send(
           new GetCommand({ TableName: tableName, Key: dateIndexKey(userId, { collection, year }) }),
         );
@@ -852,7 +852,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         return omitZeroCounts(counts as DateIndexPeriodCounts);
       },
 
-      async queryTimelinePageV2({ collection, limit, after, atOrBefore }) {
+      async queryTimelinePage({ collection, limit, after, atOrBefore }) {
         const prefix = timelineProjectionPrefix(collection);
         const result = await documentClient.send(
           new QueryCommand({
@@ -888,7 +888,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         };
       },
 
-      async queryAdjacentProjectionV2({ collection, capturedAt, addedAt, photoId, direction }) {
+      async queryAdjacentProjection({ collection, capturedAt, addedAt, photoId, direction }) {
         const prefix = timelineProjectionPrefix(collection);
         const sortKey = timelineProjectionSortKey({ collection, capturedAt, addedAt, photoId });
         const scanIndexForward = direction === "newer";
@@ -907,7 +907,7 @@ export const createDynamoDbPersonalAlbumStore = ({
         return item ? toTimelineProjection(item, collection) : undefined;
       },
 
-      async listDateIndexYearsV2(collection) {
+      async listDateIndexYears(collection) {
         const prefix = dateIndexPrefix(collection);
         const result = await documentClient.send(
           new QueryCommand({
@@ -1005,7 +1005,9 @@ export const asPhoto = (item: Record<string, unknown> | undefined): Photo | unde
     !isPhotoFormat(item.format) ||
     typeof item.fileSizeBytes !== "number" ||
     !isProcessingState(item.processingState) ||
-    typeof item.archived !== "boolean"
+    typeof item.archived !== "boolean" ||
+    typeof item.uploadLocalDateTime !== "string" ||
+    typeof item.uploadContextTimeZone !== "string"
   ) {
     console.error(JSON.stringify({ level: "error", message: "Invalid Photo item in PersonalAlbum store", item }));
     return undefined;

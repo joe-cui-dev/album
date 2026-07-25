@@ -1,34 +1,37 @@
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { ActiveSignInCredential, AttemptOutcome, SignInDispatchStore } from "./sign-in-dispatch.js";
-import { MAX_WRONG_ATTEMPTS, RATE_LIMIT_COOLDOWN_SECONDS, RATE_LIMIT_MAX_PER_HOUR, RATE_LIMIT_WINDOW_SECONDS } from "./sign-in-dispatch.js";
+import type { AttemptOutcome, SignInChallenge, SignInChallengeStore } from "./sign-in-challenge.js";
+import { MAX_WRONG_ATTEMPTS, RATE_LIMIT_COOLDOWN_SECONDS, RATE_LIMIT_MAX_PER_HOUR, RATE_LIMIT_WINDOW_SECONDS } from "./sign-in-challenge.js";
 
-const credentialKey = (email: string) => ({ pk: `SIGNIN2#${email}`, sk: "CREDENTIAL" });
+const challengeKey = (email: string) => ({ pk: `SIGN_IN#${email}`, sk: "CHALLENGE" });
 
-/** `codeHash`/`expiresAt`/`wrongAttempts` all still need to be readable on a consumed
+/** `codeHash`/`codeExpiresAt`/`wrongAttempts` all still need to be readable on a consumed
  * record (redelivery recognition, rate-limit history), so consuming sets this flag rather
- * than deleting the item -- DynamoDB TTL on `expiresAt` (execution plan Slice 1.4) reclaims
- * it in the background either way. */
+ * than deleting the item -- DynamoDB TTL on `expiresAt` reclaims it in the background once
+ * the rolling rate-limit window has also elapsed. */
 const NOT_YET_CONSUMED_CONDITION = "(attribute_not_exists(consumed) OR consumed = :false)";
 
 const isConditionalCheckFailure = (error: unknown): boolean =>
   error instanceof Error && error.name === "ConditionalCheckFailedException";
 
-export const createDynamoDbSignInDispatchStore = ({
+const ttlFor = (nowSeconds: number, codeTtlSeconds: number): number =>
+  nowSeconds + Math.max(codeTtlSeconds, RATE_LIMIT_WINDOW_SECONDS);
+
+export const createDynamoDbSignInChallengeStore = ({
   documentClient,
   tableName,
 }: {
   documentClient: DynamoDBDocumentClient;
   tableName: string;
-}): SignInDispatchStore => ({
+}): SignInChallengeStore => ({
   async tryDispatch({ email, requestId, codeHash, now, codeTtlSeconds }) {
     const nowSeconds = Math.floor(now.getTime() / 1000);
-    const existing = await getRawCredential({ documentClient, tableName, email });
+    const existing = await getRawChallenge({ documentClient, tableName, email });
 
     if (existing?.requestId === requestId) {
-      // A redelivery of the same message: resend the identical Code if it's still active,
-      // but never resurrect one that already signed someone in.
-      return { dispatched: !existing.consumed };
+      // A redelivery of the same message: resend the identical Code only while it's still
+      // active, and never resurrect one that already signed someone in or has expired.
+      return { dispatched: !existing.consumed && existing.codeExpiresAt > nowSeconds };
     }
 
     if (existing) {
@@ -40,12 +43,13 @@ export const createDynamoDbSignInDispatchStore = ({
         return { dispatched: false };
       }
 
-      const record: ActiveSignInCredential = {
+      const record: SignInChallenge = {
         email,
         requestId,
         codeHash,
         createdAt: now.toISOString(),
-        expiresAt: nowSeconds + codeTtlSeconds,
+        codeExpiresAt: nowSeconds + codeTtlSeconds,
+        expiresAt: ttlFor(nowSeconds, codeTtlSeconds),
         wrongAttempts: 0,
         lastSentAt: nowSeconds,
         sendTimestamps: [...withinWindow, nowSeconds],
@@ -55,7 +59,7 @@ export const createDynamoDbSignInDispatchStore = ({
         await documentClient.send(
           new PutCommand({
             TableName: tableName,
-            Item: { ...credentialKey(email), ...record },
+            Item: { ...challengeKey(email), ...record },
             ConditionExpression: "lastSentAt = :expectedLastSentAt",
             ExpressionAttributeValues: { ":expectedLastSentAt": existing.lastSentAt },
           }),
@@ -69,12 +73,13 @@ export const createDynamoDbSignInDispatchStore = ({
       }
     }
 
-    const record: ActiveSignInCredential = {
+    const record: SignInChallenge = {
       email,
       requestId,
       codeHash,
       createdAt: now.toISOString(),
-      expiresAt: nowSeconds + codeTtlSeconds,
+      codeExpiresAt: nowSeconds + codeTtlSeconds,
+      expiresAt: ttlFor(nowSeconds, codeTtlSeconds),
       wrongAttempts: 0,
       lastSentAt: nowSeconds,
       sendTimestamps: [nowSeconds],
@@ -84,7 +89,7 @@ export const createDynamoDbSignInDispatchStore = ({
       await documentClient.send(
         new PutCommand({
           TableName: tableName,
-          Item: { ...credentialKey(email), ...record },
+          Item: { ...challengeKey(email), ...record },
           ConditionExpression: "attribute_not_exists(pk)",
         }),
       );
@@ -95,20 +100,15 @@ export const createDynamoDbSignInDispatchStore = ({
     }
   },
 
-  async getActiveCredential(email) {
-    const existing = await getRawCredential({ documentClient, tableName, email });
-    return existing && !existing.consumed ? existing : undefined;
-  },
-
   async recordAttempt({ email, candidateHash, now }): Promise<AttemptOutcome> {
     const nowSeconds = Math.floor(now.getTime() / 1000);
     try {
       await documentClient.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: credentialKey(email),
+          Key: challengeKey(email),
           UpdateExpression: "SET consumed = :true",
-          ConditionExpression: `codeHash = :candidateHash AND expiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
+          ConditionExpression: `codeHash = :candidateHash AND codeExpiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
           ExpressionAttributeValues: {
             ":candidateHash": candidateHash,
             ":now": nowSeconds,
@@ -123,18 +123,18 @@ export const createDynamoDbSignInDispatchStore = ({
       if (!isConditionalCheckFailure(error)) throw error;
     }
 
-    const current = await getRawCredential({ documentClient, tableName, email });
-    if (!current || current.consumed) return "no_active_credential";
-    if (current.expiresAt <= nowSeconds) return "expired";
+    const current = await getRawChallenge({ documentClient, tableName, email });
+    if (!current || current.consumed) return "no_active_challenge";
+    if (current.codeExpiresAt <= nowSeconds) return "expired";
     if (current.wrongAttempts >= MAX_WRONG_ATTEMPTS) return "exhausted";
 
     try {
       await documentClient.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: credentialKey(email),
+          Key: challengeKey(email),
           UpdateExpression: "SET wrongAttempts = wrongAttempts + :one",
-          ConditionExpression: `attribute_exists(pk) AND expiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
+          ConditionExpression: `attribute_exists(pk) AND codeExpiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
           ExpressionAttributeValues: { ":one": 1, ":now": nowSeconds, ":max": MAX_WRONG_ATTEMPTS, ":false": false },
         }),
       );
@@ -147,7 +147,7 @@ export const createDynamoDbSignInDispatchStore = ({
   },
 });
 
-const getRawCredential = async ({
+const getRawChallenge = async ({
   documentClient,
   tableName,
   email,
@@ -155,20 +155,21 @@ const getRawCredential = async ({
   documentClient: DynamoDBDocumentClient;
   tableName: string;
   email: string;
-}): Promise<ActiveSignInCredential | undefined> => {
+}): Promise<SignInChallenge | undefined> => {
   const result = await documentClient.send(
-    new GetCommand({ TableName: tableName, Key: credentialKey(email), ConsistentRead: true }),
+    new GetCommand({ TableName: tableName, Key: challengeKey(email), ConsistentRead: true }),
   );
-  return asActiveSignInCredential(result.Item);
+  return asSignInChallenge(result.Item);
 };
 
-const asActiveSignInCredential = (item: Record<string, unknown> | undefined): ActiveSignInCredential | undefined => {
+const asSignInChallenge = (item: Record<string, unknown> | undefined): SignInChallenge | undefined => {
   if (
     !item ||
     typeof item.email !== "string" ||
     typeof item.requestId !== "string" ||
     typeof item.codeHash !== "string" ||
     typeof item.createdAt !== "string" ||
+    typeof item.codeExpiresAt !== "number" ||
     typeof item.expiresAt !== "number" ||
     typeof item.wrongAttempts !== "number" ||
     typeof item.lastSentAt !== "number" ||
@@ -176,5 +177,5 @@ const asActiveSignInCredential = (item: Record<string, unknown> | undefined): Ac
   ) {
     return undefined;
   }
-  return { ...(item as unknown as ActiveSignInCredential), consumed: item.consumed === true };
+  return { ...(item as unknown as SignInChallenge), consumed: item.consumed === true };
 };

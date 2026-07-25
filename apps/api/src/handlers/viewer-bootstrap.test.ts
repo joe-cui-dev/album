@@ -26,8 +26,10 @@ const readyPhoto = async (
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId,
     fileName: `${photoId}.jpg`,
     sha256: `${photoId}-hash`,
@@ -92,7 +94,7 @@ describe("handleViewerBootstrap", () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
     await readyPhoto(album, "moved", day("2024-06-15"));
-    await album.setArchiveMembershipV2({ photoId: "moved", archived: true });
+    await album.setArchiveMembership({ photoId: "moved", archived: true });
 
     const response = await handleViewerBootstrap({
       user,
@@ -145,6 +147,8 @@ describe("handleViewerBootstrap", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
     const response = await handleViewerBootstrap({

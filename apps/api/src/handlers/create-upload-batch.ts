@@ -14,7 +14,7 @@ import {
   photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
-import { FALLBACK_TIME_ZONE, deriveLocalDateTime, isValidIanaTimeZone } from "../chronology-extraction.js";
+import { deriveLocalDateTime, isValidIanaTimeZone } from "../chronology-extraction.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, ok } from "../http.js";
@@ -74,10 +74,7 @@ export const handleCreateUploadBatch = async ({
   if (request.files.some((file) => !photoFormatForFile(file))) {
     return badRequest("Files must be JPEG, PNG, or HEIC photos");
   }
-  if (
-    request.uploadContext?.timeZone !== undefined &&
-    !isValidIanaTimeZone(request.uploadContext.timeZone)
-  ) {
+  if (!isValidIanaTimeZone(request.uploadContext?.timeZone ?? "")) {
     return badRequest("uploadContext.timeZone must be a valid IANA time zone");
   }
 
@@ -85,8 +82,7 @@ export const handleCreateUploadBatch = async ({
   const uploads: CreateUploadBatchResponse["uploads"] = [];
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
-  // Old v1 clients omit uploadContext; the legacy zone keeps v2 chronology usable during rollout.
-  const uploadContextTimeZone = request.uploadContext?.timeZone ?? FALLBACK_TIME_ZONE;
+  const uploadContextTimeZone = request.uploadContext.timeZone;
   const uploadLocalDateTime = deriveLocalDateTime(createdAt, uploadContextTimeZone);
 
   for (const file of request.files) {

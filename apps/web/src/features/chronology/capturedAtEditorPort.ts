@@ -23,5 +23,5 @@ export const createHttpCapturedAtEditorPort = (): CapturedAtEditorPort => ({
       signal,
     }),
   loadLatest: ({ photoId, collection, signal }) =>
-    albumTransport.request(`/v2/photos/${photoId}/viewer?collection=${collection}`, { signal }),
+    albumTransport.request(`/photos/${photoId}/viewer?collection=${collection}`, { signal }),
 });

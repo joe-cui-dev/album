@@ -5,7 +5,7 @@ import { handler as createUploadBatchHandler } from "./handlers/create-upload-ba
 import { originalDownloadUrlHandler } from "./handlers/photo-actions.js";
 import { handler as retryProcessingHandler } from "./handlers/retry-processing.js";
 import { handler as sessionHandler } from "./handlers/session.js";
-import { handler as sessionV2Handler } from "./handlers/session-v2.js";
+import { handler as signInHandler } from "./handlers/sign-in.js";
 import { handler as timelineThumbnailAccessHandler } from "./handlers/timeline-thumbnail-access.js";
 
 /**
@@ -26,10 +26,8 @@ const MUTATION_ROUTES: ReadonlyArray<{ name: string; method: string; handler: AP
   { name: "POST /photos/{photoId}/retry-processing", method: "POST", handler: retryProcessingHandler },
   { name: "POST /timeline-thumbnail-access", method: "POST", handler: timelineThumbnailAccessHandler },
   { name: "DELETE /session", method: "DELETE", handler: sessionHandler, routeKey: "DELETE /session" },
-  { name: "POST /session/sign-in-code", method: "POST", handler: sessionHandler, routeKey: "POST /session/sign-in-code" },
-  { name: "POST /session/verify", method: "POST", handler: sessionHandler, routeKey: "POST /session/verify" },
-  { name: "POST /v2/session/sign-in-code", method: "POST", handler: sessionV2Handler, routeKey: "POST /v2/session/sign-in-code" },
-  { name: "POST /v2/session/verify", method: "POST", handler: sessionV2Handler, routeKey: "POST /v2/session/verify" },
+  { name: "POST /session/sign-in-code", method: "POST", handler: signInHandler, routeKey: "POST /session/sign-in-code" },
+  { name: "POST /session/verify", method: "POST", handler: signInHandler, routeKey: "POST /session/verify" },
 ];
 
 describe("every mutating route rejects a disallowed Origin", () => {

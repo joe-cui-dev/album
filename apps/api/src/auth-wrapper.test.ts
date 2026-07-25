@@ -51,6 +51,8 @@ describe("createWithAuth", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 1,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      uploadLocalDateTime: "2026-07-19T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
     const handler = createWithAuth({ store, resolveAllowedUsers: allowedUsers })(async (context) => {
       expect(context.user).toEqual(user);

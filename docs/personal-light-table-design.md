@@ -2,6 +2,8 @@
 
 Status: Accepted design baseline, refined 21 July 2026
 
+> **2026-07-25 supersession note:** the v1/v2 Auth rollout and additive-route mechanics described below (retain v1, cut Web to v2, observe 24 hours, then remove v1) are superseded by [ADR-0074](./adr/0074-use-unversioned-canonical-contracts-for-the-first-party-app.md), which closed the compatibility window in one atomic cutover to unversioned canonical routes. The behavioural design (no public code ID, cooldown, rolling limit, uniform admission/rejection) is unchanged.
+
 Personal Light Table is the internal design direction for Personal Album. It reshapes the product as a quiet, photo-first place for one User to revisit their own memories. It does not change the ownership boundary: every User has one independent Personal Album and cannot browse another family User's Photos.
 
 The canonical product language remains in [CONTEXT.md](../CONTEXT.md). Capture-local chronology and date precision are constrained by [ADR 0022](./adr/0022-preserve-capture-local-time.md), [ADR 0023](./adr/0023-preserve-captured-at-precision.md), [ADR 0025](./adr/0025-use-a-structured-captured-at-value.md), [ADR 0026](./adr/0026-use-upload-local-calendar-for-captured-at-fallbacks.md), and [ADR 0027](./adr/0027-preserve-one-original-and-one-active-captured-at.md). Timeline reads are constrained by [ADR 0028](./adr/0028-use-denormalized-timeline-projections.md), and responsive Timeline Thumbnail sizes by [ADR 0024](./adr/0024-generate-two-responsive-timeline-thumbnail-sizes.md).

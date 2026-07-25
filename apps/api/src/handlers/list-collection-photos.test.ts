@@ -1,7 +1,7 @@
 import type { CapturedAt } from "@album/shared";
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
 import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
-import { handleListCollectionPhotosV2 } from "./list-collection-photos-v2.js";
+import { handleListCollectionPhotos } from "./list-collection-photos.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
 const dimensions = { width: 100, height: 50 };
@@ -25,8 +25,10 @@ const createReadyPhoto = async (
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId,
     fileName: `${photoId}.jpg`,
     sha256: `${photoId}-hash`,
@@ -42,14 +44,14 @@ const createReadyPhoto = async (
 
 const deps = () => ({ photoObjects: createInMemoryPhotoObjectStore() });
 
-describe("handleListCollectionPhotosV2", () => {
+describe("handleListCollectionPhotos", () => {
   it("returns Photos newest first with responsive thumbnail sources and an anchor period", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
     await createReadyPhoto(album, "jan", day("2024-01-01"));
     await createReadyPhoto(album, "jun", day("2024-06-15"));
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -75,7 +77,7 @@ describe("handleListCollectionPhotosV2", () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -98,8 +100,10 @@ describe("handleListCollectionPhotosV2", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
-    await album.publishReadyPhotoV2({
+    await album.publishReadyPhoto({
       photoId: "tiny",
       fileName: "tiny.jpg",
       sha256: "hash",
@@ -115,7 +119,7 @@ describe("handleListCollectionPhotosV2", () => {
       hadOpenProcessingIssue: false,
     });
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -135,7 +139,7 @@ describe("handleListCollectionPhotosV2", () => {
     await createReadyPhoto(album, "feb", day("2024-02-01"));
     await createReadyPhoto(album, "mar", day("2024-03-01"));
 
-    const firstPage = await handleListCollectionPhotosV2({
+    const firstPage = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -146,7 +150,7 @@ describe("handleListCollectionPhotosV2", () => {
     expect(firstBody.photos.map((p: { photoId: string }) => p.photoId)).toEqual(["mar", "feb"]);
     expect(typeof firstBody.nextCursor).toBe("string");
 
-    const secondPage = await handleListCollectionPhotosV2({
+    const secondPage = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -163,7 +167,7 @@ describe("handleListCollectionPhotosV2", () => {
     const album = store.personalAlbumOf("user-1");
     await createReadyPhoto(album, "jan", day("2024-01-01"));
     await createReadyPhoto(album, "feb", day("2024-02-01"));
-    const firstPage = await handleListCollectionPhotosV2({
+    const firstPage = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -172,7 +176,7 @@ describe("handleListCollectionPhotosV2", () => {
     });
     const { nextCursor } = JSON.parse(firstPage.body ?? "{}");
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "archived",
@@ -185,7 +189,7 @@ describe("handleListCollectionPhotosV2", () => {
   it("rejects cursor and startAt together", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -198,7 +202,7 @@ describe("handleListCollectionPhotosV2", () => {
   it.each(["0", "101", "abc", "1.5"])("rejects an invalid limit %s", async (limit) => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -215,7 +219,7 @@ describe("handleListCollectionPhotosV2", () => {
     await createReadyPhoto(album, "jun", day("2024-06-15"));
     await createReadyPhoto(album, "jan", day("2024-01-01"));
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -231,7 +235,7 @@ describe("handleListCollectionPhotosV2", () => {
     const album = store.personalAlbumOf("user-1");
     await createReadyPhoto(album, "jan", day("2024-01-01"));
 
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -245,7 +249,7 @@ describe("handleListCollectionPhotosV2", () => {
   it("rejects an invalid startAt", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
-    const response = await handleListCollectionPhotosV2({
+    const response = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
@@ -260,16 +264,16 @@ describe("handleListCollectionPhotosV2", () => {
     const album = store.personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
     await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembershipV2({ photoId: "archived-1", archived: true });
+    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
 
-    const timeline = await handleListCollectionPhotosV2({
+    const timeline = await handleListCollectionPhotos({
       user,
       album,
       collection: "active",
       query: {},
       deps: deps(),
     });
-    const archive = await handleListCollectionPhotosV2({
+    const archive = await handleListCollectionPhotos({
       user,
       album,
       collection: "archived",

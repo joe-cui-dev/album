@@ -66,8 +66,8 @@ export interface PersonalAlbum {
     fileModifiedAt?: string;
     /** Upload-context-local calendar values, derived once at upload time so reads never reinterpret them. */
     fileModifiedLocalDateTime?: string;
-    uploadLocalDateTime?: string;
-    uploadContextTimeZone?: string;
+    uploadLocalDateTime: string;
+    uploadContextTimeZone: string;
   }): Promise<void>;
   createUploadBatch(input: {
     uploadBatchId: string;
@@ -75,7 +75,6 @@ export interface PersonalAlbum {
     photoIds: string[];
   }): Promise<void>;
   markProcessingStarted(photoId: string): Promise<void>;
-  // --- v2 store transaction model (Phase 2 WP2) ---
 
   /**
    * Atomically publishes a Ready Photo: sets original/active chronology at
@@ -83,7 +82,7 @@ export interface PersonalAlbum {
    * Photo's uploadRequestedAt as Added At), updates the Active Date Index,
    * and resolves any open Processing Issue.
    */
-  publishReadyPhotoV2(input: {
+  publishReadyPhoto(input: {
     photoId: string;
     fileName: string;
     sha256: string;
@@ -100,7 +99,7 @@ export interface PersonalAlbum {
   }): Promise<void>;
 
   /** Atomically publishes an Exact Duplicate: no projection is created. */
-  publishExactDuplicateV2(input: {
+  publishExactDuplicate(input: {
     photoId: string;
     sha256: string;
     duplicateOfPhotoId: string;
@@ -113,7 +112,7 @@ export interface PersonalAlbum {
    * collections, transferring its Date Index count. A Photo already in the
    * target collection is left unchanged (idempotent membership).
    */
-  setArchiveMembershipV2(input: { photoId: string; archived: boolean }): Promise<void>;
+  setArchiveMembership(input: { photoId: string; archived: boolean }): Promise<void>;
 
   /**
    * Replaces the complete active chronology (Adjust Captured At), moving the
@@ -122,7 +121,7 @@ export interface PersonalAlbum {
    * does not advance the revision. Throws StaleChronologyRevisionError when
    * expectedRevision does not match the Photo's current active revision.
    */
-  replaceActiveChronologyV2(input: {
+  replaceActiveChronology(input: {
     photoId: string;
     capturedAt: CapturedAt;
     expectedRevision: number;
@@ -134,7 +133,7 @@ export interface PersonalAlbum {
    * not advance the revision. Throws StaleChronologyRevisionError when
    * expectedRevision does not match the Photo's current active revision.
    */
-  revertActiveChronologyV2(input: {
+  revertActiveChronology(input: {
     photoId: string;
     expectedRevision: number;
   }): Promise<{ revision: number }>;
@@ -143,7 +142,7 @@ export interface PersonalAlbum {
    * Creates or updates the durable Processing Issue for a failed Photo and
    * maintains the exact open count, clearing any owning processing attempt.
    */
-  recordProcessingIssueV2(input: {
+  recordProcessingIssue(input: {
     photoId: string;
     fileName: string;
     reasonCode: string;
@@ -154,14 +153,14 @@ export interface PersonalAlbum {
   getProcessingIssue(photoId: string): Promise<ProcessingIssueRecord | undefined>;
 
   /** Marks an open Issue retrying after its message has been accepted by SQS. */
-  beginProcessingIssueRetryV2(input: {
+  beginProcessingIssueRetry(input: {
     photoId: string;
     retryAttemptId: string;
     attemptedAt: string;
   }): Promise<{ retryAttemptId: string }>;
 
   /** Reserves the sole retry attempt before its message is sent to SQS. */
-  reserveProcessingIssueRetryV2(input: {
+  reserveProcessingIssueRetry(input: {
     photoId: string;
     retryAttemptId: string;
     reservedAt: string;
@@ -169,13 +168,13 @@ export interface PersonalAlbum {
   }): Promise<{ retryAttemptId: string }>;
 
   /** Releases an unsent retry reservation after an SQS send failure. */
-  releaseProcessingIssueRetryV2(input: {
+  releaseProcessingIssueRetry(input: {
     photoId: string;
     retryAttemptId: string;
   }): Promise<void>;
 
   /** One newest-first page of durable Processing Issues. */
-  queryProcessingIssuesV2(input: {
+  queryProcessingIssues(input: {
     limit: number;
     after?: { sortKey: string };
   }): Promise<{ issues: ProcessingIssueRecord[]; lastSortKey?: string }>;
@@ -192,8 +191,8 @@ export interface PersonalAlbum {
     startedAt: string;
   }): Promise<"claimed" | "resumed">;
 
-  getTimelineProjectionsV2(collection: PhotoCollection): Promise<TimelineProjection[]>;
-  getDateIndexV2(
+  getTimelineProjections(collection: PhotoCollection): Promise<TimelineProjection[]>;
+  getDateIndex(
     collection: PhotoCollection,
     year: number,
   ): Promise<DateIndexPeriodCounts>;
@@ -206,7 +205,7 @@ export interface PersonalAlbum {
    * `lastSortKey` (for building the next cursor) only when the page was
    * full, since fewer than `limit` results means there is nothing older.
    */
-  queryTimelinePageV2(input: {
+  queryTimelinePage(input: {
     collection: PhotoCollection;
     limit: number;
     after?: { sortKey: string };
@@ -214,17 +213,17 @@ export interface PersonalAlbum {
   }): Promise<{ projections: TimelineProjection[]; lastSortKey?: string }>;
 
   /** Every year with a non-empty Date Index item in one collection. */
-  listDateIndexYearsV2(
+  listDateIndexYears(
     collection: PhotoCollection,
   ): Promise<Array<{ year: number; counts: DateIndexPeriodCounts }>>;
 
   /**
    * The nearest live projection strictly newer ("newer") or older ("older")
    * than the given projection's exact position, within the same collection.
-   * Used to derive Photo Viewer neighbours from existing v2 projection sort
+   * Used to derive Photo Viewer neighbours from existing projection sort
    * order without persisting any previous/next link.
    */
-  queryAdjacentProjectionV2(input: {
+  queryAdjacentProjection(input: {
     collection: PhotoCollection;
     capturedAt: CapturedAt;
     addedAt: string;

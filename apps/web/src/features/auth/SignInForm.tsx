@@ -10,8 +10,8 @@ interface SignInFormProps {
 export function SignInForm({ onSignedIn }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  // Auth v2 (execution plan Slice 1.5) has no public code ID: the Email the code was
-  // requested for is the only context carried into verification.
+  // The canonical Sign-In Challenge has no public code ID (ADR-0071): the Email the code
+  // was requested for is the only context carried into verification.
   const [codeRequestedFor, setCodeRequestedFor] = useState<string>();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);

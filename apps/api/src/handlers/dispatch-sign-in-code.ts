@@ -3,8 +3,8 @@ import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { findAllowedUserByEmail, normalizeEmail } from "../allowlist.js";
 import { config } from "../config.js";
 import { deriveSignInCode, hashSignInCode } from "../sign-in-code-crypto.js";
-import { signInDispatchStore } from "../store/configured-store.js";
-import type { SignInDispatchStore } from "../store/sign-in-dispatch.js";
+import { signInChallengeStore } from "../store/configured-store.js";
+import type { SignInChallengeStore } from "../store/sign-in-challenge.js";
 
 const ses = new SESv2Client({});
 
@@ -14,7 +14,7 @@ interface DispatchRecord {
 }
 
 interface DispatchDeps {
-  signInDispatch: SignInDispatchStore;
+  signInChallenges: SignInChallengeStore;
   now: () => Date;
   sendSignInCodeEmail: (input: { email: string; code: string }) => Promise<void>;
 }
@@ -23,7 +23,7 @@ export const handler: SQSHandler = async (event) => {
   return handleDispatchBatch({
     records: event.Records,
     deps: {
-      signInDispatch: signInDispatchStore,
+      signInChallenges: signInChallengeStore,
       now: () => new Date(),
       sendSignInCodeEmail: async ({ email, code }) => {
         if (!config.sesFromEmail) {
@@ -84,7 +84,7 @@ const handleDispatchMessage = async ({ body, deps }: { body: string; deps: Dispa
   }
 
   const code = deriveSignInCode(message.requestId);
-  const outcome = await deps.signInDispatch.tryDispatch({
+  const outcome = await deps.signInChallenges.tryDispatch({
     email,
     requestId: message.requestId,
     codeHash: hashSignInCode(code),

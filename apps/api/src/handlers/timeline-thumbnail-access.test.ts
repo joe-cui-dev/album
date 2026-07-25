@@ -25,8 +25,10 @@ const readyPhoto = async (
     contentType: "image/jpeg",
     fileSizeBytes: 42,
     uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+    uploadLocalDateTime: "2026-01-01T00:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId,
     fileName: `${photoId}.jpg`,
     sha256: `${photoId}-hash`,
@@ -82,6 +84,8 @@ describe("handleTimelineThumbnailAccess", () => {
       contentType: "image/jpeg",
       fileSizeBytes: 42,
       uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
     });
 
     const response = await handleTimelineThumbnailAccess({

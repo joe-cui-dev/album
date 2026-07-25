@@ -144,6 +144,10 @@ _Avoid_: per-user domain, public user page, user directory
 A one-time code sent to an Allowed User's email address to prove access to their Personal Album.
 _Avoid_: password, registration, invitation
 
+**Sign-In Challenge**:
+A short-lived proof-of-email challenge created for an Email Address when a Sign-In Code is requested. It may be completed once before expiry to create a Session.
+_Avoid_: credential, dispatch record, verification record
+
 **Session**:
 The temporary signed-in state created by verifying a Sign-In Code, carried by the User's browser and used to scope every request to that User's Personal Album.
 _Avoid_: password login, API key, shared login

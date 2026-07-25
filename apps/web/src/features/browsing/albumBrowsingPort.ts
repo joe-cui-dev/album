@@ -1,5 +1,5 @@
 import type {
-  ListCollectionPhotosV2Response,
+  ListCollectionPhotosResponse,
   PhotoCollection,
   TimelineThumbnailAccessResponse,
 } from "@album/shared";
@@ -15,7 +15,7 @@ export interface AlbumBrowsingPort {
     cursor?: string;
     startAt?: string;
     signal: AbortSignal;
-  }): Promise<ListCollectionPhotosV2Response>;
+  }): Promise<ListCollectionPhotosResponse>;
 
   renewThumbnailAccess(input: {
     photoIds: string[];

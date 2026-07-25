@@ -15,8 +15,10 @@ const createReadyAlbum = async () => {
     photoId: "photo-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1",
     fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 1234,
     uploadRequestedAt: "2025-01-02T10:00:00.000Z",
+    uploadLocalDateTime: "2025-01-02T10:00:00",
+    uploadContextTimeZone: "UTC",
   });
-  await album.publishReadyPhotoV2({
+  await album.publishReadyPhoto({
     photoId: "photo-1", sha256: "hash", fileName: "beach.jpg", displayObjectKey: "display/user-1/photo-1.jpg",
     displayDimensions: { width: 2048, height: 1536 },
     timelineThumbnails: {

@@ -1,5 +1,5 @@
 import type {
-  ListCollectionPhotosV2Response,
+  ListCollectionPhotosResponse,
   PhotoCollection,
   TimelineThumbnailAccessResponse,
 } from "@album/shared";
@@ -25,7 +25,7 @@ export interface TestAlbumBrowsingPort {
   port: AlbumBrowsingPort;
   loadCalls: LoadCall[];
   renewalCalls: RenewalCall[];
-  resolveNextLoad(response: ListCollectionPhotosV2Response): void;
+  resolveNextLoad(response: ListCollectionPhotosResponse): void;
   rejectNextLoad(error: unknown): void;
   resolveNextRenewal(response: TimelineThumbnailAccessResponse): void;
   rejectNextRenewal(error: unknown): void;
@@ -35,7 +35,7 @@ export interface TestAlbumBrowsingPort {
 export const createTestAlbumBrowsingPort = (): TestAlbumBrowsingPort => {
   const loadCalls: LoadCall[] = [];
   const renewalCalls: RenewalCall[] = [];
-  const pendingLoads: Array<Deferred<ListCollectionPhotosV2Response>> = [];
+  const pendingLoads: Array<Deferred<ListCollectionPhotosResponse>> = [];
   const pendingRenewals: Array<Deferred<TimelineThumbnailAccessResponse>> = [];
 
   const port: AlbumBrowsingPort = {

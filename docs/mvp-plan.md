@@ -53,7 +53,7 @@ Using the default API Gateway URL remains acceptable through MVP acceptance. A s
 - Ready-only Timeline/Archive projections without the legacy `uploaded` Processing State.
 - Shared photo object-key contracts and storage adapters.
 - CDK deployment, frontend hosting, operational logs helper, and automated tests.
-- Auth v2, exact-Origin admission, allowlist revalidation, Viewer refinement, chronology editor,
+- Canonical asynchronous Sign-In, exact-Origin admission, allowlist revalidation, Viewer refinement, chronology editor,
   accessibility/resilience closure, smoke-fixture verifier, and the 20,000-Photo candidate profile harness.
 
 ## Remaining Before MVP Acceptance
@@ -61,7 +61,6 @@ Using the default API Gateway URL remains acceptable through MVP acceptance. A s
 ### Production acceptance
 
 - Pass the automated, performance, assisted-device, and security gates in the [stage 5 execution plan](./refinement-acceptance-execution-plan.md).
-- Deploy and observe auth v2 for 24 hours, then remove v1 in a separately authorised deployment.
 - Complete the production smoke test in [deployment.md](./deployment.md) with dedicated Users and versioned non-private fixtures.
 - Publish a passing dated record under `docs/acceptance/`, then and only then mark the MVP Accepted.
 

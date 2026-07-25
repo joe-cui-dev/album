@@ -66,7 +66,7 @@ export const handleAdjustCapturedAt = async ({
   }
 
   try {
-    await album.replaceActiveChronologyV2({ photoId, capturedAt: request.capturedAt, expectedRevision });
+    await album.replaceActiveChronology({ photoId, capturedAt: request.capturedAt, expectedRevision });
   } catch (error) {
     return mapChronologyError(error);
   }
@@ -105,7 +105,7 @@ export const handleRevertCapturedAt = async ({
   }
 
   try {
-    await album.revertActiveChronologyV2({ photoId, expectedRevision });
+    await album.revertActiveChronology({ photoId, expectedRevision });
   } catch (error) {
     return mapChronologyError(error);
   }

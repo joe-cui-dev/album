@@ -5,14 +5,6 @@ import {
   type OriginalCapturedAtSource,
 } from "@album/shared";
 
-/**
- * Defensive fallback zone (ADR-0034) used only when a new upload arrives
- * without an explicit upload-context time zone. Real EXIF and a supplied
- * upload context always take precedence; this only backstops the final
- * fallback.
- */
-export const FALLBACK_TIME_ZONE = "Australia/Brisbane";
-
 export const isValidIanaTimeZone = (timeZone: string): boolean => {
   try {
     new Intl.DateTimeFormat(undefined, { timeZone });

@@ -37,12 +37,6 @@ export const unauthorized = (
   return json(401, { message }, extra);
 };
 
-export const forbidden = (
-  message = "Forbidden",
-): APIGatewayProxyStructuredResultV2 => {
-  return json(403, { message });
-};
-
 /** The generic 403 for a rejected `Origin` (execution plan Slice 1.1) -- deliberately free
  * of any detail about why, so a probe can't learn which Origins are close to allowed. */
 export const originRejected = (): APIGatewayProxyStructuredResultV2 => {

@@ -7,7 +7,7 @@ const collectionSegment = (collection: PhotoCollection): "ACTIVE" | "ARCHIVED" =
 
 /** Bare SK prefix for one collection's Timeline/Archive projections. */
 export const timelineProjectionPrefix = (collection: PhotoCollection): string =>
-  `TIMELINE_V2#${collectionSegment(collection)}#`;
+  `TIMELINE#${collectionSegment(collection)}#`;
 
 /** SK for the lightweight Timeline/Archive projection of one Ready Photo. */
 export const timelineProjectionSortKey = ({
@@ -57,7 +57,7 @@ export const parseStartAt = (
 
 /** Bare SK prefix for one collection's Date Index year items. */
 export const dateIndexPrefix = (collection: PhotoCollection): string =>
-  `DATE_INDEX_V2#${collectionSegment(collection)}#`;
+  `DATE_INDEX#${collectionSegment(collection)}#`;
 
 /** SK for the per-year Date Index counter item of one collection. */
 export const dateIndexSortKey = ({
