@@ -229,22 +229,6 @@ export interface PersonalAlbum {
     startedAt: string;
   }): Promise<"claimed" | "resumed">;
 
-  /**
-   * Applies (or idempotently repairs) v2 migration state for one legacy
-   * Ready Photo during backfill: initializes original/active chronology at
-   * revision 0 when absent, ensures both Timeline Thumbnail variants,
-   * writes the correct collection projection and Date Index contribution,
-   * and records migrationVersion. A Photo already at or above
-   * migrationVersion is left unchanged.
-   */
-  applyMigrationVersionV2(input: {
-    photoId: string;
-    migrationVersion: number;
-    originalCapturedAt: CapturedAt;
-    originalCapturedAtSource: OriginalCapturedAtSource;
-    timelineThumbnails: TimelineThumbnails;
-  }): Promise<void>;
-
   getTimelineProjectionsV2(collection: PhotoCollection): Promise<TimelineProjection[]>;
   getDateIndexV2(
     collection: PhotoCollection,

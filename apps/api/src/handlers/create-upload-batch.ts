@@ -14,7 +14,7 @@ import {
   photoFormatForFile,
 } from "@album/shared";
 import { randomUUID } from "node:crypto";
-import { LEGACY_FALLBACK_TIME_ZONE, deriveLocalDateTime, isValidIanaTimeZone } from "../chronology-extraction.js";
+import { FALLBACK_TIME_ZONE, deriveLocalDateTime, isValidIanaTimeZone } from "../chronology-extraction.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, ok } from "../http.js";
@@ -86,7 +86,7 @@ export const handleCreateUploadBatch = async ({
   const photoIds: string[] = [];
   const createdAt = deps.now().toISOString();
   // Old v1 clients omit uploadContext; the legacy zone keeps v2 chronology usable during rollout.
-  const uploadContextTimeZone = request.uploadContext?.timeZone ?? LEGACY_FALLBACK_TIME_ZONE;
+  const uploadContextTimeZone = request.uploadContext?.timeZone ?? FALLBACK_TIME_ZONE;
   const uploadLocalDateTime = deriveLocalDateTime(createdAt, uploadContextTimeZone);
 
   for (const file of request.files) {

@@ -241,17 +241,6 @@ export class AlbumStack extends Stack {
       },
     });
 
-    const photoMaintenanceDlq = new Queue(this, "PhotoMaintenanceDlq", {
-      retentionPeriod: Duration.days(14),
-    });
-    const photoMaintenanceQueue = new Queue(this, "PhotoMaintenanceQueue", {
-      visibilityTimeout: Duration.minutes(5),
-      deadLetterQueue: {
-        queue: photoMaintenanceDlq,
-        maxReceiveCount: 3,
-      },
-    });
-
     photosBucket.addEventNotification(
       EventType.OBJECT_CREATED,
       new SqsDestination(processingQueue),
@@ -281,7 +270,6 @@ export class AlbumStack extends Stack {
       PHOTOS_BUCKET_NAME: photosBucket.bucketName,
       METADATA_TABLE_NAME: metadataTable.tableName,
       PROCESSING_QUEUE_URL: processingQueue.queueUrl,
-      PHOTO_MAINTENANCE_QUEUE_URL: photoMaintenanceQueue.queueUrl,
       SESSION_SIGNING_SECRET: sessionSigningSecret,
       ALLOW_DEV_AUTH_CODES: allowDevAuthCodes,
       ...(sesFromEmail ? { SES_FROM_EMAIL: sesFromEmail } : {}),
@@ -721,61 +709,6 @@ export class AlbumStack extends Stack {
       }),
     );
 
-    const photoMaintenanceWorker = new NodejsFunction(
-      this,
-      "PhotoMaintenanceWorker",
-      {
-        runtime: Runtime.NODEJS_22_X,
-        entry: join("..", "apps", "api", "src", "maintenance.ts"),
-        handler: "maintenanceWorkerHandler",
-        environment: commonEnvironment,
-        bundling: { forceDockerBundling: true, nodeModules: ["sharp"] },
-        reservedConcurrentExecutions: 2,
-        timeout: Duration.minutes(2),
-        logGroup: new LogGroup(this, "PhotoMaintenanceWorkerLogGroup", {
-          retention: RetentionDays.ONE_WEEK,
-        }),
-      },
-    );
-    photoMaintenanceWorker.addEventSource(
-      new SqsEventSource(photoMaintenanceQueue, {
-        batchSize: 1,
-        reportBatchItemFailures: true,
-      }),
-    );
-
-    const photoMaintenanceCoordinator = new NodejsFunction(
-      this,
-      "PhotoMaintenanceCoordinator",
-      {
-        runtime: Runtime.NODEJS_22_X,
-        entry: join("..", "apps", "api", "src", "maintenance-coordinator.ts"),
-        handler: "handler",
-        environment: commonEnvironment,
-        reservedConcurrentExecutions: 1,
-        timeout: Duration.minutes(5),
-        logGroup: new LogGroup(this, "PhotoMaintenanceCoordinatorLogGroup", {
-          retention: RetentionDays.ONE_WEEK,
-        }),
-      },
-    );
-
-    const phase2Reconciliation = new NodejsFunction(
-      this,
-      "Phase2Reconciliation",
-      {
-        runtime: Runtime.NODEJS_22_X,
-        entry: join("..", "apps", "api", "src", "reconciliation-handler.ts"),
-        handler: "handler",
-        environment: commonEnvironment,
-        reservedConcurrentExecutions: 1,
-        timeout: Duration.minutes(5),
-        logGroup: new LogGroup(this, "Phase2ReconciliationLogGroup", {
-          retention: RetentionDays.ONE_WEEK,
-        }),
-      },
-    );
-
     photosBucket.grantPut(createUploadBatch);
     photosBucket.grantReadWrite(processPhoto);
     photosBucket.grantRead(listTimelinePhotos);
@@ -805,15 +738,8 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadWriteData(restoreMembership);
     metadataTable.grantReadWriteData(session);
     metadataTable.grantReadWriteData(processPhoto);
-    metadataTable.grantReadWriteData(photoMaintenanceWorker);
-    metadataTable.grantReadWriteData(photoMaintenanceCoordinator);
-    metadataTable.grantReadWriteData(phase2Reconciliation);
-    photosBucket.grantRead(phase2Reconciliation);
     processingQueue.grantConsumeMessages(processPhoto);
     processingQueue.grantSendMessages(retryProcessing);
-    photoMaintenanceQueue.grantConsumeMessages(photoMaintenanceWorker);
-    photoMaintenanceQueue.grantSendMessages(photoMaintenanceCoordinator);
-    photosBucket.grantReadWrite(photoMaintenanceWorker);
     session.addToRolePolicy(
       new PolicyStatement({
         actions: ["ses:SendEmail"],
@@ -877,23 +803,6 @@ export class AlbumStack extends Stack {
       },
     );
     dlqVisibleMessagesAlarm.addAlarmAction(new SnsAction(alarmTopic));
-
-    const maintenanceDlqVisibleMessagesAlarm = new Alarm(
-      this,
-      "PhotoMaintenanceDlqVisibleMessagesAlarm",
-      {
-        metric: photoMaintenanceDlq.metricApproximateNumberOfMessagesVisible({
-          period: Duration.minutes(5),
-        }),
-        threshold: 0,
-        evaluationPeriods: 1,
-        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-        treatMissingData: TreatMissingData.NOT_BREACHING,
-      },
-    );
-    maintenanceDlqVisibleMessagesAlarm.addAlarmAction(
-      new SnsAction(alarmTopic),
-    );
 
     const signInDispatchDlqVisibleMessagesAlarm = new Alarm(
       this,
@@ -1153,13 +1062,6 @@ export class AlbumStack extends Stack {
 
     new CfnOutput(this, "HttpApiUrl", {
       value: api.apiEndpoint,
-    });
-
-    new CfnOutput(this, "PhotoMaintenanceCoordinatorName", {
-      value: photoMaintenanceCoordinator.functionName,
-    });
-    new CfnOutput(this, "Phase2ReconciliationName", {
-      value: phase2Reconciliation.functionName,
     });
 
     new CfnOutput(this, "WebAssetsBucketName", {

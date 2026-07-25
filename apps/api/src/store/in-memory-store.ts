@@ -551,53 +551,6 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           return "claimed";
         },
 
-        async applyMigrationVersionV2(input) {
-          const candidate = requirePhoto(userId, input.photoId);
-          if (candidate.processingState !== "ready") {
-            throw new Error(`Photo ${input.photoId} is not Ready; cannot migrate`);
-          }
-          if ((candidate.migrationVersion ?? 0) >= input.migrationVersion) {
-            return;
-          }
-          const addedAt = candidate.uploadRequestedAt;
-          if (!addedAt) {
-            throw new Error(`Photo ${input.photoId} has no uploadRequestedAt (Added At)`);
-          }
-
-          const alreadyMigrated = candidate.chronology !== undefined;
-          const chronology =
-            candidate.chronology ??
-            {
-              original: {
-                capturedAt: input.originalCapturedAt,
-                source: input.originalCapturedAtSource,
-              },
-              active: {
-                capturedAt: input.originalCapturedAt,
-                source: input.originalCapturedAtSource,
-                revision: 0,
-              },
-            };
-          candidate.chronology = chronology;
-          candidate.timelineThumbnails = input.timelineThumbnails;
-          candidate.migrationVersion = input.migrationVersion;
-
-          const collection: PhotoCollection = candidate.archived ? "archived" : "active";
-          const activeCapturedAt = chronology.active.capturedAt;
-          writeProjection(userId, {
-            photoId: input.photoId,
-            collection,
-            capturedAt: activeCapturedAt,
-            addedAt,
-            fileName: candidate.fileName,
-            displayDimensions: candidate.displayDimensions!,
-            timelineThumbnails: input.timelineThumbnails,
-          });
-          if (!alreadyMigrated) {
-            incrementDateIndex(userId, collection, activeCapturedAt, 1);
-          }
-        },
-
         async getTimelineProjectionsV2(collection) {
           return [...projectionsOf(userId).values()].filter(
             (projection) => projection.collection === collection,

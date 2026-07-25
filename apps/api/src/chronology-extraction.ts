@@ -6,12 +6,12 @@ import {
 } from "@album/shared";
 
 /**
- * Legacy fallback zone (ADR-0034) reused for both migration backfill and any
- * new upload that arrives without an explicit upload-context time zone (an
- * old v1 client during rollout). Real EXIF and a supplied upload context
- * always take precedence; this only backstops the final fallback.
+ * Defensive fallback zone (ADR-0034) used only when a new upload arrives
+ * without an explicit upload-context time zone. Real EXIF and a supplied
+ * upload context always take precedence; this only backstops the final
+ * fallback.
  */
-export const LEGACY_FALLBACK_TIME_ZONE = "Australia/Brisbane";
+export const FALLBACK_TIME_ZONE = "Australia/Brisbane";
 
 export const isValidIanaTimeZone = (timeZone: string): boolean => {
   try {

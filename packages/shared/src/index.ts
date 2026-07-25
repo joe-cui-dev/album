@@ -129,7 +129,6 @@ export interface Photo {
   timelineThumbnails?: TimelineThumbnails;
   processingAttemptId?: string;
   processingStartedAt?: string;
-  migrationVersion?: number;
   /** Upload-context-local calendar values derived once at upload time so reads never reinterpret them. */
   fileModifiedLocalDateTime?: string;
   uploadLocalDateTime?: string;
@@ -238,8 +237,7 @@ export interface CreateUploadBatchResponse {
 export type ProcessingIssueReasonCode =
   | "finalProcessingFailure"
   | "metadataMismatch"
-  | "unsupportedImage"
-  | "legacyProcessingFailure";
+  | "unsupportedImage";
 
 export interface UploadBatchPhotoStatus {
   photoId: string;

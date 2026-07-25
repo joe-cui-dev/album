@@ -1,5 +1,5 @@
 import {
-  LEGACY_FALLBACK_TIME_ZONE,
+  FALLBACK_TIME_ZONE,
   buildExifDateTimeCandidate,
   deriveLocalDateTime,
   isValidIanaTimeZone,
@@ -42,7 +42,7 @@ describe("deriveLocalDateTime", () => {
   });
 
   it("handles the legacy fallback zone constant", () => {
-    expect(deriveLocalDateTime("2026-01-01T00:00:00.000Z", LEGACY_FALLBACK_TIME_ZONE)).toEqual({
+    expect(deriveLocalDateTime("2026-01-01T00:00:00.000Z", FALLBACK_TIME_ZONE)).toEqual({
       localDate: "2026-01-01",
       localTime: "10:00:00",
     });

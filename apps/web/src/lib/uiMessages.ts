@@ -43,7 +43,6 @@ export const uiMessages = {
     finalProcessingFailure: "This photo couldn't be processed.",
     metadataMismatch: "This photo's details didn't match what we expected.",
     unsupportedImage: "This file isn't a supported image format.",
-    legacyProcessingFailure: "This photo couldn't be processed.",
     unknown: "This photo needs attention.",
   },
   uploadTray: {

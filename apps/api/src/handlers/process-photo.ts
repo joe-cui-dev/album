@@ -13,7 +13,7 @@ import {
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import {
-  LEGACY_FALLBACK_TIME_ZONE,
+  FALLBACK_TIME_ZONE,
   deriveLocalDateTime,
   resolveOriginalCapturedAt,
   type ExifDateTimeCandidate,
@@ -386,7 +386,7 @@ const resolveFileModifiedLocalDateTime = (
     return parseLocalDateTime(photo.fileModifiedLocalDateTime);
   }
   if (photo.fileModifiedAt) {
-    return deriveLocalDateTime(photo.fileModifiedAt, LEGACY_FALLBACK_TIME_ZONE);
+    return deriveLocalDateTime(photo.fileModifiedAt, FALLBACK_TIME_ZONE);
   }
   return undefined;
 };
@@ -399,7 +399,7 @@ const resolveUploadLocalDateTime = (
   }
   return deriveLocalDateTime(
     photo.uploadRequestedAt ?? new Date(0).toISOString(),
-    LEGACY_FALLBACK_TIME_ZONE,
+    FALLBACK_TIME_ZONE,
   );
 };
 
