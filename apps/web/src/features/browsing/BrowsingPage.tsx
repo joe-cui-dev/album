@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type { ListCollectionPhotosResponse, PhotoCollection } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
@@ -21,26 +21,56 @@ interface BrowsingPageProps {
   emptyState: { title: string; description: string; action?: ReactNode };
 }
 
+interface BrowsingRouteState {
+  /** An opaque per-history-entry Browsing Window identity (ADR-0053); never derived from the URL. */
+  browsingKey?: string;
+  background?: unknown;
+  focusMainHeading?: boolean;
+}
+
+const createBrowsingWindowKey = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `bw-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 /** Assembles one history entry's Browsing Window with Album Navigation and manual date Jump (implementation doc "Date Navigation and History"). */
 export function BrowsingPage({ collection, registry, mutations, title, emptyState }: BrowsingPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const startAt = searchParams.get("startAt") ?? undefined;
-  const key = `${collection}:${startAt ?? "latest"}`;
 
-  // Set by a committed date Jump just before its URL update re-renders this component with a new `key`,
-  // so the freshly probed page seeds the window instead of being fetched a second time.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeState = (location.state ?? {}) as BrowsingRouteState;
+
+  // A fresh opaque key per history entry, including two entries sharing the same URL (ADR-0053):
+  // recomputed only when the entry itself changes (`location.key`, React Router's own per-entry
+  // token used here purely as a change signal, not as the stored identity), not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const browsingKey = useMemo(() => routeState.browsingKey ?? createBrowsingWindowKey(), [location.key]);
+
+  useEffect(() => {
+    // Stamps the generated key into this exact history entry's own state (a `replace`, not a new
+    // entry) so Back/Forward recovers it verbatim; a direct load or refresh has no prior state and
+    // always regenerates one here. `background` (the contextual Viewer's own state) and any other
+    // existing fields are preserved, not overwritten.
+    if (routeState.browsingKey !== browsingKey) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: { ...routeState, browsingKey } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browsingKey]);
+
+  // Set by a committed date Jump just before its URL update re-renders this component with a new
+  // `browsingKey`, so the freshly probed page seeds the window instead of being fetched a second time.
   const pendingJumpPageRef = useRef<{ anchor: string; page: ListCollectionPhotosResponse } | undefined>(undefined);
 
   const windowRef = useRef<{ key: string; window: BrowsingWindow } | undefined>(undefined);
-  if (!windowRef.current || windowRef.current.key !== key) {
+  if (!windowRef.current || windowRef.current.key !== browsingKey) {
     const seededPage =
       startAt !== undefined && pendingJumpPageRef.current?.anchor === startAt
         ? pendingJumpPageRef.current.page
         : undefined;
     pendingJumpPageRef.current = undefined;
     windowRef.current = {
-      key,
-      window: registry.activate(key, () =>
+      key: browsingKey,
+      window: registry.activate(browsingKey, collection, () =>
         createBrowsingWindow({
           collection,
           ...(startAt !== undefined ? { startAt } : {}),
@@ -114,11 +144,10 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
   const photoHrefFor = (photoId: string): string => `/album/photos/${photoId}`;
   const [visiblePeriodKey, setVisiblePeriodKey] = useState<string>();
 
-  const location = useLocation();
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     // The Viewer's standalone Close navigates here and asks for the main heading to be focused (implementation doc "Direct route").
-    if ((location.state as { focusMainHeading?: boolean } | null)?.focusMainHeading) {
+    if (routeState.focusMainHeading) {
       headingRef.current?.focus();
     }
     // Only the state present at the moment this page was navigated to matters.

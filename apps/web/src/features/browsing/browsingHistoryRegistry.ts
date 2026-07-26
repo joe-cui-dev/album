@@ -2,28 +2,26 @@ import type { PhotoCollection } from "@album/shared";
 import type { BrowsingWindow } from "./browsingWindow.js";
 
 /**
- * The Session-scoped composition root that owns Browsing Window instances
- * (ADR-0065). Retains the active window plus only the most recently inactive
- * one; any other key recreates from its URL anchor rather than promising an
- * evicted deep scroll position (ADR-0057).
+ * The Session-scoped composition root that owns Browsing Window instances (ADR-0057/0065). Keys
+ * are opaque per-history-entry tokens (ADR-0053) -- the registry never derives collection from a
+ * key, and it is the sole lifecycle owner: it drives every `activate`/`deactivate`/`dispose`
+ * transition atomically as keys change, rather than leaving that to React mount/unmount.
  */
 export interface BrowsingHistoryRegistry {
-  /** Returns the window for `key`, creating it via `create` only if neither the active nor retained-inactive slot already holds it. */
-  activate(key: string, create: () => BrowsingWindow): BrowsingWindow;
+  /** Returns the (activated) window for `key`, creating it via `create` only if neither the active nor retained-inactive slot already holds it. */
+  activate(key: string, collection: PhotoCollection, create: () => BrowsingWindow): BrowsingWindow;
   /**
-   * Applies ADR-0067's membership rule: the mounted window whose collection the
-   * Photo just left withholds it; every collection not currently mounted is
-   * invalidated (its retained-inactive slot, if any, is disposed so the next
-   * activation refetches).
+   * Applies ADR-0067's membership rule: the mounted window whose collection the Photo just left
+   * withholds it; every collection not currently mounted is invalidated (its retained-inactive
+   * slot, if any, is disposed so the next activation refetches).
    */
   applyMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
   /** Reverses a mounted-window withhold applied by `applyMembershipChange` (rollback on mutation failure). */
   revertMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
   /**
-   * New Photos from a completed Upload Batch always arrive in `active`. Per
-   * ADR-0067, a mounted Timeline is deliberately left alone so it does not
-   * reflow or jump; a non-mounted Timeline slot is invalidated so the next
-   * activation refetches and picks the new Photos up.
+   * New Photos from a completed Upload Batch always arrive in `active`. Per ADR-0067, a mounted
+   * Timeline is deliberately left alone so it does not reflow or jump; a non-mounted Timeline slot
+   * is invalidated so the next activation refetches and picks the new Photos up.
    */
   notifyPhotosArrived(): void;
   /** A Viewer Adjust/Revert moved chronology. Retained windows must refetch; a mounted one keeps its anchor and withholds its stale placement. */
@@ -34,34 +32,32 @@ export interface BrowsingHistoryRegistry {
 
 interface Slot {
   key: string;
+  collection: PhotoCollection;
   window: BrowsingWindow;
 }
-
-/** Every registry key is `${collection}:${anchor}` (see `BrowsingPage`). */
-const collectionOf = (key: string): PhotoCollection => key.split(":")[0] as PhotoCollection;
 
 export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
   let active: Slot | undefined;
   let inactive: Slot | undefined;
 
   const withholdInMountedWindow = (photoId: string, collection: PhotoCollection, withheld: boolean): void => {
-    if (active && collectionOf(active.key) === collection) {
-      active.window.intents.setWithheld(photoId, withheld);
+    if (active && active.collection === collection) {
+      active.window.lifecycle.setWithheld(photoId, withheld);
     }
   };
 
   const invalidateIfNotMounted = (collection: PhotoCollection): void => {
-    if (active && collectionOf(active.key) === collection) {
+    if (active && active.collection === collection) {
       return;
     }
-    if (inactive && collectionOf(inactive.key) === collection) {
-      inactive.window.dispose();
+    if (inactive && inactive.collection === collection) {
+      inactive.window.lifecycle.dispose();
       inactive = undefined;
     }
   };
 
   return {
-    activate: (key, create) => {
+    activate: (key, collection, create) => {
       if (active?.key === key) {
         return active.window;
       }
@@ -69,11 +65,15 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
         const reactivated = inactive;
         inactive = active;
         active = reactivated;
-        return reactivated.window;
+        active.window.lifecycle.activate();
+        inactive?.window.lifecycle.deactivate();
+        return active.window;
       }
-      inactive?.window.dispose();
+      inactive?.window.lifecycle.dispose();
       inactive = active;
-      active = { key, window: create() };
+      inactive?.window.lifecycle.deactivate();
+      active = { key, collection, window: create() };
+      active.window.lifecycle.activate();
       return active.window;
     },
     applyMembershipChange: ({ photoId, leftCollection }) => {
@@ -96,8 +96,8 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
       invalidateIfNotMounted(collection);
     },
     disposeAll: () => {
-      active?.window.dispose();
-      inactive?.window.dispose();
+      active?.window.lifecycle.dispose();
+      inactive?.window.lifecycle.dispose();
       active = undefined;
       inactive = undefined;
     },

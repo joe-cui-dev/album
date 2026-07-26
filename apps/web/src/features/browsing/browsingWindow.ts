@@ -1,77 +1,117 @@
-import { getCapturedAtComponents, type CapturedAt, type PhotoCollection, type TimelinePhoto } from "@album/shared";
+import { getCapturedAtComponents, type CapturedAt, type PhotoCollection, type TimelinePhoto, type TimelineThumbnailSources } from "@album/shared";
 import { AlbumTransportError, type AlbumTransportErrorCode } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
+import { createBrowserEnvironment, type BrowsingEnvironment } from "./browsingEnvironment.js";
 import { createIncrementalJustifiedRows, type JustifiedLayoutItem, type JustifiedRowsOptions } from "./justifiedRows.js";
+import { captureAnchor, resolveAnchor, type CapturedAnchor, type RestorationDirective } from "./restoration.js";
+import { createThumbnailLeaseCache } from "./thumbnailLeaseCache.js";
 
-export interface PhotoDescriptor {
+export type { RestorationDirective } from "./restoration.js";
+
+/** One loaded Photo's compact, URL-free layout facts (ADR-0050): temporary access lives only in the lease cache. */
+interface PhotoDescriptor {
   photoId: string;
   fileName: string;
   capturedAt: CapturedAt;
   addedAt: string;
   displayDimensions: { width: number; height: number };
-  timelineThumbnailSources: TimelinePhoto["timelineThumbnailSources"];
   aspectRatio: number;
   periodKey: string;
-}
-
-export type RestorationAnchor =
-  | { kind: "photo"; photoId: string; rowOffset: number }
-  | { kind: "period"; periodKey: string };
-
-export interface BrowsingWindowSnapshot {
-  collection: PhotoCollection;
-  layoutItems: JustifiedLayoutItem[];
-  /** The last loaded period's withheld tail; see `computeJustifiedRows`. */
-  incompleteTailPhotoIds?: string[];
-  descriptorsById: ReadonlyMap<string, PhotoDescriptor>;
-  /** Photo ids withheld by a membership change; still present in `descriptorsById` and laid out, but not renderable (ADR-0067). */
-  withheldPhotoIds: ReadonlySet<string>;
-  photoCount: number;
-  isLoadingInitial: boolean;
-  isLoadingMore: boolean;
-  isExhausted: boolean;
-  loadError?: AlbumTransportErrorCode;
-  restorationAnchor?: RestorationAnchor;
-}
-
-export type LayoutOptions = Omit<JustifiedRowsOptions, "hasMore">;
-
-export interface BrowsingWindowIntents {
-  /** Requests the next older page; a no-op while a load is in flight, the collection is exhausted, or the last load failed. */
-  loadMore(): void;
-  /** Retries the load that produced the current `loadError`; a no-op otherwise. */
-  retry(): void;
-  setLayout(options: LayoutOptions): void;
-  recordRestorationAnchor(anchor: RestorationAnchor | undefined): void;
-  /**
-   * Coalesced renewal demand: renews only the ids nearing expiry, batched under the port's
-   * limit. A failure starts a bounded backoff window that silently skips subsequent demand
-   * calls until it elapses; pass `force` (an online/visibility/retry-window resume signal) to
-   * bypass that window and retry immediately.
-   */
-  requestThumbnailAccess(photoIds: string[], options?: { force?: boolean }): void;
-  /**
-   * Marks a loaded descriptor as not present in this window's collection without
-   * removing it, so a matching `false` call restores the identical index and no
-   * displayed row changes geometry (ADR-0067).
-   */
-  setWithheld(photoId: string, withheld: boolean): void;
 }
 
 export interface SequencePosition {
   /** Zero-based position from the newest loaded Photo. */
   index: number;
-  /** Only present once the window has loaded the whole collection (`isExhausted`); an in-progress window can't yet say how many Photos remain older. */
+  /** Only present once the collection is fully loaded (`isExhausted`). */
   total?: number;
+}
+
+export type CellPresentation =
+  | { kind: "ready"; sources: TimelineThumbnailSources; leaseRevision: number }
+  | { kind: "loading" }
+  | { kind: "placeholder" }
+  | { kind: "withheld" };
+
+export interface RenderReadyCell {
+  photoId: string;
+  fileName: string;
+  capturedAt: CapturedAt;
+  width: number;
+  sequencePosition: SequencePosition;
+  presentation: CellPresentation;
+}
+
+export interface BrowsingMonthMarker {
+  kind: "month-marker";
+  periodKey: string;
+}
+
+export interface BrowsingRow {
+  kind: "row";
+  periodKey: string;
+  height: number;
+  cells: RenderReadyCell[];
+}
+
+export type BrowsingLayoutItem = BrowsingMonthMarker | BrowsingRow;
+
+export type BrowsingCollectionState = "loading" | "empty" | "ready" | "initial-failure" | "tail-failure";
+
+export interface BrowsingWindowSnapshot {
+  collection: PhotoCollection;
+  state: BrowsingCollectionState;
+  layoutItems: BrowsingLayoutItem[];
+  isExhausted: boolean;
+  /** Non-blocking suspension for presentation only; never requires a Retry (ADR-0055). */
+  offline: boolean;
+  restorationDirective?: RestorationDirective;
+}
+
+export type LayoutOptions = Omit<JustifiedRowsOptions, "hasMore">;
+
+export interface ViewportObservation {
+  containerWidth: number;
+  /** Layout-item indices actually visible -- not the virtualizer's overscanned range. */
+  visibleItemRange?: { startIndex: number; endIndex: number };
+  /** Pixel offset of the first visible item's start from the content viewport top (for anchor capture). */
+  visibleItemTopOffset?: number;
+  /** Viewport extent (px) driving the two-viewport soon-visible paging policy. */
+  viewportExtent?: number;
+  /** Layout-item index holding DOM focus; kept in demand even off-screen. */
+  focusedItemIndex?: number;
+  scrollOrigin: "user" | "programmatic" | "initial";
+  /** Present only when this observation is the adapter's acknowledgement of a restoration directive. */
+  appliedRestorationRevision?: number;
+}
+
+export interface ThumbnailOutcomeObservation {
+  photoId: string;
+  leaseRevision: number;
+  outcome: "loaded" | "failed";
+}
+
+/** UI-facing surface (ADR-0055): no `loadMore`, access commands, anchor recording, or lifecycle. */
+export interface BrowsingWindowIntents {
+  observeViewport(observation: ViewportObservation): void;
+  reportThumbnailOutcome(observation: ThumbnailOutcomeObservation): void;
+  /** Clears a genuine paused collection failure and re-evaluates current viewport demand; a no-op otherwise. */
+  retry(): void;
+}
+
+/** Registry-only surface (ADR-0057/0065): React never calls these. */
+export interface BrowsingWindowLifecycle {
+  activate(): void;
+  deactivate(): void;
+  dispose(): void;
+  /** ADR-0067: marks/unmarks a loaded descriptor as withheld without moving or removing it. */
+  setWithheld(photoId: string, withheld: boolean): void;
 }
 
 export interface BrowsingWindow {
   getSnapshot(): BrowsingWindowSnapshot;
   subscribe(listener: () => void): () => void;
-  /** The originating Viewer Sequence Position for a loaded Photo, or `undefined` while its position isn't yet observed. */
-  getSequencePosition(photoId: string): SequencePosition | undefined;
   intents: BrowsingWindowIntents;
-  dispose(): void;
+  lifecycle: BrowsingWindowLifecycle;
 }
 
 export interface BrowsingWindowOptions {
@@ -81,31 +121,48 @@ export interface BrowsingWindowOptions {
   port: AlbumBrowsingPort;
   layout: LayoutOptions;
   /**
-   * A page already fetched for this exact `collection`/`startAt` (ADR-0058's
-   * date-Jump probe). When present, it seeds the window directly instead of
-   * issuing a second, redundant initial load for the same anchor.
+   * A page already fetched for this exact `collection`/`startAt` (ADR-0058's date-Jump probe).
+   * Ingested at construction; does not itself start any network work.
    */
   initialPage?: { photos: TimelinePhoto[]; nextCursor?: string; expiresAt?: string };
+  environment?: BrowsingEnvironment;
+  /** Internal test seam: the non-demand lease LRU bound (ADR-0050, calibrated by the 20,000-Photo profile). */
+  nonDemandLeaseLimit?: number;
 }
 
 const RENEWAL_LEAD_MS = 60_000;
 const MAX_RENEWAL_BATCH = 100;
 const RENEWAL_BACKOFF_BASE_MS = 5_000;
 const RENEWAL_BACKOFF_MAX_MS = 5 * 60_000;
+const MONTH_MARKER_HEIGHT_ESTIMATE = 56;
+/** Calibrated by the 20,000-Photo performance profile (ADR-0050); not a product contract. */
+const DEFAULT_NON_DEMAND_LEASE_LIMIT = 1500;
 
-/** ADR-0055: one deep module per history entry's Browsing Window; see `docs/browsing-tracer-implementation.md`. */
+/** ADR-0055: one deep module per history entry's Browsing Window. */
 export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWindow => {
   const { collection, startAt, port } = options;
+  const environment = options.environment ?? createBrowserEnvironment();
+  const leaseCache = createThumbnailLeaseCache(options.nonDemandLeaseLimit ?? DEFAULT_NON_DEMAND_LEASE_LIMIT);
 
   let disposed = false;
+  let isActive = false;
+  let currentGeneration = 0;
+
   let layoutOptions = options.layout;
+  let lastEffectiveWidth: number | undefined;
   const listeners = new Set<() => void>();
 
   const descriptorsById = new Map<string, PhotoDescriptor>();
   const descriptorOrder: string[] = [];
-  const withheldPhotoIds = new Set<string>();
   const sequenceIndexByPhotoId = new Map<string, number>();
-  const leaseExpiresAtMsByPhotoId = new Map<string, number>();
+  const withheldPhotoIds = new Set<string>();
+
+  let nextCursor: string | undefined;
+  let isExhausted = false;
+  let isLoadingPage = false;
+  let loadError: AlbumTransportErrorCode | undefined;
+  let currentLoadAbortController: AbortController | undefined;
+
   const renewalInFlight = new Set<string>();
   const renewalAbortControllers = new Set<AbortController>();
   let renewalBackoffMs = 0;
@@ -113,22 +170,34 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
   // A 401 invalidates the Session globally (albumTransport's `sessionExpiredEvent`); this window
   // just needs to stop asking once that's happened, not run its own parallel sign-out.
   let renewalAuthLost = false;
+  let cancelScheduledRenewal: (() => void) | undefined;
 
-  let nextCursor: string | undefined;
-  let isExhausted = false;
-  let isLoadingInitial = false;
-  let isLoadingMore = false;
-  let loadError: AlbumTransportErrorCode | undefined;
-  let lastLoadKind: "initial" | "more" = "initial";
-  let currentAbortController: AbortController | undefined;
-  let restorationAnchor: RestorationAnchor | undefined;
+  // Per-Photo image-failure recovery, keyed by lease revision (ADR-0051): the revision that
+  // triggered a forced renewal, cleared on success or once a second, still-failing revision
+  // becomes a placeholder.
+  const failureRevisionByPhotoId = new Map<string, number>();
+  const placeholderRevisionByPhotoId = new Map<string, number>();
 
-  let dirty = true;
-  let layoutOptionsDirty = true;
+  let lastViewport: ViewportObservation | undefined;
+  let demandPhotoIds = new Set<string>();
+  let unsubscribeOnline: (() => void) | undefined;
+  let unsubscribeVisible: (() => void) | undefined;
+
+  let lastCapturedAnchor: CapturedAnchor | undefined;
+  let pendingCapturedAnchor: CapturedAnchor | undefined;
+  let restorationDirective: RestorationDirective | undefined;
+  let restorationRevisionCounter = 0;
+
+  let layoutDirty = true;
+  let layoutStructurallyDirty = true;
   let consumedDescriptorCount = 0;
   const incrementalLayout = createIncrementalJustifiedRows();
-  let cachedLayoutItems: JustifiedLayoutItem[] = [];
+  let cachedInternalItems: JustifiedLayoutItem[] = [];
   let cachedIncompleteTail: string[] | undefined;
+  let presentationDirtyPhotoIds = new Set<string>();
+  let previousRowsByKey = new Map<string, BrowsingRow>();
+  let previousInternalItemByKey = new Map<string, JustifiedLayoutItem>();
+  let cachedRenderItems: BrowsingLayoutItem[] = [];
   let cachedSnapshot: BrowsingWindowSnapshot | undefined;
 
   const notify = (): void => {
@@ -137,8 +206,8 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     }
   };
 
-  const markDirty = (): void => {
-    dirty = true;
+  const invalidateSnapshot = (): void => {
+    cachedSnapshot = undefined;
   };
 
   const periodKeyOf = (capturedAt: CapturedAt): string => {
@@ -153,244 +222,611 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     capturedAt: photo.capturedAt,
     addedAt: photo.addedAt,
     displayDimensions: photo.displayDimensions,
-    timelineThumbnailSources: photo.timelineThumbnailSources,
     aspectRatio: photo.displayDimensions.width / photo.displayDimensions.height,
     periodKey: periodKeyOf(photo.capturedAt),
   });
 
-  const applyPage = (page: {
-    photos: TimelinePhoto[];
-    nextCursor?: string;
-    expiresAt?: string;
-  }): void => {
-    const leaseExpiresAtMs = page.expiresAt !== undefined ? Date.parse(page.expiresAt) : undefined;
-    for (const photo of page.photos) {
-      // First-seen descriptor and position win; a later duplicate cursor result is ignored (ADR-0055).
-      if (!descriptorsById.has(photo.photoId)) {
-        descriptorsById.set(photo.photoId, toDescriptor(photo));
-        sequenceIndexByPhotoId.set(photo.photoId, descriptorOrder.length);
-        descriptorOrder.push(photo.photoId);
-      }
-      if (leaseExpiresAtMs !== undefined) {
-        leaseExpiresAtMsByPhotoId.set(photo.photoId, leaseExpiresAtMs);
-      }
-    }
-    nextCursor = page.nextCursor;
-    isExhausted = page.nextCursor === undefined;
-    markDirty();
-  };
-
-  const classifyError = (error: unknown): AlbumTransportErrorCode =>
-    error instanceof AlbumTransportError ? error.code : "unexpected";
-
-  const runLoad = async (kind: "initial" | "more"): Promise<void> => {
-    if (disposed || currentAbortController !== undefined) {
-      return;
-    }
-    const controller = new AbortController();
-    currentAbortController = controller;
-    lastLoadKind = kind;
-    if (kind === "initial") {
-      isLoadingInitial = true;
-    } else {
-      isLoadingMore = true;
-    }
-    loadError = undefined;
-    markDirty();
-    notify();
-
-    try {
-      const page = await port.loadCollectionPage({
-        collection,
-        ...(kind === "initial" && startAt !== undefined ? { startAt } : {}),
-        ...(kind === "more" && nextCursor !== undefined ? { cursor: nextCursor } : {}),
-        signal: controller.signal,
-      });
-      if (disposed) {
-        return;
-      }
-      applyPage(page);
-    } catch (error) {
-      if (disposed) {
-        return;
-      }
-      loadError = classifyError(error);
-      markDirty();
-    } finally {
-      if (!disposed) {
-        isLoadingInitial = false;
-        isLoadingMore = false;
-        currentAbortController = undefined;
-        markDirty();
-        notify();
-      }
-    }
-  };
-
-  const renewThumbnailAccess = async (photoIds: string[], options?: { force?: boolean }): Promise<void> => {
-    if (disposed || renewalAuthLost) {
-      return;
-    }
-    const now = Date.now();
-    if (!options?.force && now < renewalBlockedUntilMs) {
-      return;
-    }
-    const due = photoIds
-      .filter((photoId) => descriptorsById.has(photoId) && !renewalInFlight.has(photoId))
-      .filter((photoId) => {
-        const expiresAtMs = leaseExpiresAtMsByPhotoId.get(photoId);
-        return expiresAtMs === undefined || expiresAtMs - now <= RENEWAL_LEAD_MS;
-      })
-      .slice(0, MAX_RENEWAL_BATCH);
-    if (due.length === 0) {
-      return;
-    }
-    for (const photoId of due) {
-      renewalInFlight.add(photoId);
-    }
-    const controller = new AbortController();
-    renewalAbortControllers.add(controller);
-    try {
-      const response = await port.renewThumbnailAccess({ photoIds: due, signal: controller.signal });
-      if (disposed) {
-        return;
-      }
-      const expiresAtMs = Date.parse(response.expiresAt);
-      for (const renewed of response.photos) {
-        const descriptor = descriptorsById.get(renewed.photoId);
-        if (!descriptor) {
-          continue;
-        }
-        descriptorsById.set(renewed.photoId, {
-          ...descriptor,
-          timelineThumbnailSources: renewed.timelineThumbnailSources,
-        });
-        leaseExpiresAtMsByPhotoId.set(renewed.photoId, expiresAtMs);
-      }
-      renewalBackoffMs = 0;
-      renewalBlockedUntilMs = 0;
-      markDirty();
-      notify();
-    } catch (error) {
-      // A failed renewal leaves the existing (possibly expiring) sources in place; a bounded,
-      // doubling backoff window silently absorbs the next few demand calls so a persistent
-      // failure doesn't hammer the API, and an online/visibility/retry-window resume (`force`)
-      // bypasses it. A 401 leaves the loop entirely instead -- the Session is already gone.
-      if (classifyError(error) === "auth_lost") {
-        renewalAuthLost = true;
-      } else {
-        renewalBackoffMs = renewalBackoffMs === 0 ? RENEWAL_BACKOFF_BASE_MS : Math.min(renewalBackoffMs * 2, RENEWAL_BACKOFF_MAX_MS);
-        renewalBlockedUntilMs = Date.now() + renewalBackoffMs;
-      }
-    } finally {
-      renewalAbortControllers.delete(controller);
-      for (const photoId of due) {
-        renewalInFlight.delete(photoId);
-      }
-    }
-  };
-
-  // A withheld descriptor stays in the layout input so its row/period never changes shape
-  // or count (ADR-0067); only the rendering layer skips drawing it, using `withheldPhotoIds`.
   const toLayoutDescriptor = (photoId: string): { photoId: string; aspectRatio: number; periodKey: string } => {
     const descriptor = descriptorsById.get(photoId)!;
     return { photoId: descriptor.photoId, aspectRatio: descriptor.aspectRatio, periodKey: descriptor.periodKey };
   };
 
-  const rebuildLayoutIfDirty = (): void => {
-    if (!dirty) {
+  const classifyError = (error: unknown): AlbumTransportErrorCode => (error instanceof AlbumTransportError ? error.code : "unexpected");
+
+  const applyPage = (page: { photos: TimelinePhoto[]; nextCursor?: string; expiresAt?: string }): void => {
+    for (const photo of page.photos) {
+      // First-seen descriptor and position win; a later duplicate cursor result is ignored.
+      if (!descriptorsById.has(photo.photoId)) {
+        descriptorsById.set(photo.photoId, toDescriptor(photo));
+        sequenceIndexByPhotoId.set(photo.photoId, descriptorOrder.length);
+        descriptorOrder.push(photo.photoId);
+      }
+    }
+    nextCursor = page.nextCursor;
+    isExhausted = page.nextCursor === undefined;
+    layoutDirty = true;
+
+    // Recompute demand against the freshly-arrived layout *before* ingesting leases below, so the
+    // LRU's eviction decisions already know which of these new Photos are actually in view rather
+    // than judging them all as equally non-demand against a now-stale viewport (ADR-0050).
+    ensureLayoutBuilt();
+    if (lastViewport) {
+      recomputeDemandSet();
+    }
+
+    // Temporary URLs are split from the compact descriptor at ingestion (ADR-0050): they only ever
+    // live in the lease cache.
+    const expiresAtMs = page.expiresAt !== undefined ? Date.parse(page.expiresAt) : undefined;
+    if (expiresAtMs !== undefined) {
+      for (const photo of page.photos) {
+        const { evictedIds } = leaseCache.put(photo.photoId, photo.timelineThumbnailSources, expiresAtMs);
+        presentationDirtyPhotoIds.add(photo.photoId);
+        for (const evictedId of evictedIds) {
+          presentationDirtyPhotoIds.add(evictedId);
+        }
+      }
+    }
+  };
+
+  const ensureLayoutBuilt = (): void => {
+    if (!layoutDirty) {
       return;
     }
-    const options: JustifiedRowsOptions = {
-      ...layoutOptions,
-      // A failed load also relaxes the withheld tail into view (implementation doc "Justified Rows and Virtualisation").
-      hasMore: !isExhausted && loadError === undefined,
-    };
-    // A container-width/spacing/target-height change invalidates every cached row's geometry, so
-    // it forces a full rebuild; an ordinary new page only needs to fold in what's newly arrived
-    // (see `createIncrementalJustifiedRows` -- a per-page full recompute is O(descriptors²) total
-    // across a 20,000-Photo scroll session).
-    const result = layoutOptionsDirty
-      ? incrementalLayout.reset(descriptorOrder.map(toLayoutDescriptor), options)
-      : incrementalLayout.append(descriptorOrder.slice(consumedDescriptorCount).map(toLayoutDescriptor), options);
+    const layoutRowOptions: JustifiedRowsOptions = { ...layoutOptions, hasMore: !isExhausted && loadError === undefined };
+    const result = layoutStructurallyDirty
+      ? incrementalLayout.reset(descriptorOrder.map(toLayoutDescriptor), layoutRowOptions)
+      : incrementalLayout.append(descriptorOrder.slice(consumedDescriptorCount).map(toLayoutDescriptor), layoutRowOptions);
     consumedDescriptorCount = descriptorOrder.length;
-    layoutOptionsDirty = false;
-    cachedLayoutItems = result.items;
+    layoutStructurallyDirty = false;
+    cachedInternalItems = result.items;
     cachedIncompleteTail = result.incompleteTailPhotoIds;
-    cachedSnapshot = undefined;
-    dirty = false;
+    layoutDirty = false;
+
+    if (pendingCapturedAnchor) {
+      const anchor = pendingCapturedAnchor;
+      pendingCapturedAnchor = undefined;
+      const resolved = resolveAnchor(cachedInternalItems, anchor);
+      restorationDirective = resolved
+        ? {
+            revision: restorationRevisionCounter,
+            kind: resolved.kind,
+            rowOffset: resolved.rowOffset,
+            ...(resolved.photoId !== undefined ? { photoId: resolved.photoId } : {}),
+            ...(resolved.periodKey !== undefined ? { periodKey: resolved.periodKey } : {}),
+          }
+        : undefined;
+    }
+  };
+
+  const sequencePositionOf = (photoId: string): SequencePosition => {
+    const index = sequenceIndexByPhotoId.get(photoId)!;
+    return { index, ...(isExhausted ? { total: descriptorOrder.length } : {}) };
+  };
+
+  const presentationFor = (photoId: string): CellPresentation => {
+    if (withheldPhotoIds.has(photoId)) {
+      return { kind: "withheld" };
+    }
+    const lease = leaseCache.get(photoId);
+    if (lease && placeholderRevisionByPhotoId.get(photoId) === lease.revision) {
+      return { kind: "placeholder" };
+    }
+    if (lease) {
+      return { kind: "ready", sources: lease.sources, leaseRevision: lease.revision };
+    }
+    return { kind: "loading" };
+  };
+
+  const rowKeyOf = (item: Extract<JustifiedLayoutItem, { kind: "row" }>): string => `${item.periodKey}:${item.photoIds.join(",")}`;
+
+  const rebuildRenderItemsIfNeeded = (): void => {
+    if (!layoutStructurallyDirty && presentationDirtyPhotoIds.size === 0 && cachedRenderItems.length > 0 && !cachedInternalItemsChangedSinceRender()) {
+      return;
+    }
+    const nextRowsByKey = new Map<string, BrowsingRow>();
+    const nextInternalItemByKey = new Map<string, JustifiedLayoutItem>();
+    const forceAll = layoutStructurallyDirty;
+    const renderItems: BrowsingLayoutItem[] = cachedInternalItems.map((item) => {
+      if (item.kind === "month-marker") {
+        return { kind: "month-marker", periodKey: item.periodKey };
+      }
+      const key = rowKeyOf(item);
+      nextInternalItemByKey.set(key, item);
+      const isRowDirty = forceAll || previousInternalItemByKey.get(key) !== item || item.photoIds.some((id) => presentationDirtyPhotoIds.has(id));
+      const previous = previousRowsByKey.get(key);
+      if (!isRowDirty && previous) {
+        nextRowsByKey.set(key, previous);
+        return previous;
+      }
+      const row: BrowsingRow = {
+        kind: "row",
+        periodKey: item.periodKey,
+        height: item.height,
+        cells: item.photoIds.map((photoId, index) => ({
+          photoId,
+          fileName: descriptorsById.get(photoId)!.fileName,
+          capturedAt: descriptorsById.get(photoId)!.capturedAt,
+          width: item.itemWidths[index] ?? item.height,
+          sequencePosition: sequencePositionOf(photoId),
+          presentation: presentationFor(photoId),
+        })),
+      };
+      nextRowsByKey.set(key, row);
+      return row;
+    });
+    cachedRenderItems = renderItems;
+    previousRowsByKey = nextRowsByKey;
+    previousInternalItemByKey = nextInternalItemByKey;
+    presentationDirtyPhotoIds = new Set();
+  };
+
+  // Tracks whether ensureLayoutBuilt produced a structurally new `cachedInternalItems` array since
+  // the last render pass, even when nothing is presentation-dirty (e.g. a page appended new rows).
+  let lastRenderedInternalItems: JustifiedLayoutItem[] | undefined;
+  const cachedInternalItemsChangedSinceRender = (): boolean => {
+    const changed = lastRenderedInternalItems !== cachedInternalItems;
+    lastRenderedInternalItems = cachedInternalItems;
+    return changed;
+  };
+
+  const deriveState = (): BrowsingCollectionState => {
+    if (cachedInternalItems.length === 0) {
+      if (loadError !== undefined) {
+        return "initial-failure";
+      }
+      return isExhausted ? "empty" : "loading";
+    }
+    return loadError !== undefined ? "tail-failure" : "ready";
   };
 
   const getSnapshot = (): BrowsingWindowSnapshot => {
-    rebuildLayoutIfDirty();
+    ensureLayoutBuilt();
+    rebuildRenderItemsIfNeeded();
     if (!cachedSnapshot) {
       cachedSnapshot = {
         collection,
-        layoutItems: cachedLayoutItems,
-        ...(cachedIncompleteTail ? { incompleteTailPhotoIds: cachedIncompleteTail } : {}),
-        descriptorsById,
-        withheldPhotoIds,
-        photoCount: descriptorOrder.length,
-        isLoadingInitial,
-        isLoadingMore,
+        state: deriveState(),
+        layoutItems: cachedRenderItems,
         isExhausted,
-        ...(loadError ? { loadError } : {}),
-        ...(restorationAnchor ? { restorationAnchor } : {}),
+        offline: !environment.isOnline(),
+        ...(restorationDirective ? { restorationDirective } : {}),
       };
     }
     return cachedSnapshot;
   };
 
-  const intents: BrowsingWindowIntents = {
-    loadMore: () => {
-      if (isExhausted || loadError !== undefined) {
+  const computeSoonVisibleEndIndex = (endIndex: number, viewportExtent: number | undefined): number => {
+    const extent = viewportExtent ?? layoutOptions.targetRowHeight * 3;
+    let accumulated = 0;
+    let index = endIndex;
+    while (accumulated < extent && index < cachedInternalItems.length - 1) {
+      index += 1;
+      const item = cachedInternalItems[index];
+      accumulated += item?.kind === "row" ? item.height + layoutOptions.spacing : MONTH_MARKER_HEIGHT_ESTIMATE;
+    }
+    return index;
+  };
+
+  const photoIdsAt = (index: number | undefined): string[] => {
+    if (index === undefined) {
+      return [];
+    }
+    const item = cachedInternalItems[index];
+    return item?.kind === "row" ? item.photoIds : [];
+  };
+
+  const recomputeDemandSet = (): void => {
+    const range = lastViewport?.visibleItemRange;
+    const ids = new Set<string>();
+    if (range) {
+      const soonVisibleEndIndex = computeSoonVisibleEndIndex(range.endIndex, lastViewport?.viewportExtent);
+      for (let index = range.startIndex; index <= soonVisibleEndIndex; index += 1) {
+        for (const photoId of photoIdsAt(index)) {
+          ids.add(photoId);
+        }
+      }
+    }
+    for (const photoId of photoIdsAt(lastViewport?.focusedItemIndex)) {
+      ids.add(photoId);
+    }
+    demandPhotoIds = ids;
+    for (const evictedId of leaseCache.setDemand(ids)) {
+      presentationDirtyPhotoIds.add(evictedId);
+    }
+  };
+
+  const runLoad = async (generationAtStart: number): Promise<void> => {
+    const controller = new AbortController();
+    currentLoadAbortController = controller;
+    isLoadingPage = true;
+    invalidateSnapshot();
+    notify();
+    try {
+      const page = await port.loadCollectionPage({
+        collection,
+        ...(descriptorOrder.length === 0 && nextCursor === undefined && startAt !== undefined ? { startAt } : {}),
+        ...(nextCursor !== undefined ? { cursor: nextCursor } : {}),
+        signal: controller.signal,
+      });
+      if (disposed || !isActive || generationAtStart !== currentGeneration) {
         return;
       }
-      void runLoad("more");
-    },
-    retry: () => {
-      if (loadError === undefined) {
+      applyPage(page);
+    } catch (error) {
+      if (disposed || !isActive || generationAtStart !== currentGeneration) {
         return;
       }
-      void runLoad(lastLoadKind);
-    },
-    setLayout: (next) => {
-      layoutOptions = next;
-      layoutOptionsDirty = true;
-      markDirty();
-      cachedSnapshot = undefined;
+      // A request cancelled or rejected across an offline transition is a suspension, not a
+      // failure (ADR-0051/0055): it doesn't consume a Retry, and demand re-evaluates on its own
+      // once online returns.
+      if (!environment.isOnline()) {
+        return;
+      }
+      loadError = classifyError(error);
+      // A failed load also relaxes any withheld tail into a visible final row (`hasMore` folds in `loadError`).
+      layoutDirty = true;
+      invalidateSnapshot();
+    } finally {
+      if (currentLoadAbortController === controller) {
+        currentLoadAbortController = undefined;
+      }
+      if (!disposed && isActive && generationAtStart === currentGeneration) {
+        isLoadingPage = false;
+        invalidateSnapshot();
+        notify();
+        evaluateDemand();
+      }
+    }
+  };
+
+  const maybeStartPageLoad = (): void => {
+    if (isLoadingPage || currentLoadAbortController !== undefined) {
+      return;
+    }
+    if (isExhausted || loadError !== undefined) {
+      return;
+    }
+    if (!environment.isOnline() || !environment.isVisible()) {
+      return;
+    }
+    // A withheld incomplete tail always needs another page to resolve, regardless of item count:
+    // it's the only way that trailing period's Photos can ever become a renderable row.
+    if (cachedIncompleteTail === undefined) {
+      const range = lastViewport?.visibleItemRange;
+      const soonVisibleEndIndex = range ? computeSoonVisibleEndIndex(range.endIndex, lastViewport?.viewportExtent) : 0;
+      if (cachedInternalItems.length - 1 >= soonVisibleEndIndex) {
+        return;
+      }
+    }
+    void runLoad(currentGeneration);
+  };
+
+  const runRenewal = async (photoIds: string[], generationAtStart: number): Promise<void> => {
+    for (const photoId of photoIds) {
+      renewalInFlight.add(photoId);
+    }
+    const controller = new AbortController();
+    renewalAbortControllers.add(controller);
+    try {
+      const response = await port.renewThumbnailAccess({ photoIds, signal: controller.signal });
+      if (disposed || !isActive || generationAtStart !== currentGeneration) {
+        return;
+      }
+      const expiresAtMs = Date.parse(response.expiresAt);
+      for (const renewed of response.photos) {
+        if (!descriptorsById.has(renewed.photoId)) {
+          continue;
+        }
+        const { evictedIds } = leaseCache.put(renewed.photoId, renewed.timelineThumbnailSources, expiresAtMs);
+        presentationDirtyPhotoIds.add(renewed.photoId);
+        for (const evictedId of evictedIds) {
+          presentationDirtyPhotoIds.add(evictedId);
+        }
+      }
+      renewalBackoffMs = 0;
+      renewalBlockedUntilMs = 0;
+      invalidateSnapshot();
       notify();
-    },
-    recordRestorationAnchor: (anchor) => {
-      restorationAnchor = anchor;
-      cachedSnapshot = undefined;
-      notify();
-    },
-    requestThumbnailAccess: (photoIds, options) => {
-      void renewThumbnailAccess(photoIds, options);
-    },
-    setWithheld: (photoId, withheld) => {
-      if (!descriptorsById.has(photoId)) {
+    } catch (error) {
+      if (disposed || !isActive || generationAtStart !== currentGeneration) {
         return;
       }
-      const isWithheld = withheldPhotoIds.has(photoId);
-      if (isWithheld === withheld) {
+      // A request cancelled or rejected across an offline transition doesn't consume a Photo's
+      // recovery attempt or trigger backoff (ADR-0051): it's a suspension, not a failure.
+      if (!environment.isOnline()) {
         return;
       }
-      if (withheld) {
-        withheldPhotoIds.add(photoId);
+      if (classifyError(error) === "auth_lost") {
+        renewalAuthLost = true;
       } else {
-        withheldPhotoIds.delete(photoId);
+        renewalBackoffMs = renewalBackoffMs === 0 ? RENEWAL_BACKOFF_BASE_MS : Math.min(renewalBackoffMs * 2, RENEWAL_BACKOFF_MAX_MS);
+        renewalBlockedUntilMs = environment.now() + renewalBackoffMs;
       }
-      markDirty();
+    } finally {
+      renewalAbortControllers.delete(controller);
+      for (const photoId of photoIds) {
+        renewalInFlight.delete(photoId);
+      }
+      if (!disposed && isActive && generationAtStart === currentGeneration) {
+        rescheduleRenewalTimer();
+      }
+    }
+  };
+
+  const maybeRenewLeases = (): void => {
+    if (renewalAuthLost) {
+      return;
+    }
+    if (!environment.isOnline() || !environment.isVisible()) {
+      return;
+    }
+    const now = environment.now();
+    if (now < renewalBlockedUntilMs) {
+      return;
+    }
+    const due = [...demandPhotoIds]
+      .filter((photoId) => !renewalInFlight.has(photoId))
+      .filter((photoId) => {
+        const lease = leaseCache.get(photoId);
+        return lease === undefined || lease.expiresAtMs - now <= RENEWAL_LEAD_MS;
+      })
+      .slice(0, MAX_RENEWAL_BATCH);
+    if (due.length === 0) {
+      return;
+    }
+    void runRenewal(due, currentGeneration);
+  };
+
+  const rescheduleRenewalTimer = (): void => {
+    cancelScheduledRenewal?.();
+    cancelScheduledRenewal = undefined;
+    if (disposed || !isActive || renewalAuthLost) {
+      return;
+    }
+    if (!environment.isOnline() || !environment.isVisible()) {
+      return;
+    }
+    const now = environment.now();
+    let deadline: number | undefined;
+    for (const photoId of demandPhotoIds) {
+      // An in-flight renewal already has its own reschedule waiting in `runRenewal`'s `finally`;
+      // computing a deadline for it here too would keep re-scheduling "now" until it settles.
+      if (renewalInFlight.has(photoId)) {
+        continue;
+      }
+      const lease = leaseCache.get(photoId);
+      const dueAt = lease === undefined ? now : lease.expiresAtMs - RENEWAL_LEAD_MS;
+      if (deadline === undefined || dueAt < deadline) {
+        deadline = dueAt;
+      }
+    }
+    if (deadline === undefined) {
+      return;
+    }
+    deadline = Math.max(deadline, renewalBlockedUntilMs);
+    const generationAtSchedule = currentGeneration;
+    cancelScheduledRenewal = environment.scheduleAt(deadline, () => {
+      if (disposed || !isActive || generationAtSchedule !== currentGeneration) {
+        return;
+      }
+      maybeRenewLeases();
+      rescheduleRenewalTimer();
+    });
+  };
+
+  const evaluateDemand = (): void => {
+    if (disposed || !isActive) {
+      return;
+    }
+    ensureLayoutBuilt();
+    if (lastViewport) {
+      recomputeDemandSet();
+    }
+    maybeStartPageLoad();
+    maybeRenewLeases();
+    rescheduleRenewalTimer();
+  };
+
+  const discardExpiredLeases = (): void => {
+    const now = environment.now();
+    for (const photoId of demandPhotoIds) {
+      const lease = leaseCache.get(photoId);
+      if (lease && lease.expiresAtMs <= now) {
+        leaseCache.delete(photoId);
+        presentationDirtyPhotoIds.add(photoId);
+      }
+    }
+    invalidateSnapshot();
+  };
+
+  const applyWidthChangeIfNeeded = (containerWidth: number): void => {
+    if (lastEffectiveWidth === containerWidth) {
+      return;
+    }
+    const isFirstObservation = lastEffectiveWidth === undefined;
+    lastEffectiveWidth = containerWidth;
+    layoutOptions = { ...layoutOptions, containerWidth };
+    layoutStructurallyDirty = true;
+    layoutDirty = true;
+    if (!isFirstObservation && lastCapturedAnchor) {
+      restorationRevisionCounter += 1;
+      pendingCapturedAnchor = lastCapturedAnchor;
+    }
+  };
+
+  const observeViewport = (observation: ViewportObservation): void => {
+    if (disposed || !isActive) {
+      return;
+    }
+
+    if (restorationDirective) {
+      if (observation.scrollOrigin === "user" || observation.appliedRestorationRevision === restorationDirective.revision) {
+        restorationDirective = undefined;
+      }
+    }
+
+    applyWidthChangeIfNeeded(observation.containerWidth);
+    lastViewport = observation;
+    ensureLayoutBuilt();
+
+    if (observation.visibleItemRange && restorationDirective === undefined) {
+      lastCapturedAnchor = captureAnchor(
+        cachedInternalItems,
+        observation.visibleItemRange.startIndex,
+        observation.visibleItemTopOffset ?? 0,
+        descriptorOrder,
+      );
+    }
+
+    invalidateSnapshot();
+    notify();
+    evaluateDemand();
+  };
+
+  const reportThumbnailOutcome = ({ photoId, leaseRevision, outcome }: ThumbnailOutcomeObservation): void => {
+    if (disposed || !isActive) {
+      return;
+    }
+    const lease = leaseCache.get(photoId);
+    if (!lease || lease.revision !== leaseRevision) {
+      return;
+    }
+    if (outcome === "loaded") {
+      if (failureRevisionByPhotoId.has(photoId) || placeholderRevisionByPhotoId.has(photoId)) {
+        failureRevisionByPhotoId.delete(photoId);
+        placeholderRevisionByPhotoId.delete(photoId);
+        presentationDirtyPhotoIds.add(photoId);
+        invalidateSnapshot();
+        notify();
+      }
+      return;
+    }
+    const forcedAtRevision = failureRevisionByPhotoId.get(photoId);
+    if (forcedAtRevision === undefined) {
+      failureRevisionByPhotoId.set(photoId, leaseRevision);
+      if (!renewalInFlight.has(photoId)) {
+        void runRenewal([photoId], currentGeneration);
+      }
+      return;
+    }
+    if (forcedAtRevision === leaseRevision) {
+      // Duplicate failure report for the same still-unrenewed revision; already recovering.
+      return;
+    }
+    // The renewed revision also failed: settle into a static placeholder for this revision.
+    placeholderRevisionByPhotoId.set(photoId, leaseRevision);
+    failureRevisionByPhotoId.delete(photoId);
+    presentationDirtyPhotoIds.add(photoId);
+    invalidateSnapshot();
+    notify();
+  };
+
+  const retry = (): void => {
+    if (disposed || !isActive || loadError === undefined) {
+      return;
+    }
+    loadError = undefined;
+    layoutDirty = true;
+    invalidateSnapshot();
+    notify();
+    evaluateDemand();
+  };
+
+  const stopActiveWork = (): void => {
+    currentLoadAbortController?.abort();
+    currentLoadAbortController = undefined;
+    isLoadingPage = false;
+    for (const controller of renewalAbortControllers) {
+      controller.abort();
+    }
+    renewalAbortControllers.clear();
+    renewalInFlight.clear();
+    cancelScheduledRenewal?.();
+    cancelScheduledRenewal = undefined;
+    unsubscribeOnline?.();
+    unsubscribeOnline = undefined;
+    unsubscribeVisible?.();
+    unsubscribeVisible = undefined;
+    lastViewport = undefined;
+    demandPhotoIds = new Set();
+    leaseCache.setDemand(new Set());
+    for (const photoId of leaseCache.clear()) {
+      presentationDirtyPhotoIds.add(photoId);
+    }
+    failureRevisionByPhotoId.clear();
+    placeholderRevisionByPhotoId.clear();
+  };
+
+  const activate = (): void => {
+    if (disposed || isActive) {
+      return;
+    }
+    isActive = true;
+    currentGeneration += 1;
+    unsubscribeOnline = environment.onOnlineChange((online) => {
+      if (!isActive) {
+        return;
+      }
+      invalidateSnapshot();
       notify();
-    },
+      if (online) {
+        evaluateDemand();
+      }
+    });
+    unsubscribeVisible = environment.onVisibleChange((visible) => {
+      if (!isActive) {
+        return;
+      }
+      if (visible) {
+        discardExpiredLeases();
+        evaluateDemand();
+      }
+    });
+    invalidateSnapshot();
+    notify();
+  };
+
+  const deactivate = (): void => {
+    if (disposed || !isActive) {
+      return;
+    }
+    isActive = false;
+    stopActiveWork();
+    invalidateSnapshot();
+    notify();
+  };
+
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    if (isActive) {
+      isActive = false;
+      stopActiveWork();
+    }
+    listeners.clear();
+  };
+
+  const setWithheld = (photoId: string, withheld: boolean): void => {
+    if (disposed || !descriptorsById.has(photoId)) {
+      return;
+    }
+    if (withheldPhotoIds.has(photoId) === withheld) {
+      return;
+    }
+    if (withheld) {
+      withheldPhotoIds.add(photoId);
+    } else {
+      withheldPhotoIds.delete(photoId);
+    }
+    presentationDirtyPhotoIds.add(photoId);
+    invalidateSnapshot();
+    notify();
   };
 
   if (options.initialPage) {
     applyPage(options.initialPage);
-  } else {
-    void runLoad("initial");
   }
 
   return {
@@ -399,26 +835,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    getSequencePosition: (photoId) => {
-      const index = sequenceIndexByPhotoId.get(photoId);
-      if (index === undefined) {
-        return undefined;
-      }
-      return { index, ...(isExhausted ? { total: descriptorOrder.length } : {}) };
-    },
-    intents,
-    dispose: () => {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      currentAbortController?.abort();
-      currentAbortController = undefined;
-      for (const controller of renewalAbortControllers) {
-        controller.abort();
-      }
-      renewalAbortControllers.clear();
-      listeners.clear();
-    },
+    intents: { observeViewport, reportThumbnailOutcome, retry },
+    lifecycle: { activate, deactivate, dispose, setWithheld },
   };
 };
