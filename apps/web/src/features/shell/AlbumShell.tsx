@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlertTriangle, Archive, ChevronDown, Plus } from "lucide-react";
-import { Link, useLocation } from "react-router";
+import { AlertTriangle, Archive, ChevronDown, Images, Plus } from "lucide-react";
+import { Link, NavLink, useLocation } from "react-router";
 import type { SessionUser } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
@@ -45,17 +45,18 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount, u
         <Link aria-label="Album home" className="album-wordmark" to="/album">
           {uiMessages.album}
         </Link>
-        <nav aria-label={uiMessages.album} className="album-nav">
-          <Link to="/album/archive">
+        <nav aria-label={uiMessages.album} className="album-nav album-nav--desktop">
+          <NavLink end to="/album"><Images aria-hidden="true" size={16} />{uiMessages.album}</NavLink>
+          <NavLink to="/album/archive">
             <Archive aria-hidden="true" size={16} />
             {uiMessages.archive}
-          </Link>
+          </NavLink>
           {showProcessingIssuesNav ? (
-            <Link to="/album/processing-issues">
+            <NavLink to="/album/processing-issues">
               <AlertTriangle aria-hidden="true" size={16} />
               {uiMessages.processingIssues.navLabel}
               {openCount ? ` (${openCount})` : ""}
-            </Link>
+            </NavLink>
           ) : null}
           <button
             className="album-add-button"
@@ -76,6 +77,12 @@ export function AlbumShell({ children, onSignedOut, user, mutations, navCount, u
         </details>
       </header>
       {children}
+      <nav aria-label="Album destinations" className="album-dock">
+        <NavLink end to="/album"><Images aria-hidden="true" size={18} /><span>{uiMessages.album}</span></NavLink>
+        <NavLink to="/album/archive"><Archive aria-hidden="true" size={18} /><span>{uiMessages.archive}</span></NavLink>
+        <button onClick={uploadTray.intents.open} type="button"><Plus aria-hidden="true" size={20} /><span>{uiMessages.addPhotos}</span></button>
+        {showProcessingIssuesNav ? <NavLink to="/album/processing-issues"><AlertTriangle aria-hidden="true" size={18} /><span>{uiMessages.processingIssues.navLabel}</span></NavLink> : null}
+      </nav>
       <FeedbackRegion mutations={mutations} />
       <UploadTrayPanel tray={uploadTray} />
     </div>

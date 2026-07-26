@@ -4,6 +4,8 @@
    ring-line, font-mono, ...) so feature components don't fall back to Tailwind's generic default
    palette (stone/emerald), which was fighting these tokens visually. */
 @theme {
+  --color-field-base: var(--field-base);
+  --color-field-elevated: var(--field-elevated);
   --color-table-glow: var(--table-glow);
   --color-print-white: var(--print-white);
   --color-ink: var(--album-ink);
@@ -17,24 +19,40 @@
   --color-darkroom-elevated: color-mix(in srgb, var(--darkroom) 100%, white 8%);
   --color-danger: var(--danger);
   --color-success: var(--success);
-  --font-mono: "Azeret Mono", ui-monospace, monospace;
-  --font-display: Archivo, "Arial Narrow", "Noto Sans CJK SC", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: Sora, "Noto Sans CJK SC", sans-serif;
 }
 
 :root {
-  --table-glow: #edf2f1;
-  --print-white: #fbfcfb;
-  --album-ink: #15242b;
-  --emulsion-blue: #356a7c;
-  --exposure-amber: #925D1F;
-  --darkroom: #101619;
-  --ink-muted: color-mix(in srgb, var(--album-ink) 66%, transparent);
-  --line: color-mix(in srgb, var(--album-ink) 17%, transparent);
+  --field-base: #080e1d;
+  --field-elevated: #10192b;
+  --smoke-glass: rgb(19 31 53 / 76%);
+  --smoke-opaque: #15213a;
+  --text-primary: #f2f6ff;
+  --text-muted: #aebbd3;
+  --spectral-cyan: #69d8ed;
+  --prism-violet: #a996f6;
+  --table-glow: var(--field-base);
+  --print-white: var(--smoke-opaque);
+  --album-ink: var(--text-primary);
+  --emulsion-blue: var(--spectral-cyan);
+  --exposure-amber: #f2c879;
+  --darkroom: #030712;
+  --ink-muted: var(--text-muted);
+  --line: rgb(174 187 211 / 19%);
   /* Required control boundaries (dropzones, bordered buttons, inputs) need more contrast than
      the 17% decorative separator line -- WCAG 2.2 1.4.11 non-text contrast. */
-  --control-line: color-mix(in srgb, var(--album-ink) 52%, transparent);
-  --danger: #a33d38;
-  --success: #326c58;
+  --control-line: rgb(208 220 243 / 52%);
+  --danger: #ff8f97;
+  --success: #75dcaf;
+  --warning: #f2c879;
+  --focus-ring: #9eeafa;
+  --shadow-optical: 0 1.5rem 4rem rgb(0 3 14 / 42%);
+  --rim-optical: inset 0 1px 0 rgb(255 255 255 / 14%), 0 0 0 1px rgb(141 185 255 / 16%);
+  --motion-micro: 180ms;
+  --motion-surface: 260ms;
+  --motion-entry: 500ms;
+  --ease-prism: cubic-bezier(.22, .8, .2, 1);
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -44,15 +62,16 @@
   --space-8: 3rem;
   /* The sticky app bar's rendered height -- the year axis and month markers stick just below it.
      Redefined for the mobile two-row bar layout below (design doc "Responsive Layout"). */
-  --album-bar-height: 4.5rem;
-  font-family: "Source Sans 3", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --album-bar-height: 4.75rem;
+  --album-dock-height: 0px;
+  font-family: Manrope, "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   color: var(--album-ink);
   background: var(--table-glow);
 }
 
 * { box-sizing: border-box; }
 
-html { min-width: 320px; background: var(--table-glow); }
+html { min-width: 320px; background: var(--table-glow); color-scheme: dark; }
 
 body {
   min-width: 320px;
@@ -69,7 +88,7 @@ button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
-  outline: 3px solid var(--emulsion-blue);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -386,3 +405,100 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
      Accessibility": "Reduced motion removes ... Darkroom ... transitions"). */
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* Prismatic Light Field: component overrides are deliberately shallow so Tailwind utilities
+   remain useful for behaviour-level layout without inheriting the old light-table material. */
+::selection { background: rgb(105 216 237 / 35%); color: var(--text-primary); }
+* { scrollbar-color: rgb(174 187 211 / 48%) var(--field-base); }
+button, input, select, textarea { color: inherit; }
+
+.album-shell { min-height: 100dvh; background: radial-gradient(70rem 42rem at 88% -12%, rgb(105 216 237 / 10%), transparent 58%), radial-gradient(48rem 38rem at -5% 12%, rgb(169 150 246 / 11%), transparent 58%), var(--field-base); }
+.album-bar { width: min(calc(100% - 2rem), 82rem); min-height: 3.9rem; margin: .8rem auto 0; padding: .45rem .7rem .45rem 1rem; border: 1px solid rgb(180 206 255 / 18%); border-radius: 1rem; background: var(--smoke-glass); box-shadow: var(--rim-optical), 0 .75rem 2rem rgb(0 5 18 / 24%); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); transition: min-height var(--motion-surface) var(--ease-prism), background-color var(--motion-surface) var(--ease-prism), transform var(--motion-surface) var(--ease-prism); }
+.album-bar--scrolled { background: rgb(11 20 37 / 90%); box-shadow: var(--rim-optical), 0 1.15rem 2.8rem rgb(0 3 14 / 37%); }
+@media (hover: hover) and (pointer: fine) { .album-bar--scrolled:not(:hover):not(:focus-within) { min-height: 3.3rem; transform: translateY(-.15rem); } }
+.album-wordmark, .wordmark { color: var(--text-primary); font-family: Sora, "Noto Sans CJK SC", sans-serif; font-weight: 620; letter-spacing: -.055em; }
+.album-nav { gap: .15rem; }
+.album-nav a, .album-add-button, .album-user-menu button { min-height: 2.55rem; border-radius: .7rem; color: var(--text-muted); transition: color var(--motion-micro) var(--ease-prism), background-color var(--motion-micro) var(--ease-prism); }
+.album-nav a[aria-current="page"] { background: rgb(105 216 237 / 13%); color: var(--text-primary); }
+.album-nav a:hover, .album-user-menu button:hover { background: rgb(236 243 255 / 9%); color: var(--text-primary); }
+.album-add-button, .prismatic-primary-action { border: 1px solid rgb(181 244 255 / 38%); border-radius: .7rem; background: linear-gradient(135deg, #7addf0, #8f82ed); color: #07111f; box-shadow: 0 .45rem 1.2rem rgb(83 201 237 / 18%); font-weight: 750; }
+.album-add-button:hover, .prismatic-primary-action:hover { background: linear-gradient(135deg, #a2ecf8, #afa4f7); }
+.album-user-menu summary { color: var(--text-muted); }
+.album-user-menu[open] > button { border-color: rgb(180 206 255 / 22%); border-radius: .7rem; background: var(--smoke-opaque); color: var(--text-primary); box-shadow: var(--shadow-optical); }
+.album-content { width: min(100%, 82rem); padding: 2rem clamp(1rem, 3vw, 2rem) 4rem; }
+.album-content h1 { color: var(--text-primary); font-family: Sora, "Noto Sans CJK SC", sans-serif; font-weight: 600; }
+.album-feedback-entry { border: 1px solid rgb(180 206 255 / 24%); border-radius: .85rem; background: var(--smoke-opaque); box-shadow: var(--shadow-optical); color: var(--text-primary); backdrop-filter: blur(16px); }
+.album-feedback-entry--failure { border-color: rgb(255 143 151 / 62%); }
+
+.album-dock { display: none; }
+.prismatic-empty { display: grid; grid-template-columns: minmax(16rem, .9fr) minmax(16rem, 1.1fr); align-items: center; gap: clamp(2rem, 6vw, 6rem); min-height: min(66vh, 43rem); padding: clamp(1.5rem, 5vw, 5rem) clamp(0rem, 3vw, 2rem); }
+.prismatic-empty--archive { grid-template-columns: minmax(16rem, 34rem); min-height: 42vh; }
+.prismatic-empty__copy { display: grid; justify-items: start; gap: 1.1rem; max-width: 35rem; animation: prismatic-enter var(--motion-entry) var(--ease-prism) both; }
+.prismatic-empty__copy h1 { margin: 0; color: var(--text-primary); font-family: Sora, "Noto Sans CJK SC", sans-serif; font-size: clamp(2.2rem, 5vw, 4.6rem); font-weight: 560; letter-spacing: -.075em; line-height: .98; }
+.prismatic-empty__copy > p:not(.prismatic-empty__eyebrow) { margin: 0; color: var(--text-muted); font-size: clamp(1rem, 1.4vw, 1.15rem); line-height: 1.7; }
+.prismatic-empty__eyebrow { margin: 0; color: var(--spectral-cyan); font-family: "IBM Plex Mono", monospace; font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; }
+.prismatic-empty__action { display: grid; gap: .8rem; margin-top: .6rem; color: var(--text-muted); }
+.prismatic-empty__action small { color: var(--text-muted); font-family: "IBM Plex Mono", monospace; }
+.prismatic-primary-action { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; padding: 0 1rem; text-decoration: none; cursor: pointer; }
+.prismatic-empty__planes { position: relative; min-height: clamp(18rem, 38vw, 30rem); isolation: isolate; animation: prismatic-enter calc(var(--motion-entry) + 100ms) var(--ease-prism) both; }
+.prismatic-plane { position: absolute; display: block; overflow: hidden; border: 1px solid rgb(237 247 255 / 46%); background: linear-gradient(135deg, rgb(148 223 244 / 27%), rgb(153 127 243 / 12%) 48%, rgb(9 19 40 / 72%)); box-shadow: inset 0 1px 0 rgb(255 255 255 / 24%), inset 1.25rem 0 3rem rgb(105 216 237 / 11%), 0 1.8rem 4rem rgb(0 2 12 / 38%); transform: rotate(var(--plane-tilt)); animation: plane-drift 12s ease-in-out infinite alternate; }
+.prismatic-plane::after { position: absolute; inset: 9% 7%; border: 1px solid rgb(203 243 255 / 23%); border-radius: inherit; content: ""; transform: translate(4%, -4%); }
+.prismatic-plane--one { --plane-tilt: -10deg; top: 7%; left: 8%; width: 46%; aspect-ratio: .76; border-radius: 1.7rem .55rem 2.5rem .7rem; animation-delay: -4s; }
+.prismatic-plane--two { --plane-tilt: 8deg; right: 2%; bottom: 7%; width: 57%; aspect-ratio: 1.26; border-radius: .65rem 2rem .7rem 2.6rem; animation-delay: -8s; }
+.prismatic-plane--three { --plane-tilt: 2deg; top: 21%; right: 21%; z-index: 1; width: 37%; aspect-ratio: .72; border-radius: 1rem 1.75rem .75rem 2.25rem; background: linear-gradient(150deg, rgb(210 250 255 / 42%), rgb(120 154 249 / 18%), rgb(8 17 37 / 78%)); }
+.prismatic-empty--ambient-paused .prismatic-plane { animation-play-state: paused; }
+@keyframes prismatic-enter { from { opacity: 0; transform: translateY(1.1rem); } to { opacity: 1; transform: translateY(0); } }
+@keyframes plane-drift { from { translate: 0 0; } to { translate: .45rem -.7rem; } }
+
+.sign-in-page, .session-state { background: radial-gradient(55rem 34rem at 82% 8%, rgb(105 216 237 / 10%), transparent 60%), var(--field-base); }
+.sign-in-card, .session-error { border: 1px solid rgb(180 206 255 / 22%); border-left-color: var(--spectral-cyan); border-radius: 1.15rem; background: var(--smoke-opaque); box-shadow: var(--shadow-optical), var(--rim-optical); }
+.sign-in-card h1, .session-error h1, .upload-tray-header h2 { font-family: Sora, "Noto Sans CJK SC", sans-serif; color: var(--text-primary); }
+.sign-in-card input { border-color: var(--control-line); background: rgb(5 12 27 / 68%); color: var(--text-primary); }
+.sign-in-card form > button, .session-error button, .upload-tray-submit { color: #07111f; }
+.bg-emulsion, .bg-danger { color: #07111f; }
+.bg-emulsion:hover { background-color: #a2ecf8; }
+.development-code { border-radius: .6rem; background: rgb(242 200 121 / 13%); color: #ffe1a4; }
+
+.upload-tray-panel { border: 1px solid rgb(180 206 255 / 22%); border-radius: 1rem; background: var(--smoke-opaque); box-shadow: var(--shadow-optical), var(--rim-optical); }
+.upload-tray-header { background: rgb(21 33 58 / 94%); }
+.upload-tray-dropzone { border-color: var(--control-line); background: rgb(6 14 30 / 34%); }
+.upload-tray-dropzone button, .upload-tray-completion-actions button { border-color: var(--control-line); background: rgb(6 14 30 / 58%); color: var(--text-primary); }
+.upload-tray-bar { border: 1px solid rgb(180 206 255 / 24%); border-radius: .8rem; background: var(--smoke-opaque); box-shadow: var(--shadow-optical); }
+.upload-tray-thumb, .timeline-photo-link { background: var(--field-elevated); }
+.timeline-photo-link { border-radius: .45rem; box-shadow: inset 0 0 0 1px rgb(217 235 255 / 11%); }
+.timeline-photo-link:focus-visible { box-shadow: inset 0 0 0 1px rgb(217 235 255 / 11%), 0 0 0 3px var(--focus-ring); }
+.timeline-photo-overlay { background: linear-gradient(to top, rgb(3 7 18 / 88%), transparent); font-family: "IBM Plex Mono", monospace; }
+.prismatic-date-jump, .prismatic-secondary-action { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; border: 1px solid var(--control-line); border-radius: .7rem; background: rgb(13 23 42 / 72%); padding: 0 .9rem; color: var(--text-primary); font-size: .875rem; font-weight: 700; cursor: pointer; }
+.prismatic-date-sheet { max-height: min(70vh, 38rem); width: 100%; overflow-y: auto; border: 1px solid rgb(180 206 255 / 22%); border-radius: 1rem 1rem 0 0; background: var(--smoke-opaque); padding: 1rem; box-shadow: 0 -1rem 3rem rgb(0 3 14 / 38%); }
+.prismatic-status-surface { border: 1px solid rgb(180 206 255 / 18%); border-radius: .9rem; background: rgb(18 29 51 / 72%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%); }
+.prismatic-dialog { width: 100%; max-width: 32rem; border: 1px solid rgb(180 206 255 / 24%); border-radius: 1rem; background: var(--smoke-opaque); padding: 1.25rem; color: var(--text-primary); box-shadow: var(--shadow-optical), var(--rim-optical); }
+.prismatic-dialog input, .prismatic-dialog select { background: rgb(5 12 27 / 65%); }
+.photo-darkroom { background: radial-gradient(55rem 35rem at 50% -18%, rgb(105 216 237 / 8%), transparent 62%), var(--darkroom); font-family: Manrope, "Noto Sans CJK SC", sans-serif; }
+.photo-darkroom > div:first-child { border-bottom: 1px solid rgb(180 206 255 / 12%); background: rgb(3 7 18 / 68%); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.photo-darkroom button.rounded-full { border: 1px solid rgb(180 206 255 / 16%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%); }
+.photo-darkroom [role="menu"], .photo-darkroom #photo-information { border-color: rgb(180 206 255 / 18%); background: #0b1427; box-shadow: var(--shadow-optical); }
+.viewer-media-stage > button { border: 1px solid rgb(180 206 255 / 18%); box-shadow: var(--rim-optical); }
+
+@media (max-width: 42rem) {
+  :root { --album-bar-height: 3.8rem; --album-dock-height: calc(4.65rem + env(safe-area-inset-bottom)); }
+  .album-bar { width: 100%; min-height: var(--album-bar-height); margin: 0; padding: .45rem 1rem; border-width: 0 0 1px; border-radius: 0; background: rgb(8 14 29 / 90%); }
+  .album-nav--desktop { display: none; }
+  .album-user-menu { grid-column: auto; grid-row: auto; }
+  .album-content { padding: 1.25rem 1rem calc(var(--album-dock-height) + 1.5rem); }
+  .album-dock { position: fixed; right: .7rem; bottom: max(.45rem, env(safe-area-inset-bottom)); left: .7rem; z-index: 45; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; min-height: 4.1rem; padding: .35rem; border: 1px solid rgb(180 206 255 / 22%); border-radius: 1rem; background: rgb(15 25 45 / 92%); box-shadow: var(--shadow-optical), var(--rim-optical); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .album-dock a, .album-dock button { display: grid; min-width: 0; place-items: center; gap: .18rem; border: 0; border-radius: .7rem; background: transparent; color: var(--text-muted); font-size: .64rem; font-weight: 700; line-height: 1.05; text-align: center; text-decoration: none; }
+  .album-dock a[aria-current="page"] { background: rgb(105 216 237 / 13%); color: var(--text-primary); }
+  .album-dock button { color: var(--spectral-cyan); cursor: pointer; }
+  .album-dock span { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+  .prismatic-empty { grid-template-columns: 1fr; gap: 1.5rem; min-height: auto; padding: 2rem 0 1rem; }
+  .prismatic-empty__planes { order: -1; min-height: 15rem; width: min(100%, 23rem); margin: 0 auto; }
+  .prismatic-empty__copy h1 { font-size: clamp(2.15rem, 13vw, 3.5rem); }
+  .prismatic-empty--archive { min-height: 34vh; }
+  .upload-tray { padding-bottom: var(--album-dock-height); }
+  .upload-tray-panel { margin: 0; border-radius: 1rem 1rem 0 0; }
+  .upload-tray-bar { bottom: calc(var(--album-dock-height) + .65rem); right: .8rem; }
+  .album-feedback-region { bottom: calc(var(--album-dock-height) + .85rem); max-width: calc(100% - 2rem); }
+  .album-shell:has(.upload-tray-panel) .album-dock { opacity: 0; pointer-events: none; transform: translateY(1rem); }
+}
+
+@media (prefers-reduced-motion: reduce) { .prismatic-plane, .prismatic-empty__copy, .prismatic-empty__planes { animation: none !important; } }

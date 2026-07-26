@@ -72,7 +72,7 @@ export function CapturedAtEditorDialog(props: Props) {
 
   const body = (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/60 p-3 sm:items-center" role="presentation">
-      <section aria-describedby="captured-at-editor-help" aria-labelledby="captured-at-editor-title" aria-modal="true" className="w-full max-w-lg rounded-lg bg-print-white p-5 text-ink shadow-xl" ref={dialogRef} role="dialog">
+      <section aria-describedby="captured-at-editor-help" aria-labelledby="captured-at-editor-title" aria-modal="true" className="prismatic-dialog" ref={dialogRef} role="dialog">
         {snapshot.mode === "discard" ? (
           <DiscardState editor={editor} />
         ) : snapshot.mode === "conflict" ? (
@@ -118,7 +118,7 @@ function DiscardState({ editor }: { editor: CapturedAtEditor }) {
 }
 
 function ConflictState({ editor, latest }: { editor: CapturedAtEditor; latest?: PhotoChronology }) {
-  return <><h2 className="text-xl font-bold" id="captured-at-editor-title">Date and time changed</h2><p className="mt-2" id="captured-at-editor-help">Someone changed this Photo’s date and time while you were editing.</p>{latest ? <p className="mt-3 rounded bg-table-glow p-3">Latest: {formatCapturedAt(latest.active.capturedAt, "detail")} · {capturedAtSourceLabel(latest.active.source)}</p> : null}<div className="mt-6 flex justify-end gap-2"><button className="rounded px-3 py-2" onClick={editor.intents.useLatest} type="button">Use latest</button><button className="rounded bg-emulsion px-3 py-2 font-semibold text-white hover:bg-emulsion-dark" onClick={editor.intents.keepMyChanges} type="button">Keep my changes</button></div></>;
+  return <><h2 className="text-xl font-bold" id="captured-at-editor-title">Date and time changed</h2><p className="mt-2" id="captured-at-editor-help">Someone changed this Photo’s date and time while you were editing.</p>{latest ? <p className="mt-3 rounded bg-field-elevated p-3">Latest: {formatCapturedAt(latest.active.capturedAt, "detail")} · {capturedAtSourceLabel(latest.active.source)}</p> : null}<div className="mt-6 flex justify-end gap-2"><button className="rounded px-3 py-2" onClick={editor.intents.useLatest} type="button">Use latest</button><button className="rounded bg-emulsion px-3 py-2 font-semibold text-white hover:bg-emulsion-dark" onClick={editor.intents.keepMyChanges} type="button">Keep my changes</button></div></>;
 }
 
 function RevertState({ chronology, editor, saving }: { chronology: PhotoChronology; editor: CapturedAtEditor; saving: boolean }) {
@@ -127,4 +127,3 @@ function RevertState({ chronology, editor, saving }: { chronology: PhotoChronolo
 
 function FieldError({ id, error }: { id: string; error?: string }) { return error ? <p className="text-sm text-danger" id={id}>{error}</p> : null; }
 const canRevert = (chronology: PhotoChronology) => chronology.active.source === "userAdjusted" && JSON.stringify(chronology.active.capturedAt) !== JSON.stringify(chronology.original.capturedAt);
-

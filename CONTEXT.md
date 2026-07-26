@@ -40,6 +40,10 @@ _Avoid_: shared album, social album, workspace, album collection
 The internal product design concept for presenting one User's Personal Album as a quiet, photo-first space for revisiting their own memories. It is not a User-facing album name or navigation label, and “Personal” describes the ownership boundary rather than access to other family Users' Photos.
 _Avoid_: Family Light Table, shared light table, family gallery, Light Table as UI label
 
+**Prismatic Light Field**:
+The internal visual language through which Personal Light Table is expressed: a modern, premium digital gallery shaped by optical depth, restrained refraction, and motion that yields to the Photos. It is not a User-facing product name, a literal photography effect applied to Photos, or a change to Personal Album ownership.
+_Avoid_: app name, photo filter, neon theme, glassmorphism as decoration
+
 **Photo**:
 An entry in a Personal Album created when the User submits a file as part of an Upload Batch. A Photo exists even when its upload is incomplete, its processing fails, or it is identified as an Exact Duplicate; it does not necessarily appear in the Timeline.
 _Avoid_: image file, timeline item, display image

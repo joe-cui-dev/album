@@ -8,6 +8,7 @@ import { PHOTO_VIEW_TRANSITION_NAME } from "../../lib/viewTransitionNames.js";
 import { BROWSING_ROW_SPACING, BROWSING_TARGET_ROW_HEIGHT } from "./browsingLayoutConstants.js";
 import type { BrowsingLayoutItem, BrowsingRow, BrowsingWindow, RenderReadyCell } from "./browsingWindow.js";
 import { TimelineThumbnailImage } from "./TimelineThumbnailImage.js";
+import { PrismaticEmptyState } from "./PrismaticEmptyState.js";
 import { useBrowsingWindowSnapshot } from "./useBrowsingWindow.js";
 
 const SPACING = BROWSING_ROW_SPACING;
@@ -190,11 +191,7 @@ export function BrowsingGrid({
   return (
     <div onBlurCapture={onBlurCapture} onFocusCapture={onFocusCapture} ref={containerRef}>
       {snapshot.state === "empty" ? (
-        <section className="empty-album">
-          <h1>{emptyState.title}</h1>
-          <p>{emptyState.description}</p>
-          {emptyState.action}
-        </section>
+        <PrismaticEmptyState action={emptyState.action} description={emptyState.description} title={emptyState.title} variant={sourceCollection === "active" ? "album" : "archive"} />
       ) : snapshot.state === "loading" ? (
         // The very first page hasn't landed yet, so there's no real layout to virtualize -- a
         // static neutral placeholder fills that space instead of leaving it blank (design doc

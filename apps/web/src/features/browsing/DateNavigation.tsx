@@ -91,7 +91,7 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
 
       <div className="md:hidden">
         <button
-          className="inline-flex min-h-10 items-center rounded-md border border-control-line bg-print-white px-3 text-sm font-semibold text-ink"
+          className="prismatic-date-jump"
           onClick={() => setSheetOpen(true)}
           ref={triggerRef}
           type="button"
@@ -102,12 +102,12 @@ export function DateNavigation({ years, jumpState, onJump, onCancelJump, onJumpC
           <div
             aria-label="Jump to date"
             aria-modal="true"
-            className="fixed inset-0 z-30 flex items-end bg-ink/40"
+            className="fixed inset-0 z-[70] flex items-end bg-ink/40"
             onClick={cancelAndClose}
             role="dialog"
           >
             <div
-              className="max-h-[70vh] w-full overflow-y-auto rounded-t-xl bg-print-white p-4"
+              className="prismatic-date-sheet"
               onClick={(event) => event.stopPropagation()}
               ref={dialogRef}
             >

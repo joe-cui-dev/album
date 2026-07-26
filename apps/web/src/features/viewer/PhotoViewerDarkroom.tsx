@@ -191,7 +191,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     <div
       aria-label={bootstrap?.fileName ?? "Photo"}
       aria-modal={mode === "contextual" ? "true" : undefined}
-      className="fixed inset-0 z-50 flex flex-col bg-darkroom text-white"
+      className="photo-darkroom fixed inset-0 z-50 flex flex-col bg-darkroom text-white"
       ref={dialogRef}
       // A direct/standalone load (refresh or shared link) has no background page underneath --
       // this is the page's whole content, so it needs a landmark (axe "region") rather than the
@@ -437,4 +437,3 @@ const formatBytes = (bytes: number): string => {
   }
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
-

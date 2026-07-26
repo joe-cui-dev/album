@@ -4,6 +4,20 @@ Status: Accepted design baseline, refined 21 July 2026
 
 > **2026-07-25 supersession note:** the v1/v2 Auth rollout and additive-route mechanics described below (retain v1, cut Web to v2, observe 24 hours, then remove v1) are superseded by [ADR-0074](./adr/0074-use-unversioned-canonical-contracts-for-the-first-party-app.md), which closed the compatibility window in one atomic cutover to unversioned canonical routes. The behavioural design (no public code ID, cooldown, rolling limit, uniform admission/rejection) is unchanged.
 
+> **2026-07-26 visual refresh:** the signed-in experience will be rebuilt as one coherent visual system using the **Prismatic Light Field** direction. It should feel modern and premium through optical depth, restrained refraction, precise typography, and purposeful motion while keeping real Photos visually dominant. “Prismatic Light Field” is an internal design term, not a User-facing product name, and it must not become a neon theme, decorative glass everywhere, or a filter applied to Photos. The behavioural, ownership, chronology, accessibility, and information-architecture decisions in this document remain in force while the detailed visual tokens and component treatments below are being superseded.
+>
+> Motion is orchestrated rather than continuously attention-seeking. Entry may use one staged reveal; route surfaces, menus, and the Upload Tray use quick transitions; Timeline hover and Viewer entry carry the photographic motion. Only the empty Light Field may retain a slow ambient drift, which stops when the page is hidden, the User begins interacting, or reduced motion is requested. Particle fields, strong cursor-following light, scroll hijacking, and ubiquitous bounce or scale effects are excluded.
+>
+> This refresh may reshape React presentation components, CSS architecture, responsive composition, and every empty, loading, error, and transitional state. It does not redesign the product's information architecture or add capabilities: existing destinations, labels, routes, album behaviours, backend contracts, keyboard flows, and accessibility semantics remain constraints. Search, tagging, sharing, and new upload mechanics stay out of scope.
+>
+> The refreshed application is dark-first throughout, using a deep navy Light Field rather than pure black. Sign-In, Timeline, Archive, Processing Issues, menus, forms, and the Upload Tray belong to that same field; Photo Viewer descends one level into Darkroom. Translucent smoke surfaces replace white cards without reducing required contrast, and Photos retain their original colour and brightness without decorative filters or gradient overlays. This version does not add a light theme or theme switcher.
+>
+> Typography pairs self-hosted **Sora** for the wordmark, major headings, and important numbers with self-hosted **Manrope** for navigation, controls, forms, and prose. **IBM Plex Mono** is reserved for genuine photographic data such as dates, counts, sequence positions, and camera metadata. Reliable system CJK fallbacks remain in every stack. Display geometry and monospace precision are accents, not default styling for every surface.
+>
+> The empty Personal Album becomes the Prismatic Light Field's one expressive stage instead of a centred fallback card. On desktop, concise copy and the existing Add Photos action balance an optical composition of three suspended, differently proportioned Photo planes; mobile stacks the same ideas. The planes are abstract CSS/SVG light and glass, never stock or invented family imagery, and may carry only the restrained ambient and pointer response allowed by the motion rule. They disappear completely when real Photos exist, allowing Timeline to become the visual subject.
+>
+> Navigation retains the same destinations but uses device-appropriate chrome. Desktop presents a compact floating optical bar and may compress it while Timeline scrolls, restoring full controls on pointer or keyboard entry. Mobile keeps only the Album identity and User entry at the top while a reachable bottom Dock carries Album, Archive, Add Photos, and conditional Processing Issues; the Dock yields to Photo Viewer and Upload Tray. Icons never become the only accessible name for a destination or action.
+
 Personal Light Table is the internal design direction for Personal Album. It reshapes the product as a quiet, photo-first place for one User to revisit their own memories. It does not change the ownership boundary: every User has one independent Personal Album and cannot browse another family User's Photos.
 
 The canonical product language remains in [CONTEXT.md](../CONTEXT.md). Capture-local chronology and date precision are constrained by [ADR 0022](./adr/0022-preserve-capture-local-time.md), [ADR 0023](./adr/0023-preserve-captured-at-precision.md), [ADR 0025](./adr/0025-use-a-structured-captured-at-value.md), [ADR 0026](./adr/0026-use-upload-local-calendar-for-captured-at-fallbacks.md), and [ADR 0027](./adr/0027-preserve-one-original-and-one-active-captured-at.md). Timeline reads are constrained by [ADR 0028](./adr/0028-use-denormalized-timeline-projections.md), and responsive Timeline Thumbnail sizes by [ADR 0024](./adr/0024-generate-two-responsive-timeline-thumbnail-sizes.md).
@@ -50,39 +64,39 @@ Photo Viewer routes are stable application URLs, for example `/album/photos/{pho
 
 | Token | Value | Role |
 | --- | --- | --- |
-| Table glow | `#EDF2F1` | Timeline and sign-in background |
-| Print white | `#FBFCFB` | Inputs, menus, and Upload Tray surfaces |
-| Album ink | `#15242B` | Primary text and dark icons |
-| Emulsion blue | `#356A7C` | Primary actions, links, focus, and interactive state |
-| Exposure amber | `#925D1F` | Current year/month position and restrained photographic emphasis |
-| Darkroom | `#101619` | Photo Viewer background |
+| Field base | `#080E1D` | Main dark navy Light Field |
+| Field elevated | `#10192B` | Quiet status and support surfaces |
+| Smoke glass / opaque fallback | `rgb(19 31 53 / 76%)` / `#15213A` | Floating bar, menus, sheets, inputs, and Upload Tray |
+| Primary / muted text | `#F2F6FF` / `#AEBBD3` | Readable hierarchy on the Light Field |
+| Spectral cyan / prism violet | `#69D8ED` / `#A996F6` | Focus, primary action, and restrained optical rim |
+| Darkroom | `#030712` | Photo Viewer background, deeper than the Light Field |
 
 Success, warning, and error colours are separate semantic tokens. Exposure amber does not become a generic button colour, and Emulsion blue does not become decoration. Borders and secondary text derive from Album ink mixed with the relevant surface.
 
-Contrast-bearing derived tokens retain margin above their WCAG thresholds: muted normal text uses at least 66% Album ink, required interactive boundaries use at least 52% Album ink, and focus rings use solid Emulsion blue rather than a white mixture. The low-contrast 17% `line` token is decorative only and never the sole control boundary or state signal. Disabled controls use native disabled semantics and do not communicate unavailability through colour alone.
+Contrast-bearing control boundaries use an explicit light-on-dark token, while the low-contrast decorative line never becomes the sole control boundary or state signal. Focus uses `#9EEAFA`; disabled controls use native disabled semantics and do not communicate unavailability through colour alone.
 
 ### Typography
 
-- **Archivo** — years, important titles, and navigation.
-- **Source Sans 3** — controls, form labels, explanations, and body copy.
-- **Azeret Mono** — month markers, Captured At, Photo counts, sequence numbers, and camera metadata.
+- **Sora** — wordmark, major headings, and important numbers.
+- **Manrope** — controls, form labels, explanations, navigation, and body copy.
+- **IBM Plex Mono** — month markers, Captured At, Photo counts, sequence numbers, and camera metadata.
 
 Suggested desktop scale:
 
 | Role | Setting |
 | --- | --- |
-| Year | Archivo 48/52, weight 650 |
-| Month | Archivo 18/24, weight 600 |
-| Timeline marker | Azeret Mono 11/16, weight 500, uppercase |
-| Body | Source Sans 3 16/24, weight 400 |
-| Control | Source Sans 3 14/20, weight 600 |
-| Metadata | Azeret Mono 12/18, weight 400 |
+| Year | Sora 48/52, weight 600 |
+| Month | Sora 18/24, weight 600 |
+| Timeline marker | IBM Plex Mono 11/16, weight 500, uppercase |
+| Body | Manrope 16/24, weight 400 |
+| Control | Manrope 14/20, weight 700 |
+| Metadata | IBM Plex Mono 12/18, weight 400 |
 
 Mobile Year text reduces to about 30px. Mono is reserved for genuine data and is not applied to ordinary buttons or instructions. Fonts are self-hosted with system fallbacks, including reliable CJK fallbacks.
 
 ### Photographic Signature
 
-The memorable element is the Timeline's year/month rail:
+The memorable element is the empty Personal Album's three suspended abstract Photo planes; they are optical chrome, never Photos or generated memories. The Timeline's year/month rail remains a quiet data instrument:
 
 ```text
 JUL 2026
@@ -91,9 +105,9 @@ JUL 2026
 
 The rail uses photographic data typography and Exposure amber to identify the current period. It always says `Photos`, never `Exposures`. The product does not use film sprocket holes, Polaroid frames, fake frame numbers, paper texture, dust effects, photo tilts, retro filters, gradient heroes, or stock family photography.
 
-The Timeline is a cool, evenly lit surface. Photo Viewer transitions to Darkroom so one Photo can be viewed without peripheral glare. The transition is restrained and disabled when reduced motion is requested. Opening Viewer from a Timeline Thumbnail uses the View Transitions API to morph that one clicked Thumbnail into the Darkroom image; a browser without View Transitions, or reduced motion, falls back to an instant route change with no separate code path. Only Viewer entry carries this transition -- Previous/Next and Close remain plain navigation.
+The Timeline is photo-first against the deep navy field. Photo Viewer transitions to Darkroom so one Photo can be viewed without peripheral glare. The transition is restrained and disabled when reduced motion is requested. Opening Viewer from a Timeline Thumbnail uses the View Transitions API to morph that one clicked Thumbnail into the Darkroom image; a browser without View Transitions, or reduced motion, falls back to an instant route change with no separate code path. Only Viewer entry carries this transition -- Previous/Next and Close remain plain navigation.
 
-The app bar keeps the Album wordmark alone on the left, with Archive, Add photos, the conditional Processing Issues entry, and the User menu clustered together on the right rather than spread across the bar. The app bar, the desktop year index, and each month marker remain visible -- sticky, not merely present at load -- while the Timeline scrolls, with the year index and month markers offset to sit just below the app bar rather than under it.
+Desktop uses a constrained floating optical bar: Album identity at left, destinations and actions clustered at right, with a non-obscuring compact scroll state. Mobile keeps a slim identity/account row and moves Album, Archive, Add photos, and conditional Processing Issues into a safe-area-aware bottom Dock. The desktop bar, year index, and month markers remain visible -- sticky, not merely present at load -- while the Timeline scrolls; mobile content has Dock compensation and overlays own the bottom edge when expanded.
 
 ## Responsive Layout
 

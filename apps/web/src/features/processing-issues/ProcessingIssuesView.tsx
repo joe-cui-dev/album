@@ -106,12 +106,12 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
       ) : null}
 
       {issues === undefined ? null : issues.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-line bg-print-white p-6 text-center">
+        <div className="prismatic-status-surface mt-8 p-6 text-center">
           <p className="font-semibold text-ink">{uiMessages.processingIssues.emptyTitle}</p>
           <p className="mt-1 text-sm text-ink-muted">{uiMessages.processingIssues.emptyDescription}</p>
         </div>
       ) : (
-        <ul className="mt-6 divide-y divide-line rounded-lg border border-line bg-print-white">
+        <ul className="prismatic-status-surface mt-6 divide-y divide-line">
           {issues.map((issue) => (
             <ProcessingIssueRow
               isRetrying={isRetrying(issue)}
@@ -145,7 +145,7 @@ function ProcessingIssueRow({
         </p>
       </div>
       <button
-        className="inline-flex min-h-10 items-center justify-center rounded-md border border-control-line bg-print-white px-4 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:text-ink-muted/50"
+        className="prismatic-secondary-action disabled:cursor-not-allowed disabled:text-ink-muted/50"
         disabled={isRetrying}
         onClick={() => onRetry(issue.photoId)}
         type="button"
