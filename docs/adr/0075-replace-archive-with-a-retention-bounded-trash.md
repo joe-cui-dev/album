@@ -1,0 +1,15 @@
+# Replace Archive with a Retention-Bounded Trash
+
+Archive is removed as a product concept and replaced by Trash: Delete Photo moves a Ready Photo into a `trashed` collection for a 30-day Retention Window, after which Permanent Deletion removes it. Archive existed largely because the Personal Album had no way to delete a Photo at all, so it carried two meanings at once -- "keep this but hide it" and "get this out of my Timeline" -- and the User has no use for the first, which left a top-level browsing destination whose purpose nobody could state. Trash inherits ADR-0038's idempotent membership model unchanged: `PUT /photos/{photoId}/trash` deletes and `DELETE /photos/{photoId}/trash` restores, each moving one denormalized projection between collections and transferring its exact Date Index count, so the collection-parameterised Browsing Window, Date Index, and Viewer Sequence machinery is reused rather than rebuilt.
+
+A plain confirm-then-delete without Trash was rejected because the only remaining safety net would be S3 versioning and DynamoDB point-in-time recovery, which are operational tools the User cannot reach from the app. This product had already established that a durable recovery path must exist and that a disappearing Undo control must not be the sole way to reverse a destructive action; that principle was written while Archive was the durable path, and deleting a Photo needs it more than archiving one did. Trash is the User-reachable safety net and S3 versioning remains the separate operational one.
+
+Earlier ADRs are not rewritten. Where they name Archive as one of the two browsing collections -- ADR-0028, ADR-0029, ADR-0030, ADR-0036, ADR-0041, ADR-0044, ADR-0045, ADR-0046, ADR-0048, ADR-0049, ADR-0052, ADR-0053, ADR-0057, ADR-0060, ADR-0061, ADR-0064, ADR-0067, ADR-0068 -- read Archive as Trash and Archive Photo as Delete Photo; those decisions hold unchanged under the new name.
+
+## Consequences
+
+- Trash orders Deleted Photos by Captured At like every other collection, with a remaining-days badge, rather than by deletion time. Ordering by deletion time would require a second sort-key form, a second pagination path, and a second Viewer neighbour implementation (ADR-0060) for one secondary view.
+- Duplicate detection ignores Deleted Photos, so re-uploading a deleted file adds it again. Restoring that Photo afterwards can leave two identical Ready Photos; this is accepted rather than blocked, because Exact Duplicate guards the upload path and a restore is not an upload.
+- The top-level navigation slot Archive held goes to Favourites rather than Trash, which is reached from the User menu; navigation slots follow how often a destination is visited.
+- Deletion acts on one Photo at a time, and Empty Trash is the only bulk action. Timeline multi-select is deferred because its real cost is expressing partial failure and undoing a partly-applied batch, not the selection itself.
+- Processing Failed Photos are abandoned straight to Permanent Deletion instead of entering Trash, since they have no Timeline Thumbnail and so cannot be presented in a Trash grid.

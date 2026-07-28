@@ -1,6 +1,6 @@
 # Bound Noncurrent Photo Object Retention by Recoverability
 
-The Photos bucket will keep S3 Versioning enabled while lifecycle rules permanently delete noncurrent Display Photos and Timeline Thumbnails after 30 days, transition noncurrent Original Photos to S3 Standard-IA after 30 days, and permanently delete noncurrent Original Photos after 90 days. This refines Protective Retention by giving reproducible browsing objects a shorter rollback window and irreplaceable originals a longer recovery window without retaining either forever; lifecycle cleanup never targets a current object version or an Archived Photo.
+The Photos bucket will keep S3 Versioning enabled while lifecycle rules permanently delete noncurrent Display Photos and Timeline Thumbnails after 30 days, transition noncurrent Original Photos to S3 Standard-IA after 30 days, and permanently delete noncurrent Original Photos after 90 days. This refines Protective Retention by giving reproducible browsing objects a shorter rollback window and irreplaceable originals a longer recovery window without retaining either forever; lifecycle cleanup never targets a current object version or a Deleted Photo still inside its Retention Window.
 
 ## Consequences
 

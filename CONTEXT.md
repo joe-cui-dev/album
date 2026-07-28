@@ -109,7 +109,7 @@ A User action that replaces an adjusted Captured At with the Photo's immutable O
 _Avoid_: undo upload, re-extract metadata, edit EXIF
 
 **Timeline**:
-The primary continuous browsing view, where Ready Photos are ordered from newest to oldest and grouped by their known Captured At calendar period. At every date-precision and time-resolution boundary, Photos with a known next component appear newest first before Photos whose next component is unknown; ties use Added At and then Photo ID for deterministic order. Year-precision Photos appear after the year's known months under Date Unknown, and Photos in other Processing States do not appear.
+The primary continuous browsing view, where Ready Photos are ordered from newest to oldest and grouped by their known Captured At calendar period. At every date-precision and time-resolution boundary, Photos with a known next component appear newest first before Photos whose next component is unknown; ties use Added At and then Photo ID for deterministic order. Year-precision Photos appear after the year's known months under Date Unknown, and Photos in other Processing States or in Trash do not appear.
 _Avoid_: album list, gallery categories
 
 **Timeline Navigation**:
@@ -117,7 +117,7 @@ A way for the User to jump to a year or month in the Timeline without treating t
 _Avoid_: year filter, month filter, date search
 
 **Browsing Window**:
-The continuous portion of Timeline or Archive currently available to the User, beginning at the latest Photo or a Timeline Navigation anchor and extending toward older Photos. It is a view into the collection, not a filtered or saved subset.
+The continuous portion of one browsing collection -- Timeline, Trash, or Favourites -- currently available to the User, beginning at the latest Photo or a Timeline Navigation anchor and extending toward older Photos. It is a view into the collection, not a filtered or saved subset.
 _Avoid_: date results, loaded page, filtered timeline
 
 **Photo Viewer**:
@@ -125,7 +125,7 @@ A focused view for looking at one Photo from the Timeline while retaining the ab
 _Avoid_: photo detail panel, asset inspector, edit screen
 
 **Viewer Sequence**:
-The live chronological sequence of Ready Photos through which Photo Viewer moves, scoped to the originating Timeline or Archive. It is not a saved playlist or a snapshot, and it never crosses between Timeline and Archive.
+The live chronological sequence of Ready Photos through which Photo Viewer moves, scoped to the originating browsing collection. It is not a saved playlist or a snapshot, and it never crosses between collections.
 _Avoid_: viewer history, loaded photos, slideshow playlist
 
 **Viewer Sequence Position**:
@@ -188,6 +188,10 @@ _Avoid_: failed timeline, upload history, error log
 A User action that tries to process a Processing Failed Photo again while preserving the Original Photo and keeping its Processing Issue open. The Issue resolves when the attempt makes the Photo Ready or identifies it as an Exact Duplicate.
 _Avoid_: re-upload, repair
 
+**Abandon Photo**:
+A User action that applies Permanent Deletion to a Processing Failed Photo and resolves its Processing Issue. It is how a Photo that can never be processed leaves the Personal Album, and it does not place the Photo in Trash.
+_Avoid_: dismiss issue, ignore error, delete photo
+
 **Photo Metadata**:
 Descriptive information read from an Original Photo, such as captured time, display dimensions, camera details, and location data.
 _Avoid_: file attributes, image info
@@ -196,29 +200,53 @@ _Avoid_: file attributes, image info
 The place where a photo was captured, usually represented by coordinates in Photo Metadata. Location should be preserved when present in the Original Photo even when the app does not provide a map view.
 _Avoid_: map, place page
 
-**Archived Photo**:
-A Photo hidden from the Timeline by the User while its Original Photo, browsing versions, and Photo Metadata remain preserved. It remains available in the Archive and can be returned to the Timeline with Restore Photo.
-_Avoid_: deleted photo, trashed photo, removed image
+**Deleted Photo**:
+A Photo the User has deleted that still holds its Original Photo, browsing versions, and Photo Metadata while it remains recoverable in Trash. It leaves the Timeline immediately and ceases to exist when its Retention Window ends.
+_Avoid_: archived photo, trashed file, removed image
 
-**Archive Photo**:
-A reversible User action that moves a Ready Photo out of the Timeline and into the Archive without deleting, reprocessing, or changing its chronology.
-_Avoid_: delete photo, remove permanently, trash photo
+**Delete Photo**:
+A reversible User action that moves a Ready Photo out of the Timeline and into Trash without reprocessing or changing its chronology.
+_Avoid_: archive photo, hide photo, remove permanently
 
-**Archive**:
-The private browsing view containing a User's Archived Photos, ordered and grouped by Captured At so they can be viewed or restored. The Archive is not a deletion queue or a Timeline Filter.
-_Avoid_: trash, recycle bin, archived filter
+**Trash**:
+The private browsing view containing a User's Deleted Photos, ordered and grouped by Captured At so they can be viewed, restored, or removed sooner. Trash is a bounded holding place, not somewhere to keep Photos indefinitely.
+_Avoid_: archive, recycle bin, deleted filter
 
 **Restore Photo**:
-A User action that returns an Archived Ready Photo to the default Timeline without recreating, reprocessing, or changing it. Restoring a Photo already in the Timeline has no additional effect.
-_Avoid_: unarchive, recover deleted photo
+A User action that returns a Deleted Photo to the Timeline before its Retention Window ends, without recreating, reprocessing, or changing it. Restoring a Photo already in the Timeline has no additional effect.
+_Avoid_: undelete, unarchive, recover deleted photo
+
+**Retention Window**:
+The bounded period during which a Deleted Photo remains recoverable in Trash. When it ends, the Photo undergoes Permanent Deletion without any further User action.
+_Avoid_: grace period, expiry date, soft delete window
+
+**Permanent Deletion**:
+The irreversible removal of a Photo's record together with every stored version of it. It happens when a Retention Window ends, when the User removes a Deleted Photo sooner, when the User empties Trash, or when the User abandons a Processing Failed Photo.
+_Avoid_: hard delete, purge, cleanup
+
+**Empty Trash**:
+A User action that applies Permanent Deletion to every one of the User's Deleted Photos at once, without waiting for their Retention Windows to end.
+_Avoid_: clear all, bulk delete, delete all
+
+**Favourite Photo**:
+A Ready Photo the User has marked to return to easily. Being a Favourite Photo is a mark on the Photo rather than a move between collections: it stays in the Timeline and continues to appear there.
+_Avoid_: starred photo, liked photo, pinned photo
+
+**Favourite**:
+A reversible User action that marks or unmarks a Ready Photo as a Favourite Photo without moving it out of the Timeline.
+_Avoid_: star, like, add to album
+
+**Favourites**:
+The private browsing view containing a User's Favourite Photos, ordered and grouped by Captured At. Every Photo it shows is also present in the Timeline.
+_Avoid_: favourites album, saved album, smart album
 
 **Protective Retention**:
 Retention intended to recover from accidental deletion or accidental metadata changes. It is not the same as multi-region disaster recovery.
 _Avoid_: backup, archive storage, disaster recovery
 
 **Noncurrent Photo Object Version**:
-An earlier S3 version of an Original Photo, Display Photo, or Timeline Thumbnail that remains after the same object key is overwritten. It is operational recovery material, not an Archived Photo, and lifecycle cleanup never targets the current object version.
-_Avoid_: Archived Photo, old photo, deleted photo
+An earlier S3 version of an Original Photo, Display Photo, or Timeline Thumbnail that remains after the same object key is overwritten. It is operational recovery material, not a Deleted Photo, and lifecycle cleanup never targets the current object version.
+_Avoid_: Deleted Photo, old photo, trashed photo
 
 **Cost Guardrail**:
 A limit, cleanup rule, or alert intended to reduce the risk of unexpected cloud costs for the whole app. Cost Guardrails are app-level protections rather than per-User quotas.
@@ -229,7 +257,7 @@ An upload started by the User selecting photo files in the web app.
 _Avoid_: sync, backup, camera roll import
 
 **Exact Duplicate**:
-A terminal Photo whose Original Photo has exactly the same file contents as a Ready Photo in the same User's Personal Album. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline; this outcome resolves any open Processing Issue and is described to the User as “Already in your album,” with a link to the matching Ready Photo when available.
+A terminal Photo whose Original Photo has exactly the same file contents as a Ready Photo the same User currently keeps; a Deleted Photo awaiting Permanent Deletion does not count, so re-uploading a deleted file adds it again. It remains a separate retained Photo but does not receive browsing versions or appear in the Timeline; this outcome resolves any open Processing Issue and is described to the User as “Already in your album,” with a link to the matching Ready Photo when available.
 _Avoid_: duplicate error, similar photo, near duplicate, duplicate-looking photo
 
 **Supported Photo Format**:
