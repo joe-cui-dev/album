@@ -113,3 +113,26 @@ test("a failed trash returns the Photo to the Timeline and shows a persistent er
   await expect(page.getByRole("alert")).toContainText(/couldn't trash/i);
   await expect(page.getByRole("link", { name: /beach\.jpg/ })).toBeVisible();
 });
+
+test("permanently deletes a Deleted Photo only after confirmation", async ({ mock, page }) => {
+  const deleted = buildPhoto({ photoId: "photo-1", fileName: "deleted.jpg" });
+  mock.trash.queueOnce((route) => respondJson(route, collectionPage([deleted])));
+  mock.navigation.queueOnce((route) => respondJson(route, emptyNavigation()));
+  mock.viewer.queueOnce((route) => respondJson(route, buildViewerBootstrap({
+    photoId: "photo-1",
+    fileName: "deleted.jpg",
+    trashed: true,
+    collection: "trashed",
+  })));
+
+  await page.goto("/album/trash");
+  await page.getByRole("link", { name: /deleted\.jpg/ }).click();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Delete permanently" }).click();
+  await expect(page.getByRole("dialog", { name: "Delete permanently?" })).toBeVisible();
+  expect(mock.requests.some((request) => new URL(request.url()).pathname === "/photos/photo-1" && request.method() === "DELETE")).toBe(false);
+
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  await expect(page).toHaveURL("/album/trash");
+  expect(mock.requests.some((request) => new URL(request.url()).pathname === "/photos/photo-1" && request.method() === "DELETE")).toBe(true);
+});

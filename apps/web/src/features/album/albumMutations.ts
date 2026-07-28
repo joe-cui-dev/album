@@ -19,6 +19,8 @@ export interface AlbumMutationsSnapshot {
   feedback?: FeedbackEntry;
   /** Bumped after every successful membership mutation so navigation reads can eagerly refetch (implementation doc "Mutation Foundations"). */
   navigationRevision: number;
+  /** Bumped after Empty Trash so its mounted Browsing Window refetches. */
+  trashRevision: number;
   /** Photo ids with an Original Download presign currently in flight ("Preparing download…"). */
   downloadsInFlight: ReadonlySet<string>;
 }
@@ -30,6 +32,8 @@ export interface AlbumMutationsIntents {
   downloadOriginal(input: { photoId: string; fileName: string }): void;
   /** Shell-level chronology intent used by the Viewer after a successful Adjust or Revert. */
   chronologyChanged(input: { photoId: string; collection: PhotoCollection }): void;
+  permanentlyDeletePhoto(photoId: string): void;
+  emptyTrash(): void;
   dismissFeedback(): void;
 }
 
@@ -63,6 +67,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
   let feedback: FeedbackEntry | undefined;
   let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let navigationRevision = 0;
+  let trashRevision = 0;
   const downloadsInFlight = new Set<string>();
 
   let cachedSnapshot: AlbumMutationsSnapshot | undefined;
@@ -216,6 +221,51 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     }
   };
 
+  const runPermanentDeletion = async (photoId: string): Promise<void> => {
+    if (disposed) return;
+    registry.applyPermanentDeletion({ photoId, collection: "trashed" });
+    const controller = new AbortController();
+    inFlightControllers.add(controller);
+    try {
+      await port.permanentlyDeletePhoto({ photoId, signal: controller.signal });
+      if (disposed) return;
+      navigationRevision += 1;
+      publishFeedback({ kind: "success", message: "Photo permanently deleted" });
+    } catch (error) {
+      if (disposed || isCancelled(error)) return;
+      registry.revertPermanentDeletion({ photoId, collection: "trashed" });
+      publishFeedback({
+        kind: "failure",
+        message: "Couldn't permanently delete this Photo — try again",
+        action: { label: "Retry", onInvoke: () => void runPermanentDeletion(photoId) },
+      });
+    } finally {
+      inFlightControllers.delete(controller);
+    }
+  };
+
+  const runEmptyTrash = async (): Promise<void> => {
+    if (disposed) return;
+    const controller = new AbortController();
+    inFlightControllers.add(controller);
+    try {
+      await port.emptyTrash({ signal: controller.signal });
+      if (disposed) return;
+      navigationRevision += 1;
+      trashRevision += 1;
+      publishFeedback({ kind: "success", message: "Trash permanently emptied" });
+    } catch (error) {
+      if (disposed || isCancelled(error)) return;
+      publishFeedback({
+        kind: "failure",
+        message: "Couldn't empty Trash — try again",
+        action: { label: "Retry", onInvoke: () => void runEmptyTrash() },
+      });
+    } finally {
+      inFlightControllers.delete(controller);
+    }
+  };
+
   const intents: AlbumMutationsIntents = {
     setMembership: ({ photoId, collection }) => {
       void runMembershipChange(photoId, collection, "apply");
@@ -234,6 +284,12 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
       navigationRevision += 1;
       notify();
     },
+    permanentlyDeletePhoto: (photoId) => {
+      void runPermanentDeletion(photoId);
+    },
+    emptyTrash: () => {
+      void runEmptyTrash();
+    },
     dismissFeedback: () => {
       if (feedback === undefined) {
         return;
@@ -250,6 +306,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
         cachedSnapshot = {
           ...(feedback ? { feedback } : {}),
           navigationRevision,
+          trashRevision,
           downloadsInFlight,
         };
       }

@@ -18,6 +18,10 @@ export interface BrowsingHistoryRegistry {
   applyMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
   /** Reverses a mounted-window withhold applied by `applyMembershipChange` (rollback on mutation failure). */
   revertMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
+  /** Withholds a permanently deleted Photo without pretending it moved to another collection. */
+  applyPermanentDeletion(change: { photoId: string; collection: PhotoCollection }): void;
+  /** Restores the mounted view after a failed Permanent Deletion. */
+  revertPermanentDeletion(change: { photoId: string; collection: PhotoCollection }): void;
   /**
    * New Photos from a completed Upload Batch always arrive in `active`. Per ADR-0067, a mounted
    * Timeline is deliberately left alone so it does not reflow or jump; a non-mounted Timeline slot
@@ -84,6 +88,13 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
     },
     revertMembershipChange: ({ photoId, leftCollection }) => {
       withholdInMountedWindow(photoId, leftCollection, false);
+    },
+    applyPermanentDeletion: ({ photoId, collection }) => {
+      withholdInMountedWindow(photoId, collection, true);
+      invalidateIfNotMounted(collection);
+    },
+    revertPermanentDeletion: ({ photoId, collection }) => {
+      withholdInMountedWindow(photoId, collection, false);
     },
     notifyPhotosArrived: () => {
       invalidateIfNotMounted("active");

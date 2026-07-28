@@ -78,6 +78,10 @@ export const albumTransport = {
       throw new AlbumTransportError("auth_lost", "Your session has expired", { status: 401 });
     }
 
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     const contentType = response.headers.get("Content-Type") ?? "";
     if (!contentType.includes("application/json")) {
       throw new AlbumTransportError("non_json", messageForNonJsonResponse(contentType), {

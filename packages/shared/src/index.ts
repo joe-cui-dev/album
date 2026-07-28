@@ -112,6 +112,8 @@ export interface Photo {
   duplicateOfPhotoId?: string;
   trashed: boolean;
   deletedAt?: string;
+  /** Internal lease that prevents a Restore while Permanent Deletion removes objects. */
+  permanentDeletionReservationId?: string;
   metadata?: PhotoMetadata;
   displayDimensions?: {
     width: number;

@@ -7,6 +7,8 @@ const fakeRegistry = (): BrowsingHistoryRegistry => ({
   activate: vi.fn(),
   applyMembershipChange: vi.fn(),
   revertMembershipChange: vi.fn(),
+  applyPermanentDeletion: vi.fn(),
+  revertPermanentDeletion: vi.fn(),
   notifyPhotosArrived: vi.fn(),
   applyChronologyChange: vi.fn(),
   disposeAll: vi.fn(),
@@ -52,6 +54,33 @@ describe("createAlbumMutations", () => {
 
     expect(mutations.getSnapshot().navigationRevision).toBe(1);
     expect(mutations.getSnapshot().feedback?.id).toBe(feedbackId);
+  });
+
+  it("withholds a permanently deleted Photo, then updates navigation only after the deletion succeeds", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.permanentlyDeletePhoto("photo-1");
+
+    expect(registry.applyPermanentDeletion).toHaveBeenCalledWith({ photoId: "photo-1", collection: "trashed" });
+    expect(test.permanentlyDeletePhotoCalls).toEqual([{ photoId: "photo-1" }]);
+    test.resolveNextPermanentDeletion();
+    await flush();
+    expect(mutations.getSnapshot()).toMatchObject({ navigationRevision: 1, feedback: { message: "Photo permanently deleted" } });
+  });
+
+  it("refetches Trash after a successful Empty Trash and offers a retry when it fails", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.emptyTrash();
+    expect(test.emptyTrashCalls).toBe(1);
+    test.resolveNextEmptyTrash();
+    await flush();
+    expect(mutations.getSnapshot()).toMatchObject({ navigationRevision: 1, trashRevision: 1, feedback: { message: "Trash permanently emptied" } });
+
+    mutations.intents.emptyTrash();
+    test.rejectNextEmptyTrash(new Error("boom"));
+    await flush();
+    expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "failure", message: "Couldn't empty Trash — try again" });
   });
 
   it("on failure, rolls back membership (not navigation) and replaces feedback with a persistent, retryable failure", async () => {

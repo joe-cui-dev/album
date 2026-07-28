@@ -23,6 +23,8 @@ export interface AlbumMutationsPort {
     photoId: string;
     signal: AbortSignal;
   }): Promise<CreateTemporaryPhotoUrlResponse>;
+  permanentlyDeletePhoto(input: { photoId: string; signal: AbortSignal }): Promise<void>;
+  emptyTrash(input: { signal: AbortSignal }): Promise<void>;
 }
 
 export const createHttpAlbumMutationsPort = (): AlbumMutationsPort => ({
@@ -37,4 +39,9 @@ export const createHttpAlbumMutationsPort = (): AlbumMutationsPort => ({
 
   presignOriginalDownload: ({ photoId, signal }) =>
     albumTransport.request(`/photos/${photoId}/original-download`, { method: "POST", signal }),
+
+  permanentlyDeletePhoto: ({ photoId, signal }) =>
+    albumTransport.request<void>(`/photos/${photoId}`, { method: "DELETE", signal }),
+
+  emptyTrash: ({ signal }) => albumTransport.request<void>("/trash", { method: "DELETE", signal }),
 });

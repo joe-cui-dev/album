@@ -112,7 +112,7 @@ describe("DynamoDbPersonalAlbumStore commands: publishReadyPhoto", () => {
         Key: { pk: "USER#user-1", sk: "PHOTO#photo-1" },
       }),
     );
-    expect(items[0]?.Update?.ConditionExpression).toBeUndefined();
+    expect(items[0]?.Update?.ConditionExpression).toBe("attribute_not_exists(permanentDeletionReservationId)");
     expect(items[0]?.Update?.UpdateExpression).toContain("chronology = :chronology");
     expect(items[1]?.Put?.Item).toEqual(
       expect.objectContaining({
@@ -153,7 +153,7 @@ describe("DynamoDbPersonalAlbumStore commands: publishReadyPhoto", () => {
 
     const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
     const items = transact.input.TransactItems ?? [];
-    expect(items[0]?.Update?.ConditionExpression).toBe("processingAttemptId = :attemptId");
+    expect(items[0]?.Update?.ConditionExpression).toBe("processingAttemptId = :attemptId AND attribute_not_exists(permanentDeletionReservationId)");
     expect(items).toHaveLength(5);
     expect(items[3]?.Delete).toEqual(
       expect.objectContaining({
@@ -195,12 +195,16 @@ describe("DynamoDbPersonalAlbumStore commands: setTrashMembership", () => {
     expect(items[0]?.Update).toEqual(
       expect.objectContaining({
         UpdateExpression: "SET trashed = :trashed, deletedAt = :deletedAt",
-        ConditionExpression: "trashed = :currentTrashed AND chronology.active.revision = :currentRevision",
+        ConditionExpression: "trashed = :currentTrashed AND chronology.active.revision = :currentRevision AND attribute_not_exists(permanentDeletionReservationId)",
         ExpressionAttributeValues: expect.objectContaining({ ":trashed": true, ":currentTrashed": false, ":currentRevision": 0, ":deletedAt": expect.any(String) }),
       }),
     );
     expect(items[1]?.Delete?.Key?.sk).toContain("TIMELINE#ACTIVE#");
     expect(items[2]?.Put?.Item?.sk).toContain("TIMELINE#TRASHED#");
+    expect(items[2]?.Put?.Item).toEqual(expect.objectContaining({
+      sweepKey: "TRASH",
+      sweepSortKey: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*#user-1#photo-1$/),
+    }));
     expect(items[3]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "DATE_INDEX#ACTIVE#2024" });
     expect(items[3]?.Update?.ExpressionAttributeValues?.[":delta"]).toBe(-1);
     expect(items[4]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "DATE_INDEX#TRASHED#2024" });
@@ -227,6 +231,24 @@ describe("DynamoDbPersonalAlbumStore commands: setTrashMembership", () => {
     await expect(
       album.setTrashMembership({ photoId: "photo-1", trashed: true }),
     ).rejects.toBeInstanceOf(ConcurrentPhotoModificationError);
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore reads: expired Trash", () => {
+  it("queries the sparse cross-User index through the retention cutoff", async () => {
+    const { documentClient, commands } = queryClient([{ userId: "user-2", photoId: "expired" }]);
+    const store = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" });
+
+    await expect(store.queryExpiredTrashedPhotos({ before: "2026-01-01T00:00:00.000Z", limit: 100 })).resolves.toEqual({
+      photos: [{ userId: "user-2", photoId: "expired" }],
+    });
+
+    const query = commands.find((command) => command instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toEqual(expect.objectContaining({
+      IndexName: "ExpiredTrashIndex",
+      KeyConditionExpression: "sweepKey = :sweepKey AND sweepSortKey <= :before",
+      ExpressionAttributeValues: { ":sweepKey": "TRASH", ":before": "2026-01-01T00:00:00.000Z#\uffff" },
+    }));
   });
 });
 
@@ -260,7 +282,7 @@ describe("DynamoDbPersonalAlbumStore commands: replaceActiveChronology", () => {
     expect(items[0]?.Update).toEqual(
       expect.objectContaining({
         UpdateExpression: "SET chronology.active = :active",
-        ConditionExpression: "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
+        ConditionExpression: "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed AND attribute_not_exists(permanentDeletionReservationId)",
       }),
     );
     expect(items[0]?.Update?.ExpressionAttributeValues?.[":active"]).toEqual({
@@ -285,7 +307,7 @@ describe("DynamoDbPersonalAlbumStore commands: claimProcessingAttempt", () => {
     const update = commands.find((command) => command instanceof UpdateCommand) as UpdateCommand;
     expect(update.input).toEqual(
       expect.objectContaining({
-        ConditionExpression: "attribute_not_exists(processingAttemptId)",
+        ConditionExpression: "attribute_not_exists(processingAttemptId) AND attribute_not_exists(permanentDeletionReservationId)",
       }),
     );
   });

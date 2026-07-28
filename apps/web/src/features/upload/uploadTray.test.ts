@@ -16,6 +16,8 @@ const fakeRegistry = (): BrowsingHistoryRegistry => ({
   activate: vi.fn(),
   applyMembershipChange: vi.fn(),
   revertMembershipChange: vi.fn(),
+  applyPermanentDeletion: vi.fn(),
+  revertPermanentDeletion: vi.fn(),
   notifyPhotosArrived: vi.fn(),
   applyChronologyChange: vi.fn(),
   disposeAll: vi.fn(),

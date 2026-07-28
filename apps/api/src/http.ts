@@ -24,6 +24,8 @@ export const ok = (
   return json(200, body, extra);
 };
 
+export const noContent = (): APIGatewayProxyStructuredResultV2 => ({ statusCode: 204 });
+
 export const badRequest = (
   message: string,
 ): APIGatewayProxyStructuredResultV2 => {

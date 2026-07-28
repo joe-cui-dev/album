@@ -1,5 +1,5 @@
 import { isSameCapturedAt, type CapturedAt, type Photo, type UploadBatch } from "@album/shared";
-import { ProcessingAttemptConflictError, StaleChronologyRevisionError } from "./errors.js";
+import { ConcurrentPhotoModificationError, ProcessingAttemptConflictError, StaleChronologyRevisionError } from "./errors.js";
 import type {
   DateIndexPeriodCounts,
   PersonalAlbum,
@@ -133,6 +133,9 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
   };
 
   const assertAttemptOwnership = (candidate: Photo, attemptId: string | undefined): void => {
+    if (candidate.permanentDeletionReservationId) {
+      throw new ConcurrentPhotoModificationError(candidate.photoId);
+    }
     if (attemptId !== undefined && candidate.processingAttemptId !== attemptId) {
       throw new ProcessingAttemptConflictError(candidate.photoId);
     }
@@ -162,6 +165,23 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
   };
 
   return {
+    async queryExpiredTrashedPhotos({ before, limit, cursor }) {
+      const entries = [...projectionsByUser.entries()]
+        .flatMap(([userId, projections]) => [...projections.values()].map((projection) => ({ userId, projection })))
+        .filter(({ projection }) => projection.collection === "trashed" && projection.deletedAt !== undefined && projection.deletedAt <= before)
+        .map(({ userId, projection }) => ({
+          userId,
+          photoId: projection.photoId,
+          sortKey: `${projection.deletedAt}#${userId}#${projection.photoId}`,
+        }))
+        .sort((left, right) => left.sortKey.localeCompare(right.sortKey))
+        .filter((entry) => cursor === undefined || entry.sortKey > cursor);
+      const page = entries.slice(0, limit);
+      return {
+        photos: page.map(({ userId, photoId }) => ({ userId, photoId })),
+        ...(page.length === limit && page.length > 0 ? { nextCursor: page[page.length - 1]!.sortKey } : {}),
+      };
+    },
     personalAlbumOf(userId): PersonalAlbum {
       const photo = (photoId: string): Photo | undefined => photosOf(userId).get(photoId);
       return {
@@ -194,6 +214,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
         async markProcessingStarted(photoId) {
           const candidate = photo(photoId);
           if (candidate) {
+            if (candidate.permanentDeletionReservationId) throw new ConcurrentPhotoModificationError(photoId);
             candidate.processingState = "processing";
             delete candidate.failureCode;
           }
@@ -266,10 +287,14 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           if (candidate.trashed === trashed) {
             return;
           }
+          if (candidate.permanentDeletionReservationId) {
+            throw new ConcurrentPhotoModificationError(photoId);
+          }
 
           const fromCollection: PhotoCollection = candidate.trashed ? "trashed" : "active";
           const toCollection: PhotoCollection = trashed ? "trashed" : "active";
           const capturedAt = chronology.active.capturedAt;
+          const deletedAt = trashed ? new Date().toISOString() : undefined;
 
           deleteProjection(userId, { collection: fromCollection, capturedAt, addedAt, photoId });
           writeProjection(userId, {
@@ -280,17 +305,59 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
-            ...(trashed ? { deletedAt: new Date().toISOString() } : {}),
+            ...(deletedAt ? { deletedAt } : {}),
           });
           incrementDateIndex(userId, fromCollection, capturedAt, -1);
           incrementDateIndex(userId, toCollection, capturedAt, 1);
           candidate.trashed = trashed;
-          if (trashed) candidate.deletedAt = new Date().toISOString();
+          if (deletedAt) candidate.deletedAt = deletedAt;
           else delete candidate.deletedAt;
+        },
+
+        async reservePermanentDeletion({ photo: expected, reservationId }) {
+          const candidate = photo(expected.photoId);
+          if (!candidate) return false;
+          const unchanged =
+            candidate.processingState === expected.processingState &&
+            candidate.trashed === expected.trashed &&
+            candidate.deletedAt === expected.deletedAt &&
+            candidate.chronology?.active.revision === expected.chronology?.active.revision;
+          if (!unchanged) throw new ConcurrentPhotoModificationError(expected.photoId);
+          candidate.permanentDeletionReservationId = reservationId;
+          return true;
+        },
+
+        async permanentlyDeletePhoto({ photo: expected, reservationId }) {
+          const candidate = photo(expected.photoId);
+          if (!candidate) return;
+          const unchanged =
+            candidate.processingState === expected.processingState &&
+            candidate.trashed === expected.trashed &&
+            candidate.deletedAt === expected.deletedAt &&
+            candidate.chronology?.active.revision === expected.chronology?.active.revision &&
+            candidate.permanentDeletionReservationId === reservationId;
+          if (!unchanged) throw new ConcurrentPhotoModificationError(expected.photoId);
+
+          if (candidate.processingState === "ready") {
+            const { chronology, addedAt } = requireReadyPhoto(candidate);
+            deleteProjection(userId, {
+              collection: "trashed",
+              capturedAt: chronology.active.capturedAt,
+              addedAt,
+              photoId: candidate.photoId,
+            });
+            incrementDateIndex(userId, "trashed", chronology.active.capturedAt, -1);
+          } else if (candidate.processingState === "processingFailed") {
+            resolveIssue(userId, candidate.photoId);
+          } else {
+            throw new Error(`Photo ${candidate.photoId} is not eligible for Permanent Deletion`);
+          }
+          photosOf(userId).delete(candidate.photoId);
         },
 
         async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
           const candidate = requirePhoto(userId, photoId);
+          if (candidate.permanentDeletionReservationId) throw new ConcurrentPhotoModificationError(photoId);
           const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (chronology.active.revision !== expectedRevision) {
             throw new StaleChronologyRevisionError(photoId);
@@ -311,6 +378,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            ...(candidate.trashed && candidate.deletedAt ? { deletedAt: candidate.deletedAt } : {}),
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);
           incrementDateIndex(userId, collection, capturedAt, 1);
@@ -321,6 +389,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
 
         async revertActiveChronology({ photoId, expectedRevision }) {
           const candidate = requirePhoto(userId, photoId);
+          if (candidate.permanentDeletionReservationId) throw new ConcurrentPhotoModificationError(photoId);
           const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (chronology.active.revision !== expectedRevision) {
             throw new StaleChronologyRevisionError(photoId);
@@ -345,6 +414,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            ...(candidate.trashed && candidate.deletedAt ? { deletedAt: candidate.deletedAt } : {}),
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);
           incrementDateIndex(userId, collection, original.capturedAt, 1);
@@ -451,6 +521,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
 
         async claimProcessingAttempt({ photoId, attemptId, startedAt }) {
           const candidate = requirePhoto(userId, photoId);
+          if (candidate.permanentDeletionReservationId) throw new ConcurrentPhotoModificationError(photoId);
           const issue = issuesOf(userId).get(photoId);
           if (
             issue?.retryAttemptId !== undefined &&

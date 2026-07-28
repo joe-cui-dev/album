@@ -12,6 +12,7 @@ import { usePhotoViewerSnapshot } from "./usePhotoViewer.js";
 import { CapturedAtEditorDialog } from "../chronology/CapturedAtEditorDialog.js";
 import { createHttpCapturedAtEditorPort } from "../chronology/capturedAtEditorPort.js";
 import { ViewerMediaStage } from "./ViewerMediaStage.js";
+import { PermanentDeletionDialog } from "../album/PermanentDeletionDialog.js";
 
 interface PhotoViewerDarkroomProps {
   viewer: PhotoViewer;
@@ -29,6 +30,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
   const [infoOpen, setInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [permanentDeletionOpen, setPermanentDeletionOpen] = useState(false);
   const [editorHistoryBackSignal, setEditorHistoryBackSignal] = useState(0);
   const [chronologyAnnouncement, setChronologyAnnouncement] = useState<string>();
   const [chromeVisible, setChromeVisible] = useState(true);
@@ -87,7 +89,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (editorOpen) {
+      if (editorOpen || permanentDeletionOpen) {
         return;
       }
       revealChrome();
@@ -109,7 +111,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, viewer, moreOpen, infoOpen, editorOpen]);
+  }, [onClose, viewer, moreOpen, infoOpen, editorOpen, permanentDeletionOpen]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -168,6 +170,18 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     }
     setMoreOpen(false);
     mutations.intents.downloadOriginal({ photoId: bootstrap.photoId, fileName: bootstrap.fileName });
+  };
+
+  const openPermanentDeletion = (): void => {
+    setMoreOpen(false);
+    setPermanentDeletionOpen(true);
+  };
+
+  const confirmPermanentDeletion = (): void => {
+    if (!bootstrap) return;
+    setPermanentDeletionOpen(false);
+    mutations.intents.permanentlyDeletePhoto(bootstrap.photoId);
+    advanceOrClose();
   };
 
   const openEditor = (): void => {
@@ -273,6 +287,16 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                   >
                     {bootstrap.collection === "active" ? "Trash photo" : "Restore to timeline"}
                   </button>
+                  {bootstrap.collection === "trashed" ? (
+                    <button
+                      className="block w-full px-4 py-2 text-left text-danger hover:bg-white/10 focus:outline-none focus:bg-white/10"
+                      onClick={openPermanentDeletion}
+                      role="menuitem"
+                      type="button"
+                    >
+                      Delete permanently
+                    </button>
+                  ) : null}
                   <button
                     className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10 disabled:opacity-50"
                     disabled={downloadInFlight}
@@ -319,6 +343,13 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
           photoId={bootstrap.photoId}
           port={createHttpCapturedAtEditorPort()}
           restoreHistoryEntry={() => navigate(location.pathname, { state: { ...(location.state ?? {}), capturedAtEditor: true } })}
+        />
+      ) : null}
+      {permanentDeletionOpen ? (
+        <PermanentDeletionDialog
+          onCancel={() => { setPermanentDeletionOpen(false); window.setTimeout(() => moreButtonRef.current?.focus(), 0); }}
+          onConfirm={confirmPermanentDeletion}
+          target="photo"
         />
       ) : null}
       {chronologyAnnouncement ? <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{chronologyAnnouncement}</p> : null}

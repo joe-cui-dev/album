@@ -204,6 +204,8 @@ type Responder = (route: Route, request: Request) => Promise<void> | void;
 export const respondJson = (route: Route, body: unknown, status = 200): Promise<void> =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
+export const respondNoContent = (route: Route): Promise<void> => route.fulfill({ status: 204, body: "" });
+
 export const respondAlbumError = (
   route: Route,
   status: number,
@@ -284,6 +286,8 @@ export class AlbumApiMock {
   readonly restoreMembership = new EndpointQueue((route, request) =>
     respondJson(route, { photoId: photoIdFromTrashPath(request.url()), trashed: false } satisfies TrashMembershipResponse),
   );
+  readonly permanentDeletion = new EndpointQueue((route) => respondNoContent(route));
+  readonly emptyTrash = new EndpointQueue((route) => respondNoContent(route));
   readonly originalDownload = new EndpointQueue((route) =>
     respondJson(route, { url: TRANSPARENT_PIXEL, expiresInSeconds: 300 } satisfies CreateTemporaryPhotoUrlResponse),
   );
@@ -351,6 +355,9 @@ export class AlbumApiMock {
       if (url.pathname === "/trash" && method === "GET") {
         return this.trash.handle(route, request);
       }
+      if (url.pathname === "/trash" && method === "DELETE") {
+        return this.emptyTrash.handle(route, request);
+      }
       if (url.pathname === "/timeline-thumbnail-access" && method === "POST") {
         return this.thumbnailAccess.handle(route, request);
       }
@@ -362,6 +369,9 @@ export class AlbumApiMock {
       }
       if (/^\/photos\/[^/]+\/trash$/.test(url.pathname) && method === "DELETE") {
         return this.restoreMembership.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+$/.test(url.pathname) && method === "DELETE") {
+        return this.permanentDeletion.handle(route, request);
       }
       if (/^\/photos\/[^/]+\/original-download$/.test(url.pathname) && method === "POST") {
         return this.originalDownload.handle(route, request);

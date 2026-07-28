@@ -1,4 +1,5 @@
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -18,6 +19,18 @@ export const createS3PhotoObjectStore = ({
   bucketName: string;
   uploadUrlExpiresInSeconds: number;
 }): PhotoObjectStore => ({
+  async deleteObjects(objectKeys) {
+    if (objectKeys.length === 0) return;
+    const result = await s3Client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucketName,
+        Delete: { Objects: objectKeys.map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+    if (result.Errors && result.Errors.length > 0) {
+      throw new Error(`S3 could not delete ${result.Errors.map(({ Key }) => Key ?? "an object").join(", ")}`);
+    }
+  },
   async presignUpload({ objectKey, contentType, metadata }) {
     const url = await getSignedUrl(
       s3Client,

@@ -28,12 +28,18 @@ export interface TestAlbumMutationsPort {
   setTrashMembershipCalls: SetTrashMembershipCall[];
   retryProcessingCalls: RetryProcessingCall[];
   presignOriginalDownloadCalls: PresignOriginalDownloadCall[];
+  permanentlyDeletePhotoCalls: Array<{ photoId: string }>;
+  emptyTrashCalls: number;
   resolveNextSetTrashMembership(response: TrashMembershipResponse): void;
   rejectNextSetTrashMembership(error: unknown): void;
   resolveNextRetryProcessing(response: RetryProcessingResponse): void;
   rejectNextRetryProcessing(error: unknown): void;
   resolveNextPresignOriginalDownload(response: CreateTemporaryPhotoUrlResponse): void;
   rejectNextPresignOriginalDownload(error: unknown): void;
+  resolveNextPermanentDeletion(): void;
+  rejectNextPermanentDeletion(error: unknown): void;
+  resolveNextEmptyTrash(): void;
+  rejectNextEmptyTrash(error: unknown): void;
 }
 
 /** A fully controllable `albumMutations` port for deep-module tests: every call queues until the test resolves it. */
@@ -44,6 +50,10 @@ export const createTestAlbumMutationsPort = (): TestAlbumMutationsPort => {
   const pendingSetTrashMembership: Array<Deferred<TrashMembershipResponse>> = [];
   const pendingRetryProcessing: Array<Deferred<RetryProcessingResponse>> = [];
   const pendingPresignOriginalDownload: Array<Deferred<CreateTemporaryPhotoUrlResponse>> = [];
+  const permanentlyDeletePhotoCalls: Array<{ photoId: string }> = [];
+  const pendingPermanentDeletion: Array<Deferred<void>> = [];
+  let emptyTrashCalls = 0;
+  const pendingEmptyTrash: Array<Deferred<void>> = [];
 
   const port: AlbumMutationsPort = {
     setTrashMembership: ({ photoId, trashed, signal }) => {
@@ -67,6 +77,20 @@ export const createTestAlbumMutationsPort = (): TestAlbumMutationsPort => {
         signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       });
     },
+    permanentlyDeletePhoto: ({ photoId, signal }) => {
+      permanentlyDeletePhotoCalls.push({ photoId });
+      return new Promise((resolve, reject) => {
+        pendingPermanentDeletion.push({ resolve, reject });
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    },
+    emptyTrash: ({ signal }) => {
+      emptyTrashCalls += 1;
+      return new Promise((resolve, reject) => {
+        pendingEmptyTrash.push({ resolve, reject });
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    },
   };
 
   return {
@@ -74,11 +98,17 @@ export const createTestAlbumMutationsPort = (): TestAlbumMutationsPort => {
     setTrashMembershipCalls,
     retryProcessingCalls,
     presignOriginalDownloadCalls,
+    permanentlyDeletePhotoCalls,
+    get emptyTrashCalls() { return emptyTrashCalls; },
     resolveNextSetTrashMembership: (response) => pendingSetTrashMembership.shift()?.resolve(response),
     rejectNextSetTrashMembership: (error) => pendingSetTrashMembership.shift()?.reject(error),
     resolveNextRetryProcessing: (response) => pendingRetryProcessing.shift()?.resolve(response),
     rejectNextRetryProcessing: (error) => pendingRetryProcessing.shift()?.reject(error),
     resolveNextPresignOriginalDownload: (response) => pendingPresignOriginalDownload.shift()?.resolve(response),
     rejectNextPresignOriginalDownload: (error) => pendingPresignOriginalDownload.shift()?.reject(error),
+    resolveNextPermanentDeletion: () => pendingPermanentDeletion.shift()?.resolve(),
+    rejectNextPermanentDeletion: (error) => pendingPermanentDeletion.shift()?.reject(error),
+    resolveNextEmptyTrash: () => pendingEmptyTrash.shift()?.resolve(),
+    rejectNextEmptyTrash: (error) => pendingEmptyTrash.shift()?.reject(error),
   };
 };

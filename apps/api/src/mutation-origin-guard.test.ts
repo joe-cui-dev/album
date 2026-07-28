@@ -7,6 +7,8 @@ import { handler as retryProcessingHandler } from "./handlers/retry-processing.j
 import { handler as sessionHandler } from "./handlers/session.js";
 import { handler as signInHandler } from "./handlers/sign-in.js";
 import { handler as timelineThumbnailAccessHandler } from "./handlers/timeline-thumbnail-access.js";
+import { permanentDeletionHandler } from "./handlers/permanent-deletion.js";
+import { emptyTrashHandler } from "./handlers/empty-trash.js";
 
 /**
  * Route-table coverage for the exact-Origin policy (execution plan Slice 1.1: "Add route-table
@@ -19,6 +21,8 @@ import { handler as timelineThumbnailAccessHandler } from "./handlers/timeline-t
 const MUTATION_ROUTES: ReadonlyArray<{ name: string; method: string; handler: APIGatewayProxyHandlerV2; routeKey?: string }> = [
   { name: "PUT /photos/{photoId}/trash", method: "PUT", handler: trashMembershipHandler },
   { name: "DELETE /photos/{photoId}/trash", method: "DELETE", handler: restoreMembershipHandler },
+  { name: "DELETE /photos/{photoId}", method: "DELETE", handler: permanentDeletionHandler },
+  { name: "DELETE /trash", method: "DELETE", handler: emptyTrashHandler },
   { name: "PUT /photos/{photoId}/captured-at-adjustment", method: "PUT", handler: adjustCapturedAtHandler },
   { name: "DELETE /photos/{photoId}/captured-at-adjustment", method: "DELETE", handler: revertCapturedAtHandler },
   { name: "POST /upload-batches", method: "POST", handler: createUploadBatchHandler },

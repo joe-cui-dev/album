@@ -12,6 +12,7 @@ import { createBrowsingWindow, type BrowsingWindow } from "./browsingWindow.js";
 import { DateNavigation, type JumpState } from "./DateNavigation.js";
 import { probeDateJump } from "./dateJump.js";
 import { useAlbumNavigation } from "./useAlbumNavigation.js";
+import { PermanentDeletionDialog } from "../album/PermanentDeletionDialog.js";
 
 interface BrowsingPageProps {
   collection: PhotoCollection;
@@ -88,6 +89,21 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
   const browsingWindow = windowRef.current.window;
 
   const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
+  const observedTrashRevision = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (collection !== "trashed") return;
+    if (observedTrashRevision.current === undefined) {
+      observedTrashRevision.current = mutationsSnapshot.trashRevision;
+      return;
+    }
+    if (observedTrashRevision.current !== mutationsSnapshot.trashRevision) {
+      observedTrashRevision.current = mutationsSnapshot.trashRevision;
+      navigate(
+        { pathname: location.pathname, search: location.search, hash: location.hash },
+        { replace: true, state: { ...routeState, browsingKey: createBrowsingWindowKey() } },
+      );
+    }
+  }, [collection, location.hash, location.pathname, location.search, mutationsSnapshot.trashRevision, navigate, routeState]);
   const navigation = useAlbumNavigation(mutationsSnapshot.navigationRevision);
   const years = (collection === "active" ? navigation.data?.timeline.years : navigation.data?.trash.years) ?? [];
 
@@ -143,6 +159,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
 
   const photoHrefFor = (photoId: string): string => `/album/photos/${photoId}`;
   const [visiblePeriodKey, setVisiblePeriodKey] = useState<string>();
+  const [emptyTrashConfirmationOpen, setEmptyTrashConfirmationOpen] = useState(false);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -165,9 +182,14 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
         years={years}
       />
       <div className="min-w-0 w-full flex-1">
-        <h1 className="mb-4" ref={headingRef} tabIndex={-1}>
-          {title}
-        </h1>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h1 className="flex-1" ref={headingRef} tabIndex={-1}>{title}</h1>
+          {collection === "trashed" ? (
+            <button className="rounded px-3 py-2 text-sm text-danger hover:bg-danger/10" onClick={() => setEmptyTrashConfirmationOpen(true)} type="button">
+              Empty Trash
+            </button>
+          ) : null}
+        </div>
         <BrowsingGrid
           browsingWindow={browsingWindow}
           emptyState={emptyState}
@@ -177,6 +199,13 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
           sourceCollection={collection}
         />
       </div>
+      {emptyTrashConfirmationOpen ? (
+        <PermanentDeletionDialog
+          onCancel={() => setEmptyTrashConfirmationOpen(false)}
+          onConfirm={() => { setEmptyTrashConfirmationOpen(false); mutations.intents.emptyTrash(); }}
+          target="trash"
+        />
+      ) : null}
     </main>
   );
 }

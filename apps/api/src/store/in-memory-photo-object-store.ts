@@ -18,6 +18,9 @@ export const createInMemoryPhotoObjectStore = (
   );
 
   return {
+    async deleteObjects(objectKeys) {
+      for (const objectKey of objectKeys) objects.delete(objectKey);
+    },
     async presignUpload({ objectKey }) {
       return {
         url: `https://photo-objects.invalid/${encodeURIComponent(objectKey)}`,

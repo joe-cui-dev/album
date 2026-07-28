@@ -4,6 +4,8 @@ export interface PresignedObjectUrl {
 }
 
 export interface PhotoObjectStore {
+  /** Deletes every supplied object. Missing keys are deliberately a success. */
+  deleteObjects(objectKeys: string[]): Promise<void>;
   presignUpload(input: {
     objectKey: string;
     contentType: string;

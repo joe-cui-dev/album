@@ -45,6 +45,12 @@ export interface DateIndexPeriodCounts {
 
 export interface PersonalAlbumStore {
   personalAlbumOf(userId: string): PersonalAlbum;
+  /** Reads due Trash projections across every User through the sparse sweep index. */
+  queryExpiredTrashedPhotos(input: {
+    before: string;
+    limit: number;
+    cursor?: string;
+  }): Promise<{ photos: Array<{ userId: string; photoId: string }>; nextCursor?: string }>;
 }
 
 export interface PersonalAlbum {
@@ -114,6 +120,11 @@ export interface PersonalAlbum {
    * target collection is left unchanged (idempotent membership).
    */
   setTrashMembership(input: { photoId: string; trashed: boolean }): Promise<void>;
+
+  /** Blocks conflicting mutations; a later retry may take over an interrupted reservation. */
+  reservePermanentDeletion(input: { photo: Photo; reservationId: string }): Promise<boolean>;
+  /** Atomically removes a Photo and every record derived from it. */
+  permanentlyDeletePhoto(input: { photo: Photo; reservationId: string }): Promise<void>;
 
   /**
    * Replaces the complete active chronology (Adjust Captured At), moving the

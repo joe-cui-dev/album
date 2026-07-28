@@ -1,4 +1,5 @@
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -15,6 +16,34 @@ jest.mock("@aws-sdk/s3-request-presigner", () => ({
 const signedUrl = jest.mocked(getSignedUrl);
 
 describe("S3PhotoObjectStore", () => {
+  it("deletes every supplied key in one S3 request, where missing keys remain a success", async () => {
+    const commands: unknown[] = [];
+    const store = createS3PhotoObjectStore({
+      s3Client: { send: async (command: unknown) => { commands.push(command); return {}; } } as unknown as S3Client,
+      bucketName: "photos-bucket",
+      uploadUrlExpiresInSeconds: 900,
+    });
+
+    await store.deleteObjects(["original", "missing-thumbnail"]);
+    await store.deleteObjects([]);
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toBeInstanceOf(DeleteObjectsCommand);
+    expect((commands[0] as DeleteObjectsCommand).input).toEqual({
+      Bucket: "photos-bucket",
+      Delete: { Objects: [{ Key: "original" }, { Key: "missing-thumbnail" }], Quiet: true },
+    });
+  });
+
+  it("fails the deletion when S3 reports even one key-level error", async () => {
+    const store = createS3PhotoObjectStore({
+      s3Client: { send: async () => ({ Errors: [{ Key: "display", Code: "AccessDenied" }] }) } as unknown as S3Client,
+      bucketName: "photos-bucket",
+      uploadUrlExpiresInSeconds: 900,
+    });
+
+    await expect(store.deleteObjects(["original", "display"])).rejects.toThrow("display");
+  });
   it("presigns uploads with their content type, metadata, and configured expiry", async () => {
     const commands: unknown[] = [];
     signedUrl.mockResolvedValue("https://signed.example/upload");

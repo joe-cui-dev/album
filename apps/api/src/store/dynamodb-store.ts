@@ -68,6 +68,21 @@ const issueSummaryKey = (userId: string) => ({
   pk: `USER#${userId}`,
   sk: PROCESSING_ISSUES_SUMMARY_SORT_KEY,
 });
+const EXPIRED_TRASH_INDEX_NAME = "ExpiredTrashIndex";
+const expiredTrashAttributes = (userId: string, photoId: string, deletedAt: string) => ({
+  sweepKey: "TRASH",
+  sweepSortKey: `${deletedAt}#${userId}#${photoId}`,
+});
+const encodeSweepCursor = (key: Record<string, unknown>): string =>
+  Buffer.from(JSON.stringify(key), "utf8").toString("base64url");
+const decodeSweepCursor = (cursor: string): Record<string, unknown> | undefined => {
+  try {
+    const key = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    return typeof key === "object" && key !== null ? key as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /** Reads a Photo and guards that it has a Timeline/Trash projection to move. */
 const readReadyPhoto = async (
@@ -156,6 +171,28 @@ export const createDynamoDbPersonalAlbumStore = ({
   documentClient: DynamoDBDocumentClient;
   tableName: string;
 }): PersonalAlbumStore => ({
+  async queryExpiredTrashedPhotos({ before, limit, cursor }) {
+    const exclusiveStartKey = cursor === undefined ? undefined : decodeSweepCursor(cursor);
+    if (cursor !== undefined && !exclusiveStartKey) {
+      throw new Error("Invalid expired Trash cursor");
+    }
+    const result = await documentClient.send(
+      new QueryCommand({
+        TableName: tableName,
+        IndexName: EXPIRED_TRASH_INDEX_NAME,
+        KeyConditionExpression: "sweepKey = :sweepKey AND sweepSortKey <= :before",
+        ExpressionAttributeValues: { ":sweepKey": "TRASH", ":before": `${before}#\uffff` },
+        Limit: limit,
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+      }),
+    );
+    return {
+      photos: (result.Items ?? [])
+        .filter((item) => typeof item.userId === "string" && typeof item.photoId === "string")
+        .map((item) => ({ userId: item.userId as string, photoId: item.photoId as string })),
+      ...(result.LastEvaluatedKey ? { nextCursor: encodeSweepCursor(result.LastEvaluatedKey) } : {}),
+    };
+  },
   personalAlbumOf(userId): PersonalAlbum {
     return {
       async getPhoto(photoId) {
@@ -219,6 +256,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       async markProcessingStarted(photoId) {
         await updatePhoto(documentClient, tableName, userId, photoId, {
           UpdateExpression: "SET processingState = :state REMOVE failureCode",
+          ConditionExpression: "attribute_not_exists(permanentDeletionReservationId)",
           ExpressionAttributeValues: { ":state": "processing" },
         });
       },
@@ -259,9 +297,9 @@ export const createDynamoDbPersonalAlbumStore = ({
                 ":chronology": chronology,
                 ...(input.attemptId !== undefined ? { ":attemptId": input.attemptId } : {}),
               },
-              ...(input.attemptId !== undefined
-                ? { ConditionExpression: "processingAttemptId = :attemptId" }
-                : {}),
+              ConditionExpression: input.attemptId !== undefined
+                ? "processingAttemptId = :attemptId AND attribute_not_exists(permanentDeletionReservationId)"
+                : "attribute_not_exists(permanentDeletionReservationId)",
             },
           },
           {
@@ -312,9 +350,9 @@ export const createDynamoDbPersonalAlbumStore = ({
                 ":duplicateOfPhotoId": input.duplicateOfPhotoId,
                 ...(input.attemptId !== undefined ? { ":attemptId": input.attemptId } : {}),
               },
-              ...(input.attemptId !== undefined
-                ? { ConditionExpression: "processingAttemptId = :attemptId" }
-                : {}),
+              ConditionExpression: input.attemptId !== undefined
+                ? "processingAttemptId = :attemptId AND attribute_not_exists(permanentDeletionReservationId)"
+                : "attribute_not_exists(permanentDeletionReservationId)",
             },
           },
         ];
@@ -363,7 +401,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                     Key: photoKey(userId, photoId),
                     UpdateExpression: trashed ? "SET trashed = :trashed, deletedAt = :deletedAt" : "SET trashed = :trashed REMOVE deletedAt",
                     ConditionExpression:
-                      "trashed = :currentTrashed AND chronology.active.revision = :currentRevision",
+                      "trashed = :currentTrashed AND chronology.active.revision = :currentRevision AND attribute_not_exists(permanentDeletionReservationId)",
                     ExpressionAttributeValues: {
                       ":trashed": trashed,
                       ":currentTrashed": currentTrashed,
@@ -391,7 +429,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
-                      ...(deletedAt ? { deletedAt } : {}),
+                      ...(deletedAt ? { deletedAt, ...expiredTrashAttributes(userId, photoId, deletedAt) } : {}),
                     },
                   },
                 },
@@ -405,6 +443,111 @@ export const createDynamoDbPersonalAlbumStore = ({
             throw new ConcurrentPhotoModificationError(photoId);
           }
           throw error;
+        }
+      },
+
+      async reservePermanentDeletion({ photo, reservationId }) {
+        const expected = photo.processingState === "ready"
+          ? {
+              condition:
+                "processingState = :state AND trashed = :trashed AND deletedAt = :deletedAt AND chronology.active.revision = :revision",
+              values: { ":state": "ready", ":trashed": true, ":deletedAt": photo.deletedAt, ":revision": photo.chronology?.active.revision },
+            }
+          : {
+              condition: "processingState = :state",
+              values: { ":state": "processingFailed" },
+            };
+        try {
+          await documentClient.send(new UpdateCommand({
+            TableName: tableName,
+            Key: photoKey(userId, photo.photoId),
+            UpdateExpression: "SET permanentDeletionReservationId = :reservationId",
+            ConditionExpression: expected.condition,
+            ExpressionAttributeValues: { ...expected.values, ":reservationId": reservationId },
+          }));
+          return true;
+        } catch (error) {
+          if (!isConditionalCheckFailed(error)) throw error;
+          const latest = await documentClient.send(
+            new GetCommand({ TableName: tableName, Key: photoKey(userId, photo.photoId) }),
+          );
+          if (!latest.Item) return false;
+          throw new ConcurrentPhotoModificationError(photo.photoId);
+        }
+      },
+
+      async permanentlyDeletePhoto({ photo, reservationId }) {
+        const current = await documentClient.send(
+          new GetCommand({ TableName: tableName, Key: photoKey(userId, photo.photoId) }),
+        );
+        if (!current.Item) return;
+
+        const transactItems: NonNullable<TransactWriteCommandInput["TransactItems"]> = [];
+        if (photo.processingState === "ready") {
+          const chronology = photo.chronology;
+          const addedAt = photo.uploadRequestedAt;
+          if (!chronology || !addedAt) throw new Error(`Photo ${photo.photoId} has no Timeline projection`);
+          transactItems.push(
+            {
+              Delete: {
+                TableName: tableName,
+                Key: photoKey(userId, photo.photoId),
+                ConditionExpression:
+                  "processingState = :state AND trashed = :trashed AND deletedAt = :deletedAt AND chronology.active.revision = :revision AND permanentDeletionReservationId = :reservationId",
+                ExpressionAttributeValues: {
+                  ":state": "ready",
+                  ":trashed": true,
+                  ":deletedAt": photo.deletedAt,
+                  ":revision": chronology.active.revision,
+                  ":reservationId": reservationId,
+                },
+              },
+            },
+            {
+              Delete: {
+                TableName: tableName,
+                Key: projectionKey(userId, {
+                  collection: "trashed",
+                  capturedAt: chronology.active.capturedAt,
+                  addedAt,
+                  photoId: photo.photoId,
+                }),
+              },
+            },
+            dateIndexIncrementItem(tableName, userId, "trashed", chronology.active.capturedAt, -1),
+          );
+        } else if (photo.processingState === "processingFailed") {
+          const addedAt = photo.uploadRequestedAt;
+          const issue = typeof addedAt === "string"
+            ? await documentClient.send(new GetCommand({ TableName: tableName, Key: issueKey(userId, photo.photoId, addedAt) }))
+            : undefined;
+          transactItems.push({
+            Delete: {
+              TableName: tableName,
+              Key: photoKey(userId, photo.photoId),
+              ConditionExpression: "processingState = :state AND permanentDeletionReservationId = :reservationId",
+              ExpressionAttributeValues: { ":state": "processingFailed", ":reservationId": reservationId },
+            },
+          });
+          if (issue?.Item && typeof addedAt === "string") {
+            transactItems.push(
+              { Delete: { TableName: tableName, Key: issueKey(userId, photo.photoId, addedAt) } },
+              issuesSummaryIncrementItem(tableName, userId, -1),
+            );
+          }
+        } else {
+          throw new Error(`Photo ${photo.photoId} is not eligible for Permanent Deletion`);
+        }
+
+        try {
+          await documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
+        } catch (error) {
+          if (!isTransactionCanceled(error)) throw error;
+          const latest = await documentClient.send(
+            new GetCommand({ TableName: tableName, Key: photoKey(userId, photo.photoId) }),
+          );
+          if (!latest.Item) return;
+          throw new ConcurrentPhotoModificationError(photo.photoId);
         }
       },
 
@@ -438,7 +581,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                     Key: photoKey(userId, photoId),
                     UpdateExpression: "SET chronology.active = :active",
                     ConditionExpression:
-                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
+                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed AND attribute_not_exists(permanentDeletionReservationId)",
                     ExpressionAttributeValues: {
                       ":active": { capturedAt, source: "userAdjusted", revision: nextRevision },
                       ":expectedRevision": expectedRevision,
@@ -470,6 +613,9 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      ...(currentTrashed && typeof item.deletedAt === "string"
+                        ? { deletedAt: item.deletedAt, ...expiredTrashAttributes(userId, photoId, item.deletedAt) }
+                        : {}),
                     },
                   },
                 },
@@ -519,7 +665,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                     Key: photoKey(userId, photoId),
                     UpdateExpression: "SET chronology.active = :active",
                     ConditionExpression:
-                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
+                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed AND attribute_not_exists(permanentDeletionReservationId)",
                     ExpressionAttributeValues: {
                       ":active": {
                         capturedAt: original.capturedAt,
@@ -555,6 +701,9 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      ...(currentTrashed && typeof item.deletedAt === "string"
+                        ? { deletedAt: item.deletedAt, ...expiredTrashAttributes(userId, photoId, item.deletedAt) }
+                        : {}),
                     },
                   },
                 },
@@ -598,9 +747,9 @@ export const createDynamoDbPersonalAlbumStore = ({
                 ":code": reasonCode,
                 ...(attemptId !== undefined ? { ":attemptId": attemptId } : {}),
               },
-              ...(attemptId !== undefined
-                ? { ConditionExpression: "processingAttemptId = :attemptId" }
-                : {}),
+              ConditionExpression: attemptId !== undefined
+                ? "processingAttemptId = :attemptId AND attribute_not_exists(permanentDeletionReservationId)"
+                : "attribute_not_exists(permanentDeletionReservationId)",
             },
           },
         ];
@@ -800,7 +949,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               Key: photoKey(userId, photoId),
               UpdateExpression:
                 "SET processingState = :processing, processingAttemptId = :attemptId, processingStartedAt = :startedAt",
-              ConditionExpression: "attribute_not_exists(processingAttemptId)",
+              ConditionExpression: "attribute_not_exists(processingAttemptId) AND attribute_not_exists(permanentDeletionReservationId)",
               ExpressionAttributeValues: {
                 ":processing": "processing",
                 ":attemptId": attemptId,
@@ -821,7 +970,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               TableName: tableName,
               Key: photoKey(userId, photoId),
               UpdateExpression: "SET processingState = :processing",
-              ConditionExpression: "processingAttemptId = :attemptId",
+              ConditionExpression: "processingAttemptId = :attemptId AND attribute_not_exists(permanentDeletionReservationId)",
               ExpressionAttributeValues: { ":processing": "processing", ":attemptId": attemptId },
             }),
           );
@@ -964,7 +1113,7 @@ const updatePhoto = async (
   tableName: string,
   userId: string,
   photoId: string,
-  input: Pick<UpdateCommand["input"], "UpdateExpression" | "ExpressionAttributeNames" | "ExpressionAttributeValues">,
+  input: Pick<UpdateCommand["input"], "UpdateExpression" | "ConditionExpression" | "ExpressionAttributeNames" | "ExpressionAttributeValues">,
 ) => {
   await documentClient.send(
     new UpdateCommand({ TableName: tableName, Key: photoKey(userId, photoId), ...input }),

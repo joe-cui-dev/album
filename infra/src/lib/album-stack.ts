@@ -13,6 +13,8 @@ import {
 } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { CfnBudget } from "aws-cdk-lib/aws-budgets";
+import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import {
   Alarm,
@@ -29,7 +31,7 @@ import {
 } from "aws-cdk-lib/aws-cloudfront";
 import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
-import { AttributeType, BillingMode, Table } from "aws-cdk-lib/aws-dynamodb";
+import { AttributeType, BillingMode, ProjectionType, Table } from "aws-cdk-lib/aws-dynamodb";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -224,6 +226,13 @@ export class AlbumStack extends Stack {
       },
       timeToLiveAttribute: "expiresAt",
       removalPolicy: RemovalPolicy.RETAIN,
+    });
+    metadataTable.addGlobalSecondaryIndex({
+      indexName: "ExpiredTrashIndex",
+      partitionKey: { name: "sweepKey", type: AttributeType.STRING },
+      sortKey: { name: "sweepSortKey", type: AttributeType.STRING },
+      projectionType: ProjectionType.INCLUDE,
+      nonKeyAttributes: ["userId", "photoId"],
     });
 
     const processingDlq = new Queue(this, "PhotoProcessingDlq", {
@@ -578,6 +587,45 @@ export class AlbumStack extends Stack {
       },
     );
 
+    const trashSweeper = new NodejsFunction(this, "TrashSweeperHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "trash-sweeper.ts"),
+      handler: "handler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 1,
+      timeout: Duration.minutes(5),
+      logGroup: new LogGroup(this, "TrashSweeperLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+    new Rule(this, "DailyTrashSweep", {
+      schedule: Schedule.rate(Duration.days(1)),
+      targets: [new LambdaFunction(trashSweeper)],
+    });
+
+    const permanentDeletion = new NodejsFunction(this, "PermanentDeletionHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "permanent-deletion.ts"),
+      handler: "permanentDeletionHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "PermanentDeletionLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
+    const emptyTrash = new NodejsFunction(this, "EmptyTrashHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join("..", "apps", "api", "src", "handlers", "empty-trash.ts"),
+      handler: "emptyTrashHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 2,
+      timeout: Duration.minutes(5),
+      logGroup: new LogGroup(this, "EmptyTrashLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
     const session = new NodejsFunction(this, "SessionHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "session.ts"),
@@ -663,6 +711,9 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(viewerBootstrap);
     photosBucket.grantRead(timelinePhotos);
     photosBucket.grantRead(trashPhotos);
+    photosBucket.grantDelete(trashSweeper);
+    photosBucket.grantDelete(permanentDeletion);
+    photosBucket.grantDelete(emptyTrash);
     photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
@@ -679,6 +730,9 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadWriteData(revertCapturedAt);
     metadataTable.grantReadWriteData(trashMembership);
     metadataTable.grantReadWriteData(restoreMembership);
+    metadataTable.grantReadWriteData(trashSweeper);
+    metadataTable.grantReadWriteData(permanentDeletion);
+    metadataTable.grantReadWriteData(emptyTrash);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
     processingQueue.grantSendMessages(retryProcessing);
@@ -943,6 +997,18 @@ export class AlbumStack extends Stack {
         "TrashMembershipIntegration",
         trashMembership,
       ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration("PermanentDeletionIntegration", permanentDeletion),
+    });
+
+    api.addRoutes({
+      path: "/trash",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration("EmptyTrashIntegration", emptyTrash),
     });
 
     api.addRoutes({
