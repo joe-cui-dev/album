@@ -206,6 +206,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             userId,
             processingState: "uploadRequested",
             trashed: false,
+            favourite: false,
           });
         },
         async createUploadBatch(input) {
@@ -258,6 +259,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: input.fileName,
             displayDimensions: input.displayDimensions,
             timelineThumbnails: input.timelineThumbnails,
+            favourite: false,
           });
           incrementDateIndex(userId, "active", input.originalCapturedAt, 1);
 
@@ -305,6 +307,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            favourite: candidate.favourite,
             ...(deletedAt ? { deletedAt } : {}),
           });
           incrementDateIndex(userId, fromCollection, capturedAt, -1);
@@ -312,6 +315,26 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           candidate.trashed = trashed;
           if (deletedAt) candidate.deletedAt = deletedAt;
           else delete candidate.deletedAt;
+        },
+
+        async setFavourite({ photoId, favourite }) {
+          const candidate = requirePhoto(userId, photoId);
+          const { chronology, addedAt } = requireReadyPhoto(candidate);
+          if (candidate.favourite === favourite) {
+            return;
+          }
+          if (candidate.permanentDeletionReservationId) {
+            throw new ConcurrentPhotoModificationError(photoId);
+          }
+
+          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
+          const projection = projectionsOf(userId).get(
+            timelineProjectionSortKey({ collection, capturedAt: chronology.active.capturedAt, addedAt, photoId }),
+          );
+          if (projection) {
+            projection.favourite = favourite;
+          }
+          candidate.favourite = favourite;
         },
 
         async reservePermanentDeletion({ photo: expected, reservationId }) {
@@ -378,6 +401,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            favourite: candidate.favourite,
             ...(candidate.trashed && candidate.deletedAt ? { deletedAt: candidate.deletedAt } : {}),
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);
@@ -414,6 +438,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            favourite: candidate.favourite,
             ...(candidate.trashed && candidate.deletedAt ? { deletedAt: candidate.deletedAt } : {}),
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);

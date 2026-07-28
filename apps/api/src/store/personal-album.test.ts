@@ -227,6 +227,66 @@ describe("PersonalAlbum contract: setTrashMembership", () => {
   });
 });
 
+describe("PersonalAlbum contract: setFavourite", () => {
+  it("marks a Ready Photo as Favourite and carries the mark onto its Timeline projection", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(true);
+    expect(await album.getTimelineProjections("active")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: true }),
+    ]);
+  });
+
+  it("is idempotent when the Photo already has the target Favourite state", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await album.setFavourite({ photoId: "photo-1", favourite: false });
+
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(false);
+  });
+
+  it("unmarks a Favourite Photo", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.setFavourite({ photoId: "photo-1", favourite: false });
+
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(false);
+    expect(await album.getTimelineProjections("active")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: false }),
+    ]);
+  });
+
+  it("carries the Favourite mark across a Trash/Restore move", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
+
+    expect(await album.getTimelineProjections("trashed")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: true }),
+    ]);
+  });
+
+  it("carries the Favourite mark across an Adjust Captured At move", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    expect(await album.getTimelineProjections("active")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", capturedAt: july04, favourite: true }),
+    ]);
+  });
+});
+
 describe("PersonalAlbum contract: replaceActiveChronology (Adjust Captured At)", () => {
   it("moves the projection and Date Index count to the new period and bumps the revision", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");

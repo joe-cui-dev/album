@@ -587,6 +587,50 @@ export class AlbumStack extends Stack {
       },
     );
 
+    const favouriteMembership = new NodejsFunction(
+      this,
+      "FavouriteMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "favourite-membership.ts",
+        ),
+        handler: "favouriteMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "FavouriteMembershipLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
+    const unfavouriteMembership = new NodejsFunction(
+      this,
+      "UnfavouriteMembershipHandler",
+      {
+        runtime: Runtime.NODEJS_22_X,
+        entry: join(
+          "..",
+          "apps",
+          "api",
+          "src",
+          "handlers",
+          "favourite-membership.ts",
+        ),
+        handler: "unfavouriteMembershipHandler",
+        environment: commonEnvironment,
+        reservedConcurrentExecutions: 5,
+        logGroup: new LogGroup(this, "UnfavouriteMembershipLogGroup", {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+      },
+    );
+
     const trashSweeper = new NodejsFunction(this, "TrashSweeperHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join("..", "apps", "api", "src", "handlers", "trash-sweeper.ts"),
@@ -730,6 +774,8 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadWriteData(revertCapturedAt);
     metadataTable.grantReadWriteData(trashMembership);
     metadataTable.grantReadWriteData(restoreMembership);
+    metadataTable.grantReadWriteData(favouriteMembership);
+    metadataTable.grantReadWriteData(unfavouriteMembership);
     metadataTable.grantReadWriteData(trashSweeper);
     metadataTable.grantReadWriteData(permanentDeletion);
     metadataTable.grantReadWriteData(emptyTrash);
@@ -1017,6 +1063,24 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "RestoreMembershipIntegration",
         restoreMembership,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/favourite",
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration(
+        "FavouriteMembershipIntegration",
+        favouriteMembership,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/photos/{photoId}/favourite",
+      methods: [HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        "UnfavouriteMembershipIntegration",
+        unfavouriteMembership,
       ),
     });
 

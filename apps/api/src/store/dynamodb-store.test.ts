@@ -234,6 +234,74 @@ describe("DynamoDbPersonalAlbumStore commands: setTrashMembership", () => {
   });
 });
 
+describe("DynamoDbPersonalAlbumStore commands: setFavourite", () => {
+  const readyPhotoItem = (overrides: Record<string, unknown> = {}) => ({
+    processingState: "ready",
+    trashed: false,
+    favourite: false,
+    uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    fileName: "photo-1.jpg",
+    displayDimensions: { width: 100, height: 50 },
+    timelineThumbnails: thumbnails,
+    chronology: {
+      original: { capturedAt: june15, source: "exif" },
+      active: { capturedAt: june15, source: "exif", revision: 0 },
+    },
+    ...overrides,
+  });
+
+  it("marks the Photo and its Timeline projection row in one transaction", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem());
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
+    const items = transact.input.TransactItems ?? [];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.Update).toEqual(
+      expect.objectContaining({
+        Key: { pk: "USER#user-1", sk: "PHOTO#photo-1" },
+        UpdateExpression: "SET favourite = :favourite",
+        ConditionExpression:
+          "favourite = :currentFavourite AND trashed = :currentTrashed AND chronology.active.revision = :currentRevision AND attribute_not_exists(permanentDeletionReservationId)",
+        ExpressionAttributeValues: { ":favourite": true, ":currentFavourite": false, ":currentTrashed": false, ":currentRevision": 0 },
+      }),
+    );
+    expect(items[1]?.Update).toEqual(
+      expect.objectContaining({
+        Key: { pk: "USER#user-1", sk: "TIMELINE#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1" },
+        UpdateExpression: "SET favourite = :favourite",
+        ExpressionAttributeValues: { ":favourite": true },
+      }),
+    );
+  });
+
+  it("is a no-op when the Photo already has the target Favourite state", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem({ favourite: true }));
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    expect(commands.some((command) => command instanceof TransactWriteCommand)).toBe(false);
+  });
+
+  it("throws ConcurrentPhotoModificationError when a concurrent write cancels the transaction", async () => {
+    const { documentClient } = fakeClientThatCancelsTransactions(readyPhotoItem());
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await expect(
+      album.setFavourite({ photoId: "photo-1", favourite: true }),
+    ).rejects.toBeInstanceOf(ConcurrentPhotoModificationError);
+  });
+});
+
 describe("DynamoDbPersonalAlbumStore reads: expired Trash", () => {
   it("queries the sparse cross-User index through the retention cutoff", async () => {
     const { documentClient, commands } = queryClient([{ userId: "user-2", photoId: "expired" }]);

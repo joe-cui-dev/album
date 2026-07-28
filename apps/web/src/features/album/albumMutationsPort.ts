@@ -1,5 +1,6 @@
 import type {
   TrashMembershipResponse,
+  FavouriteMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
   RetryProcessingResponse,
 } from "@album/shared";
@@ -17,6 +18,12 @@ export interface AlbumMutationsPort {
     signal: AbortSignal;
   }): Promise<TrashMembershipResponse>;
 
+  setFavourite(input: {
+    photoId: string;
+    favourite: boolean;
+    signal: AbortSignal;
+  }): Promise<FavouriteMembershipResponse>;
+
   retryProcessing(input: { photoId: string; signal: AbortSignal }): Promise<RetryProcessingResponse>;
 
   presignOriginalDownload(input: {
@@ -31,6 +38,12 @@ export const createHttpAlbumMutationsPort = (): AlbumMutationsPort => ({
   setTrashMembership: ({ photoId, trashed, signal }) =>
     albumTransport.request(`/photos/${photoId}/trash`, {
       method: trashed ? "PUT" : "DELETE",
+      signal,
+    }),
+
+  setFavourite: ({ photoId, favourite, signal }) =>
+    albumTransport.request(`/photos/${photoId}/favourite`, {
+      method: favourite ? "PUT" : "DELETE",
       signal,
     }),
 

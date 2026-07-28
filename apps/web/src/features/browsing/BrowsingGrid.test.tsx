@@ -24,6 +24,7 @@ const photo = (photoId: string, overrides: Partial<TimelinePhoto> = {}): Timelin
   timelineThumbnailSources: {
     large: { url: `https://example.invalid/${photoId}-large.jpg`, dimensions: { width: 640, height: 320 } },
   },
+  favourite: false,
   ...overrides,
 });
 
@@ -57,6 +58,23 @@ describe("BrowsingGrid", () => {
     expect(await screen.findByRole("heading", { name: /July 2024/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /a\.jpg/ })).toHaveAttribute("href", "/album/photos/a");
     expect(screen.getByRole("link", { name: /b\.jpg/ })).toHaveAttribute("href", "/album/photos/b");
+  });
+
+  it("marks a Favourite Photo's thumbnail accessibly, without marking a non-Favourite one", async () => {
+    test = createTestAlbumBrowsingPort();
+    browsingWindow = createActiveWindow(test.port);
+
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />,
+    );
+
+    test.resolveNextLoad({
+      photos: [photo("a", { favourite: true }), photo("b")],
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+
+    expect(await screen.findByRole("link", { name: /a\.jpg.*Favourite/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^b\.jpg/ })).toBeInTheDocument();
   });
 
   it("shows the empty state once loading finishes with no Photos", async () => {

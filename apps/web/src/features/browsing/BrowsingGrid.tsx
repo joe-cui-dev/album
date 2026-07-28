@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { defaultRangeExtractor, useWindowVirtualizer, type Range } from "@tanstack/react-virtual";
+import { Heart } from "lucide-react";
 import { Link, useLocation, useViewTransitionState } from "react-router";
 import type { PhotoCollection } from "@album/shared";
 import { formatCapturedAt, photoLinkName } from "../../lib/capturedAtFormat.js";
@@ -384,9 +385,12 @@ function PhotoLink({
   to: string;
 }) {
   const isOpeningViewer = useViewTransitionState(to);
+  const accessibleName = cell.favourite
+    ? `${photoLinkName(cell.fileName, cell.capturedAt)}, Favourite`
+    : photoLinkName(cell.fileName, cell.capturedAt);
   return (
     <Link
-      aria-label={photoLinkName(cell.fileName, cell.capturedAt)}
+      aria-label={accessibleName}
       className="timeline-photo-link"
       state={{
         background: location,
@@ -414,6 +418,9 @@ function PhotoLink({
           <span aria-hidden="true" className="block h-full w-full bg-table-glow" style={{ height, width: cell.width }} />
         )}
       </span>
+      {cell.favourite ? (
+        <Heart aria-hidden="true" className="absolute right-1 top-1 h-4 w-4 fill-danger text-danger drop-shadow" />
+      ) : null}
       <span aria-hidden="true" className="timeline-photo-overlay">
         {formatCapturedAt(cell.capturedAt, "compact")}
       </span>

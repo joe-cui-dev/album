@@ -50,6 +50,7 @@ describe("handleViewerBootstrap", () => {
     await readyPhoto(album, "jan", day("2024-01-01"));
     await readyPhoto(album, "jun", day("2024-06-15"));
     await readyPhoto(album, "dec", day("2024-12-31"));
+    await album.setFavourite({ photoId: "jun", favourite: true });
 
     const response = await handleViewerBootstrap({
       user,
@@ -64,6 +65,7 @@ describe("handleViewerBootstrap", () => {
     expect(body.photoId).toBe("jun");
     expect(body.collection).toBe("active");
     expect(body.trashed).toBe(false);
+    expect(body.favourite).toBe(true);
     expect(body.newerPhotoId).toBe("dec");
     expect(body.olderPhotoId).toBe("jan");
     expect(body.chronology.active.revision).toBe(0);

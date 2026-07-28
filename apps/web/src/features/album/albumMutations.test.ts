@@ -199,6 +199,38 @@ describe("createAlbumMutations", () => {
     expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "failure" });
   });
 
+  it("setFavourite applies an optimistic override immediately, before the request resolves", () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+
+    expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(true);
+    expect(test.setFavouriteCalls).toEqual([{ photoId: "photo-1", favourite: true }]);
+    expect(mutations.getSnapshot().feedback).toBeUndefined();
+  });
+
+  it("setFavourite keeps the optimistic override on success, without publishing feedback", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+
+    test.resolveNextSetFavourite({ photoId: "photo-1", favourite: true });
+    await flush();
+
+    expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(true);
+    expect(mutations.getSnapshot().feedback).toBeUndefined();
+  });
+
+  it("setFavourite reverts the optimistic override and publishes a retryable failure", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+
+    test.rejectNextSetFavourite(new Error("boom"));
+    await flush();
+
+    expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(false);
+    expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "failure", action: { label: "Retry" } });
+  });
+
   it("dispose aborts in-flight requests and becomes a no-op for further intents", async () => {
     mutations = createAlbumMutations({ port: test.port, registry });
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });

@@ -76,6 +76,7 @@ export const handleViewerBootstrap = async ({
       displayDimensions: resolvedPhoto.displayDimensions!,
       chronology: resolvedPhoto.chronology!,
       trashed: resolvedPhoto.trashed,
+      favourite: resolvedPhoto.favourite,
       collection,
       displayAccess: {
         url: displayAccess.url,

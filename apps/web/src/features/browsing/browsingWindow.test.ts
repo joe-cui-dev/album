@@ -16,6 +16,7 @@ const photo = (photoId: string, overrides: Partial<TimelinePhoto> = {}): Timelin
   timelineThumbnailSources: {
     large: { url: `https://example.invalid/${photoId}-large.jpg`, dimensions: { width: 640, height: 320 } },
   },
+  favourite: false,
   ...overrides,
 });
 

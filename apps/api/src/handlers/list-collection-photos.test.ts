@@ -73,6 +73,24 @@ describe("handleListCollectionPhotos", () => {
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("carries the Favourite mark onto its Timeline entry", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await createReadyPhoto(album, "jan", day("2024-01-01"));
+    await album.setFavourite({ photoId: "jan", favourite: true });
+
+    const response = await handleListCollectionPhotos({
+      user,
+      album,
+      collection: "active",
+      query: {},
+      deps: deps(),
+    });
+
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.photos[0].favourite).toBe(true);
+  });
+
   it("omits expiresAt when the page is empty", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");

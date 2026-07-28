@@ -15,6 +15,7 @@ const bootstrap = (photoId: string, overrides: Partial<ViewerBootstrapResponse> 
     active: { capturedAt: { precision: "day", localDate: "2024-06-15" }, source: "exif", revision: 1 },
   },
   trashed: false,
+  favourite: false,
   collection: "active",
   displayAccess: { url: `https://example.invalid/${photoId}.jpg`, expiresAt: "2030-01-01T00:00:00.000Z" },
   ...overrides,

@@ -112,6 +112,8 @@ export interface Photo {
   duplicateOfPhotoId?: string;
   trashed: boolean;
   deletedAt?: string;
+  /** A mark on the Photo, orthogonal to its collection (ADR-0077); does not move it out of the Timeline. */
+  favourite: boolean;
   /** Internal lease that prevents a Restore while Permanent Deletion removes objects. */
   permanentDeletionReservationId?: string;
   metadata?: PhotoMetadata;
@@ -274,6 +276,11 @@ export interface TrashMembershipResponse {
   trashed: boolean;
 }
 
+export interface FavouriteMembershipResponse {
+  photoId: string;
+  favourite: boolean;
+}
+
 export interface CapturedAtAdjustmentRequest {
   capturedAt: CapturedAt;
 }
@@ -305,6 +312,7 @@ export interface TimelinePhoto {
   displayDimensions: Dimensions;
   timelineThumbnailSources: TimelineThumbnailSources;
   deletedAt?: string;
+  favourite: boolean;
 }
 
 export interface AnchorPeriod {
@@ -373,6 +381,7 @@ export interface ViewerBootstrapResponse {
   /** Original and active Captured At, source, and active chronology revision. */
   chronology: PhotoChronology;
   trashed: boolean;
+  favourite: boolean;
   /** The resolved Viewer Sequence collection: where this Photo actually lives right now. */
   collection: PhotoCollection;
   displayAccess: { url: string; expiresAt: string };

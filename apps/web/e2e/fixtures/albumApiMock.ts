@@ -3,6 +3,7 @@ import type {
   AlbumNavigationResponse,
   AlbumNavigationYear,
   TrashMembershipResponse,
+  FavouriteMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
   CreateUploadBatchResponse,
   GetProcessingIssuesSummaryResponse,
@@ -84,6 +85,7 @@ export const buildPhoto = (overrides: Partial<TimelinePhoto> = {}): TimelinePhot
     timelineThumbnailSources: overrides.timelineThumbnailSources ?? {
       large: { url: TRANSPARENT_PIXEL, dimensions: { width: 640, height: 480 } },
     },
+    favourite: overrides.favourite ?? false,
   };
 };
 
@@ -108,6 +110,7 @@ export const buildViewerBootstrap = (
     active: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif", revision: 1 },
   },
   trashed: false,
+  favourite: false,
   collection: "active",
   displayAccess: { url: TRANSPARENT_PIXEL, expiresAt: FAR_FUTURE_EXPIRY },
   ...overrides,
@@ -126,7 +129,7 @@ export const thumbnailAccessResponse = (
 });
 
 const photoIdFromTrashPath = (url: string): string => {
-  const match = /\/photos\/([^/]+)\/(?:trash|original-download|retry-processing)$/.exec(new URL(url).pathname);
+  const match = /\/photos\/([^/]+)\/(?:trash|favourite|original-download|retry-processing)$/.exec(new URL(url).pathname);
   return match?.[1] ?? "unknown";
 };
 
@@ -286,6 +289,12 @@ export class AlbumApiMock {
   readonly restoreMembership = new EndpointQueue((route, request) =>
     respondJson(route, { photoId: photoIdFromTrashPath(request.url()), trashed: false } satisfies TrashMembershipResponse),
   );
+  readonly favouriteMembership = new EndpointQueue((route, request) =>
+    respondJson(route, { photoId: photoIdFromTrashPath(request.url()), favourite: true } satisfies FavouriteMembershipResponse),
+  );
+  readonly unfavouriteMembership = new EndpointQueue((route, request) =>
+    respondJson(route, { photoId: photoIdFromTrashPath(request.url()), favourite: false } satisfies FavouriteMembershipResponse),
+  );
   readonly permanentDeletion = new EndpointQueue((route) => respondNoContent(route));
   readonly emptyTrash = new EndpointQueue((route) => respondNoContent(route));
   readonly originalDownload = new EndpointQueue((route) =>
@@ -369,6 +378,12 @@ export class AlbumApiMock {
       }
       if (/^\/photos\/[^/]+\/trash$/.test(url.pathname) && method === "DELETE") {
         return this.restoreMembership.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/favourite$/.test(url.pathname) && method === "PUT") {
+        return this.favouriteMembership.handle(route, request);
+      }
+      if (/^\/photos\/[^/]+\/favourite$/.test(url.pathname) && method === "DELETE") {
+        return this.unfavouriteMembership.handle(route, request);
       }
       if (/^\/photos\/[^/]+$/.test(url.pathname) && method === "DELETE") {
         return this.permanentDeletion.handle(route, request);

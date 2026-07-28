@@ -23,6 +23,8 @@ export interface AlbumMutationsSnapshot {
   trashRevision: number;
   /** Photo ids with an Original Download presign currently in flight ("Preparing download…"). */
   downloadsInFlight: ReadonlySet<string>;
+  /** Optimistic Favourite state keyed by photoId, overriding server-loaded state until a failure reverts it. */
+  favouriteOverrides: ReadonlyMap<string, boolean>;
 }
 
 export interface AlbumMutationsIntents {
@@ -32,6 +34,8 @@ export interface AlbumMutationsIntents {
   downloadOriginal(input: { photoId: string; fileName: string }): void;
   /** Shell-level chronology intent used by the Viewer after a successful Adjust or Revert. */
   chronologyChanged(input: { photoId: string; collection: PhotoCollection }): void;
+  /** Marks or unmarks a Ready Photo as a Favourite Photo (ADR-0077); does not move it out of the Timeline. */
+  setFavourite(input: { photoId: string; favourite: boolean }): void;
   permanentlyDeletePhoto(photoId: string): void;
   /** Abandon Photo: Permanent Deletion of a Processing Failed Photo, which never entered a Browsing Window. */
   abandonPhoto(photoId: string): void;
@@ -71,6 +75,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
   let navigationRevision = 0;
   let trashRevision = 0;
   const downloadsInFlight = new Set<string>();
+  const favouriteOverrides = new Map<string, boolean>();
 
   let cachedSnapshot: AlbumMutationsSnapshot | undefined;
 
@@ -156,6 +161,35 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
         action: {
           label: "Retry",
           onInvoke: () => void runMembershipChange(photoId, fromCollection, registryOp),
+        },
+      });
+    } finally {
+      inFlightControllers.delete(controller);
+    }
+  };
+
+  const runSetFavourite = async (photoId: string, favourite: boolean): Promise<void> => {
+    if (disposed) {
+      return;
+    }
+    favouriteOverrides.set(photoId, favourite);
+    notify();
+
+    const controller = new AbortController();
+    inFlightControllers.add(controller);
+    try {
+      await port.setFavourite({ photoId, favourite, signal: controller.signal });
+    } catch (error) {
+      if (disposed || isCancelled(error)) {
+        return;
+      }
+      favouriteOverrides.set(photoId, !favourite);
+      publishFeedback({
+        kind: "failure",
+        message: favourite ? "Couldn't favourite this Photo — try again" : "Couldn't unfavourite this Photo — try again",
+        action: {
+          label: "Retry",
+          onInvoke: () => void runSetFavourite(photoId, favourite),
         },
       });
     } finally {
@@ -307,6 +341,9 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
       navigationRevision += 1;
       notify();
     },
+    setFavourite: ({ photoId, favourite }) => {
+      void runSetFavourite(photoId, favourite);
+    },
     permanentlyDeletePhoto: (photoId) => {
       void runPermanentDeletion(photoId);
     },
@@ -334,6 +371,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
           navigationRevision,
           trashRevision,
           downloadsInFlight,
+          favouriteOverrides,
         };
       }
       return cachedSnapshot;

@@ -36,6 +36,7 @@ export interface TimelineProjection {
   displayDimensions: Dimensions;
   timelineThumbnails: TimelineThumbnails;
   deletedAt?: string;
+  favourite: boolean;
 }
 
 export interface DateIndexPeriodCounts {
@@ -120,6 +121,13 @@ export interface PersonalAlbum {
    * target collection is left unchanged (idempotent membership).
    */
   setTrashMembership(input: { photoId: string; trashed: boolean }): Promise<void>;
+
+  /**
+   * Marks or unmarks a Ready Photo as a Favourite Photo (ADR-0077): an
+   * orthogonal Photo attribute, carried onto its Timeline/Trash projection
+   * row, that never moves or duplicates the projection. Idempotent.
+   */
+  setFavourite(input: { photoId: string; favourite: boolean }): Promise<void>;
 
   /** Blocks conflicting mutations; a later retry may take over an interrupted reservation. */
   reservePermanentDeletion(input: { photo: Photo; reservationId: string }): Promise<boolean>;

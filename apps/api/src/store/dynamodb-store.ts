@@ -95,6 +95,7 @@ const readReadyPhoto = async (
   chronology: PhotoChronology;
   addedAt: string;
   currentTrashed: boolean;
+  currentFavourite: boolean;
 }> => {
   const result = await documentClient.send(
     new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
@@ -114,6 +115,7 @@ const readReadyPhoto = async (
     chronology: item.chronology as PhotoChronology,
     addedAt: item.uploadRequestedAt,
     currentTrashed: Boolean(item.trashed),
+    currentFavourite: Boolean(item.favourite),
   };
 };
 
@@ -241,6 +243,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               userId,
               processingState: "uploadRequested",
               trashed: false,
+              favourite: false,
             },
           }),
         );
@@ -320,6 +323,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                 fileName: input.fileName,
                 displayDimensions: input.displayDimensions,
                 timelineThumbnails: input.timelineThumbnails,
+                favourite: false,
               },
             },
           },
@@ -375,7 +379,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async setTrashMembership({ photoId, trashed }) {
-        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -429,12 +433,66 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      favourite: currentFavourite,
                       ...(deletedAt ? { deletedAt, ...expiredTrashAttributes(userId, photoId, deletedAt) } : {}),
                     },
                   },
                 },
                 dateIndexIncrementItem(tableName, userId, fromCollection, capturedAt, -1),
                 dateIndexIncrementItem(tableName, userId, toCollection, capturedAt, 1),
+              ],
+            }),
+          );
+        } catch (error) {
+          if (isTransactionCanceled(error)) {
+            throw new ConcurrentPhotoModificationError(photoId);
+          }
+          throw error;
+        }
+      },
+
+      async setFavourite({ photoId, favourite }) {
+        const { chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
+          documentClient,
+          tableName,
+          userId,
+          photoId,
+        );
+        if (currentFavourite === favourite) {
+          return;
+        }
+
+        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
+        const capturedAt = chronology.active.capturedAt;
+        const currentRevision = chronology.active.revision;
+
+        try {
+          await documentClient.send(
+            new TransactWriteCommand({
+              TransactItems: [
+                {
+                  Update: {
+                    TableName: tableName,
+                    Key: photoKey(userId, photoId),
+                    UpdateExpression: "SET favourite = :favourite",
+                    ConditionExpression:
+                      "favourite = :currentFavourite AND trashed = :currentTrashed AND chronology.active.revision = :currentRevision AND attribute_not_exists(permanentDeletionReservationId)",
+                    ExpressionAttributeValues: {
+                      ":favourite": favourite,
+                      ":currentFavourite": currentFavourite,
+                      ":currentTrashed": currentTrashed,
+                      ":currentRevision": currentRevision,
+                    },
+                  },
+                },
+                {
+                  Update: {
+                    TableName: tableName,
+                    Key: projectionKey(userId, { collection, capturedAt, addedAt, photoId }),
+                    UpdateExpression: "SET favourite = :favourite",
+                    ExpressionAttributeValues: { ":favourite": favourite },
+                  },
+                },
               ],
             }),
           );
@@ -552,7 +610,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
-        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -613,6 +671,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      favourite: currentFavourite,
                       ...(currentTrashed && typeof item.deletedAt === "string"
                         ? { deletedAt: item.deletedAt, ...expiredTrashAttributes(userId, photoId, item.deletedAt) }
                         : {}),
@@ -635,7 +694,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async revertActiveChronology({ photoId, expectedRevision }) {
-        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -701,6 +760,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      favourite: currentFavourite,
                       ...(currentTrashed && typeof item.deletedAt === "string"
                         ? { deletedAt: item.deletedAt, ...expiredTrashAttributes(userId, photoId, item.deletedAt) }
                         : {}),
@@ -1106,6 +1166,7 @@ const toTimelineProjection = (
     fileName: item.fileName,
     displayDimensions: item.displayDimensions,
     timelineThumbnails: item.timelineThumbnails,
+    favourite: Boolean(item.favourite),
   }) as TimelineProjection;
 
 const updatePhoto = async (
@@ -1159,6 +1220,7 @@ export const asPhoto = (item: Record<string, unknown> | undefined): Photo | unde
     typeof item.fileSizeBytes !== "number" ||
     !isProcessingState(item.processingState) ||
     typeof item.trashed !== "boolean" ||
+    typeof item.favourite !== "boolean" ||
     typeof item.uploadLocalDateTime !== "string" ||
     typeof item.uploadContextTimeZone !== "string"
   ) {

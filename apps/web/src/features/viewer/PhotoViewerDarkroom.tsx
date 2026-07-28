@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { ChevronLeft, ChevronRight, Info, MoreVertical, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, Info, MoreVertical, X } from "lucide-react";
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
 import { trapTab } from "../../lib/focusTrap.js";
 import { capturedAtSourceLabel } from "../../lib/capturedAtSource.js";
@@ -200,6 +200,16 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
   };
 
   const downloadInFlight = bootstrap ? mutationsSnapshot.downloadsInFlight.has(bootstrap.photoId) : false;
+  const favourite = bootstrap
+    ? (mutationsSnapshot.favouriteOverrides.get(bootstrap.photoId) ?? bootstrap.favourite)
+    : false;
+
+  const handleToggleFavourite = (): void => {
+    if (!bootstrap) {
+      return;
+    }
+    mutations.intents.setFavourite({ photoId: bootstrap.photoId, favourite: !favourite });
+  };
 
   return (
     <div
@@ -244,6 +254,17 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
           >
             <Info aria-hidden="true" className="h-5 w-5" />
           </button>
+          {bootstrap ? (
+            <button
+              aria-label={favourite ? "Unfavourite" : "Favourite"}
+              aria-pressed={favourite}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+              onClick={handleToggleFavourite}
+              type="button"
+            >
+              <Heart aria-hidden="true" className={`h-5 w-5 ${favourite ? "fill-danger text-danger" : ""}`} />
+            </button>
+          ) : null}
           {bootstrap ? (
             <div className="relative">
               <button

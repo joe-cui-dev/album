@@ -150,6 +150,7 @@ const toTimelinePhoto = async (
         small: { url: small.url, dimensions: projection.timelineThumbnails.small.dimensions },
         large: { url: large.url, dimensions: projection.timelineThumbnails.large.dimensions },
       }),
+      favourite: projection.favourite,
       ...(projection.deletedAt ? { deletedAt: projection.deletedAt } : {}),
     },
     expiresInSeconds: Math.min(small.expiresInSeconds, large.expiresInSeconds),

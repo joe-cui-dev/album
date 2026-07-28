@@ -37,6 +37,7 @@ const onePhotoCollectionPage: ListCollectionPhotosResponse = {
       timelineThumbnailSources: {
         large: { url: "https://temporary.example/thumbnail.jpg", dimensions: { width: 640, height: 480 } },
       },
+      favourite: false,
     },
   ],
   // Far enough in the future that the Grid's mount-time renewal check is a no-op.
@@ -55,6 +56,7 @@ const viewerBootstrap: ViewerBootstrapResponse = {
     active: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif", revision: 1 },
   },
   trashed: false,
+  favourite: false,
   collection: "active",
   displayAccess: { url: "https://temporary.example/display.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
 };
