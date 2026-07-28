@@ -39,10 +39,10 @@ export const timelinePhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context
   }),
 );
 
-export const archivePhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+export const trashPhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
   handleListCollectionPhotos({
     ...context,
-    collection: "archived",
+    collection: "trashed",
     query: event.queryStringParameters ?? {},
     deps: { photoObjects: photoObjectStore },
   }),
@@ -150,6 +150,7 @@ const toTimelinePhoto = async (
         small: { url: small.url, dimensions: projection.timelineThumbnails.small.dimensions },
         large: { url: large.url, dimensions: projection.timelineThumbnails.large.dimensions },
       }),
+      ...(projection.deletedAt ? { deletedAt: projection.deletedAt } : {}),
     },
     expiresInSeconds: Math.min(small.expiresInSeconds, large.expiresInSeconds),
   };

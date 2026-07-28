@@ -14,7 +14,7 @@ const bootstrap = (photoId: string, overrides: Partial<ViewerBootstrapResponse> 
     original: { capturedAt: { precision: "day", localDate: "2024-06-15" }, source: "exif" },
     active: { capturedAt: { precision: "day", localDate: "2024-06-15" }, source: "exif", revision: 1 },
   },
-  archived: false,
+  trashed: false,
   collection: "active",
   displayAccess: { url: `https://example.invalid/${photoId}.jpg`, expiresAt: "2030-01-01T00:00:00.000Z" },
   ...overrides,
@@ -76,24 +76,24 @@ describe("createPhotoViewer", () => {
 
   it("carries the resolved collection forward into neighbour requests", async () => {
     viewer = createPhotoViewer({ photoId: "b", port: test.port });
-    test.resolveNextBootstrap(bootstrap("b", { collection: "archived", olderPhotoId: "c" }));
+    test.resolveNextBootstrap(bootstrap("b", { collection: "trashed", olderPhotoId: "c" }));
     await flush();
 
     viewer.intents.showNext();
-    expect(test.calls[1]).toEqual({ photoId: "c", collection: "archived" });
+    expect(test.calls[1]).toEqual({ photoId: "c", collection: "trashed" });
   });
 
   it("exposes the currently resolved collection without reaching into the snapshot's bootstrap", async () => {
     viewer = createPhotoViewer({ photoId: "b", port: test.port });
     expect(viewer.getCurrentCollection()).toBeUndefined();
 
-    test.resolveNextBootstrap(bootstrap("b", { collection: "archived" }));
+    test.resolveNextBootstrap(bootstrap("b", { collection: "trashed" }));
     await flush();
-    expect(viewer.getCurrentCollection()).toBe("archived");
+    expect(viewer.getCurrentCollection()).toBe("trashed");
   });
 
   it("surfaces a photo_collection_changed conflict distinctly from a generic load error", async () => {
-    viewer = createPhotoViewer({ photoId: "b", sourceCollection: "archived", port: test.port });
+    viewer = createPhotoViewer({ photoId: "b", sourceCollection: "trashed", port: test.port });
     test.rejectNextBootstrap(
       new AlbumTransportError("photo_collection_changed", "moved", { currentCollection: "active" }),
     );
@@ -105,7 +105,7 @@ describe("createPhotoViewer", () => {
   });
 
   it("switchToCurrentCollection re-requests with the conflict's current collection", async () => {
-    viewer = createPhotoViewer({ photoId: "b", sourceCollection: "archived", port: test.port });
+    viewer = createPhotoViewer({ photoId: "b", sourceCollection: "trashed", port: test.port });
     test.rejectNextBootstrap(
       new AlbumTransportError("photo_collection_changed", "moved", { currentCollection: "active" }),
     );
@@ -159,7 +159,7 @@ describe("createPhotoViewer", () => {
   it("clears the Sequence Position once a collection switch breaks its reliability", async () => {
     viewer = createPhotoViewer({
       photoId: "b",
-      sourceCollection: "archived",
+      sourceCollection: "trashed",
       port: test.port,
       initialSequencePosition: { index: 4, total: 10 },
     });

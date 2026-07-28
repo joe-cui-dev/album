@@ -5,7 +5,7 @@ import { albumTransport } from "../../lib/albumTransport.js";
 export interface CapturedAtEditorPort {
   adjust(input: { photoId: string; capturedAt: CapturedAt; revision: number; signal: AbortSignal }): Promise<CapturedAtAdjustmentResponse>;
   revert(input: { photoId: string; revision: number; signal: AbortSignal }): Promise<CapturedAtAdjustmentResponse>;
-  loadLatest(input: { photoId: string; collection: "active" | "archived"; signal: AbortSignal }): Promise<ViewerBootstrapResponse>;
+  loadLatest(input: { photoId: string; collection: "active" | "trashed"; signal: AbortSignal }): Promise<ViewerBootstrapResponse>;
 }
 
 export const createHttpCapturedAtEditorPort = (): CapturedAtEditorPort => ({

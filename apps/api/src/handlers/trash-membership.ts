@@ -2,35 +2,35 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type { ArchiveMembershipResponse } from "@album/shared";
+import type { TrashMembershipResponse } from "@album/shared";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
 import { badRequest, json, ok } from "../http.js";
 import { mapConcurrentModificationError } from "./mutation-errors.js";
 
-export const archiveMembershipHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
-  handleSetArchiveMembership({
+export const trashMembershipHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleSetTrashMembership({
     ...context,
     photoId: event.pathParameters?.photoId,
-    archived: true,
+    trashed: true,
   }),
 );
 
 export const restoreMembershipHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
-  handleSetArchiveMembership({
+  handleSetTrashMembership({
     ...context,
     photoId: event.pathParameters?.photoId,
-    archived: false,
+    trashed: false,
   }),
 );
 
-export const handleSetArchiveMembership = async ({
+export const handleSetTrashMembership = async ({
   album,
   photoId,
-  archived,
+  trashed,
 }: AuthedContext & {
   photoId: string | undefined;
-  archived: boolean;
+  trashed: boolean;
 }): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!photoId) {
     return badRequest("photoId is required");
@@ -45,10 +45,10 @@ export const handleSetArchiveMembership = async ({
   }
 
   try {
-    await album.setArchiveMembership({ photoId, archived });
+    await album.setTrashMembership({ photoId, trashed });
   } catch (error) {
     return mapConcurrentModificationError(error);
   }
 
-  return ok({ photoId, archived } satisfies ArchiveMembershipResponse);
+  return ok({ photoId, trashed } satisfies TrashMembershipResponse);
 };

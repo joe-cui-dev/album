@@ -1,5 +1,5 @@
 import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
-import { archiveMembershipHandler, restoreMembershipHandler } from "./handlers/archive-membership.js";
+import { trashMembershipHandler, restoreMembershipHandler } from "./handlers/trash-membership.js";
 import { adjustCapturedAtHandler, revertCapturedAtHandler } from "./handlers/captured-at-adjustment.js";
 import { handler as createUploadBatchHandler } from "./handlers/create-upload-batch.js";
 import { originalDownloadUrlHandler } from "./handlers/photo-actions.js";
@@ -17,8 +17,8 @@ import { handler as timelineThumbnailAccessHandler } from "./handlers/timeline-t
  * `createWithAuth`), the assertion below catches the regression.
  */
 const MUTATION_ROUTES: ReadonlyArray<{ name: string; method: string; handler: APIGatewayProxyHandlerV2; routeKey?: string }> = [
-  { name: "PUT /photos/{photoId}/archive", method: "PUT", handler: archiveMembershipHandler },
-  { name: "DELETE /photos/{photoId}/archive", method: "DELETE", handler: restoreMembershipHandler },
+  { name: "PUT /photos/{photoId}/trash", method: "PUT", handler: trashMembershipHandler },
+  { name: "DELETE /photos/{photoId}/trash", method: "DELETE", handler: restoreMembershipHandler },
   { name: "PUT /photos/{photoId}/captured-at-adjustment", method: "PUT", handler: adjustCapturedAtHandler },
   { name: "DELETE /photos/{photoId}/captured-at-adjustment", method: "DELETE", handler: revertCapturedAtHandler },
   { name: "POST /upload-batches", method: "POST", handler: createUploadBatchHandler },

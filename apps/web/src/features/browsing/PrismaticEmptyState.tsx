@@ -5,7 +5,7 @@ interface PrismaticEmptyStateProps {
   action?: ReactNode;
   description: string;
   title: string;
-  variant: "album" | "archive";
+  variant: "album" | "trash";
 }
 
 /** The Light Field's only expressive composition; its planes are purely decorative. */

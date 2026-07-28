@@ -143,7 +143,7 @@ interface AlbumRoutesProps {
 }
 
 /**
- * A contextual Photo Viewer keeps the originating Timeline/Archive route
+ * A contextual Photo Viewer keeps the originating Timeline/Trash route
  * mounted underneath it (ADR-0063): the background-aware `<Routes>` renders
  * at `state.background` while a second overlay `<Routes>` matches the real
  * location for the modal. A direct load or refresh carries no background
@@ -188,14 +188,14 @@ function AlbumRoutes({ registry, mutations, navCount, uploadTray }: AlbumRoutesP
           <Route
             element={
               <BrowsingPage
-                collection="archived"
-                emptyState={{ title: uiMessages.emptyArchive.title, description: uiMessages.emptyArchive.description }}
+                collection="trashed"
+                emptyState={{ title: uiMessages.emptyTrash.title, description: uiMessages.emptyTrash.description }}
                 mutations={mutations}
                 registry={registry}
-                title={uiMessages.archive}
+                title={uiMessages.trash}
               />
             }
-            path="archive"
+            path="trash"
           />
           <Route
             element={<ProcessingIssuesView mutations={mutations} navCount={navCount} />}

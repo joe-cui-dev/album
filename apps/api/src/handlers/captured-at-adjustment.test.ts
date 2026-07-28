@@ -154,9 +154,9 @@ describe("handleAdjustCapturedAt", () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it("applies to an Archived Photo", async () => {
+  it("applies to an Trashed Photo", async () => {
     const album = await readyAlbum();
-    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
 
     const response = await handleAdjustCapturedAt({
       user,
@@ -166,7 +166,7 @@ describe("handleAdjustCapturedAt", () => {
       body: JSON.stringify({ capturedAt: july04 }),
     });
     expect(response.statusCode).toBe(200);
-    await expect(album.getTimelineProjections("archived")).resolves.toEqual([
+    await expect(album.getTimelineProjections("trashed")).resolves.toEqual([
       expect.objectContaining({ photoId: "photo-1", capturedAt: july04 }),
     ]);
   });

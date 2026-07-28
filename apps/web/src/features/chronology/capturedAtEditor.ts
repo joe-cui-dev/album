@@ -71,7 +71,7 @@ const draftKey = (draft: CapturedAtDraft): string => JSON.stringify(draft);
 /** Deep state machine for complete date-and-time replacement and revert. */
 export const createCapturedAtEditor = (options: {
   photoId: string;
-  collection: "active" | "archived";
+  collection: "active" | "trashed";
   chronology: PhotoChronology;
   port: CapturedAtEditorPort;
   onSuccess(result: { kind: "adjust" | "revert"; capturedAt: CapturedAt; source: PhotoChronology["active"]["source"] }): void;

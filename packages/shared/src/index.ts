@@ -108,9 +108,10 @@ export interface Photo {
   fileModifiedAt?: string;
   processingState: ProcessingState;
   failureCode?: string;
-  /** Set when this Photo was identified as an Exact Duplicate of another; the matching Photo may since have been archived or removed. */
+  /** Set when this Photo was identified as an Exact Duplicate of another; the matching Photo may since have been deleted or removed. */
   duplicateOfPhotoId?: string;
-  archived: boolean;
+  trashed: boolean;
+  deletedAt?: string;
   metadata?: PhotoMetadata;
   displayDimensions?: {
     width: number;
@@ -215,7 +216,7 @@ export interface UploadBatchPhotoStatus {
   failureCode?: ProcessingIssueReasonCode;
   /** The "YYYY-MM" / "YYYY-unknown" navigation key for a Ready Photo, derived server-side from its active chronology. */
   timelineAnchor?: string;
-  /** Present when this Photo is an Exact Duplicate and the matching Photo has been identified; may be absent if that Photo has since been archived. */
+  /** Present when this Photo is an Exact Duplicate and the matching Photo has been identified; may be absent if that Photo has since been deleted. */
   duplicateOfPhotoId?: string;
 }
 
@@ -256,7 +257,7 @@ export interface PhotoDetail {
   format: PhotoFormat;
   fileSizeBytes: number;
   processingState: ProcessingState;
-  archived: boolean;
+  trashed: boolean;
   metadata?: PhotoMetadata;
   displayDimensions?: {
     width: number;
@@ -266,9 +267,9 @@ export interface PhotoDetail {
   chronology?: PhotoChronology;
 }
 
-export interface ArchiveMembershipResponse {
+export interface TrashMembershipResponse {
   photoId: string;
-  archived: boolean;
+  trashed: boolean;
 }
 
 export interface CapturedAtAdjustmentRequest {
@@ -301,6 +302,7 @@ export interface TimelinePhoto {
   addedAt: string;
   displayDimensions: Dimensions;
   timelineThumbnailSources: TimelineThumbnailSources;
+  deletedAt?: string;
 }
 
 export interface AnchorPeriod {
@@ -325,7 +327,7 @@ export interface AlbumNavigationYear {
 
 export interface AlbumNavigationResponse {
   timeline: { years: AlbumNavigationYear[] };
-  archive: { years: AlbumNavigationYear[] };
+  trash: { years: AlbumNavigationYear[] };
   processingIssueCount: number;
 }
 
@@ -339,7 +341,7 @@ export interface TimelineThumbnailAccessResponse {
   expiresAt: string;
 }
 
-export type PhotoCollection = "active" | "archived";
+export type PhotoCollection = "active" | "trashed";
 
 /** Stable, machine-readable codes carried alongside a human diagnostic message on error responses. */
 export type AlbumErrorCode =
@@ -368,7 +370,7 @@ export interface ViewerBootstrapResponse {
   displayDimensions: Dimensions;
   /** Original and active Captured At, source, and active chronology revision. */
   chronology: PhotoChronology;
-  archived: boolean;
+  trashed: boolean;
   /** The resolved Viewer Sequence collection: where this Photo actually lives right now. */
   collection: PhotoCollection;
   displayAccess: { url: string; expiresAt: string };

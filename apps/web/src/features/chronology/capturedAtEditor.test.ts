@@ -12,7 +12,7 @@ const chronology = {
 const latest = (revision = 4): ViewerBootstrapResponse => ({
   photoId: "photo-1", fileName: "beach.jpg", format: "jpeg", fileSizeBytes: 1,
   displayDimensions: { width: 1, height: 1 }, chronology: { ...chronology, active: { ...chronology.active, revision } },
-  archived: false, collection: "active", displayAccess: { url: "https://example.test/photo.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
+  trashed: false, collection: "active", displayAccess: { url: "https://example.test/photo.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
 });
 
 const port = (overrides: Partial<CapturedAtEditorPort> = {}): CapturedAtEditorPort => ({

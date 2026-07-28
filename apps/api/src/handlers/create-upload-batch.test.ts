@@ -31,8 +31,8 @@ describe("handleCreateUploadBatch", () => {
       { photoId: "photo-2", objectKey: "originals/user-1/batch-1/photo-2", uploadUrl: "https://upload/originals/user-1/batch-1/photo-2", duplicate: false },
     ]);
     const album = store.personalAlbumOf("user-1");
-    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ photoId: "photo-1", userId: "user-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1", fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 1024, clientSha256: "client-hash", uploadRequestedAt: "2026-05-26T01:02:03.000Z", fileModifiedAt: "2026-01-02T03:04:05.000Z", processingState: "uploadRequested", archived: false });
-    await expect(album.getPhoto("photo-2")).resolves.toMatchObject({ photoId: "photo-2", userId: "user-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-2", fileName: "scan.png", format: "png", contentType: "image/png", fileSizeBytes: 2048, uploadRequestedAt: "2026-05-26T01:02:03.000Z", processingState: "uploadRequested", archived: false });
+    await expect(album.getPhoto("photo-1")).resolves.toMatchObject({ photoId: "photo-1", userId: "user-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-1", fileName: "beach.jpg", format: "jpeg", contentType: "image/jpeg", fileSizeBytes: 1024, clientSha256: "client-hash", uploadRequestedAt: "2026-05-26T01:02:03.000Z", fileModifiedAt: "2026-01-02T03:04:05.000Z", processingState: "uploadRequested", trashed: false });
+    await expect(album.getPhoto("photo-2")).resolves.toMatchObject({ photoId: "photo-2", userId: "user-1", uploadBatchId: "batch-1", originalObjectKey: "originals/user-1/batch-1/photo-2", fileName: "scan.png", format: "png", contentType: "image/png", fileSizeBytes: 2048, uploadRequestedAt: "2026-05-26T01:02:03.000Z", processingState: "uploadRequested", trashed: false });
     await expect(album.getUploadBatch("batch-1")).resolves.toEqual({ uploadBatchId: "batch-1", userId: "user-1", createdAt: "2026-05-26T01:02:03.000Z", photoIds: ["photo-1", "photo-2"] });
   });
 

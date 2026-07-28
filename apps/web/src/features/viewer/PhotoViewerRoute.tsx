@@ -7,7 +7,7 @@ import { createPhotoViewer, type PhotoViewer, type SequencePosition } from "./ph
 import { createHttpPhotoViewerPort } from "./photoViewerPort.js";
 
 interface PhotoViewerRouteProps {
-  /** "contextual" keeps the originating Timeline/Archive route mounted and inert beneath a modal layer (ADR-0063); "direct" is a standalone page. */
+  /** "contextual" keeps the originating Timeline/Trash route mounted and inert beneath a modal layer (ADR-0063); "direct" is a standalone page. */
   mode: "contextual" | "direct";
   mutations: AlbumMutations;
 }
@@ -53,8 +53,8 @@ export function PhotoViewerRoute({ mode, mutations }: PhotoViewerRouteProps) {
       return;
     }
     const resolvedCollection = viewerRef.current?.viewer.getCurrentCollection() ?? sourceCollection;
-    // Tells the destination Timeline/Archive page to focus its main heading, matching Close's standalone-page contract.
-    navigate(resolvedCollection === "archived" ? "/album/archive" : "/album", {
+    // Tells the destination Timeline/Trash page to focus its main heading, matching Close's standalone-page contract.
+    navigate(resolvedCollection === "trashed" ? "/album/trash" : "/album", {
       state: { focusMainHeading: true },
     });
   };

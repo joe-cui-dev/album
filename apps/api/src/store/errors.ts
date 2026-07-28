@@ -15,9 +15,9 @@ export class ProcessingAttemptConflictError extends Error {
 }
 
 /**
- * The Photo's archive membership or chronology revision changed between
+ * The Photo's trash membership or chronology revision changed between
  * this operation's read and its transactional write (e.g. a concurrent
- * Archive/Restore racing an Adjust/Revert on the same Photo). The caller
+ * Trash/Restore racing an Adjust/Revert on the same Photo). The caller
  * should re-read the Photo and retry.
  */
 export class ConcurrentPhotoModificationError extends Error {

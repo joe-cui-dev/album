@@ -18,7 +18,7 @@ const session = { signedIn: true, user: { userId: "user-1", email: "joe@example.
 
 const emptyNavigation: AlbumNavigationResponse = {
   timeline: { years: [] },
-  archive: { years: [] },
+  trash: { years: [] },
   processingIssueCount: 0,
 };
 
@@ -54,21 +54,21 @@ const viewerBootstrap: ViewerBootstrapResponse = {
     original: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif" },
     active: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif", revision: 1 },
   },
-  archived: false,
+  trashed: false,
   collection: "active",
   displayAccess: { url: "https://temporary.example/display.jpg", expiresAt: "2099-01-01T00:00:00.000Z" },
 };
 
 /**
  * The signed-in album mounts several independent, concurrently-firing reads
- * (Timeline/Archive page, Album Navigation, Processing Issues summary); their
+ * (Timeline/Trash page, Album Navigation, Processing Issues summary); their
  * relative fetch order isn't a contract worth pinning down in a component
  * test, so this dispatches by pathname/method instead of a positional
  * `mockResolvedValueOnce` chain.
  */
 const mockSignedInFetch = (overrides: {
   timeline?: ListCollectionPhotosResponse;
-  archive?: ListCollectionPhotosResponse;
+  trash?: ListCollectionPhotosResponse;
   navigation?: AlbumNavigationResponse;
   summary?: GetProcessingIssuesSummaryResponse;
   viewer?: ViewerBootstrapResponse;
@@ -86,8 +86,8 @@ const mockSignedInFetch = (overrides: {
     if (url.pathname === "/timeline" && method === "GET") {
       return Response.json(overrides.timeline ?? emptyCollectionPage);
     }
-    if (url.pathname === "/archive" && method === "GET") {
-      return Response.json(overrides.archive ?? emptyCollectionPage);
+    if (url.pathname === "/trash" && method === "GET") {
+      return Response.json(overrides.trash ?? emptyCollectionPage);
     }
     if (url.pathname === "/album-navigation" && method === "GET") {
       return Response.json(overrides.navigation ?? emptyNavigation);
@@ -135,14 +135,14 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps Archive behind the signed-in application route", async () => {
-    window.history.replaceState({}, "", "/album/archive");
+  it("keeps Trash behind the signed-in application route", async () => {
+    window.history.replaceState({}, "", "/album/trash");
     mockSignedInFetch();
 
     renderApp(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Your archive is empty" }),
+      await screen.findByRole("heading", { name: "Your trash is empty" }),
     ).toBeInTheDocument();
   });
 
@@ -220,7 +220,7 @@ describe("App", () => {
   });
 
   it("signs out, returns to the email sign-in form, and resets the URL to the generic entry route", async () => {
-    window.history.replaceState({}, "", "/album/archive");
+    window.history.replaceState({}, "", "/album/trash");
     const fetch = mockSignedInFetch();
 
     renderApp(<App />);

@@ -35,7 +35,7 @@ test.describe("initial", () => {
 test.describe("incremental", () => {
   // Covered today: apps/web/e2e/timeline-initial-load.spec.ts ("recovers from an
   // incremental page-load failure via Retry").
-  test.fixme("Archive incremental page-load failure recovers via Retry", () => {});
+  test.fixme("Trash incremental page-load failure recovers via Retry", () => {});
 });
 
 test.describe("single-resource", () => {
@@ -45,7 +45,7 @@ test.describe("single-resource", () => {
 });
 
 test.describe("mutation", () => {
-  // Covered today: apps/web/e2e/archive-mutations.spec.ts, apps/web/e2e/date-jump-navigation.spec.ts
+  // Covered today: apps/web/e2e/trash-mutations.spec.ts, apps/web/e2e/date-jump-navigation.spec.ts
   // (empty-period), apps/web/e2e/processing-issues.spec.ts (retry failure).
   test("Captured At adjustment conflict (412) offers Use latest / Keep my changes", async ({ mock, page }) => {
     mock.viewer.queueOnce((route) =>

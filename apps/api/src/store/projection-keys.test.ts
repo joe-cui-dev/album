@@ -26,23 +26,23 @@ describe("timelineProjectionSortKey", () => {
     ).toBe("TIMELINE#ACTIVE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
   });
 
-  it("uses ARCHIVED for the archived collection", () => {
+  it("uses TRASHED for the trashed collection", () => {
     const capturedAt: CapturedAt = { precision: "year", localDate: "2024" };
     expect(
       timelineProjectionSortKey({
-        collection: "archived",
+        collection: "trashed",
         capturedAt,
         addedAt: "2026-07-19T00:00:00.000Z",
         photoId: "photo-1",
       }),
-    ).toBe("TIMELINE#ARCHIVED#2024.--.--.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
+    ).toBe("TIMELINE#TRASHED#2024.--.--.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1");
   });
 });
 
 describe("dateIndexSortKey", () => {
   it("pads the year to four digits and includes the collection", () => {
     expect(dateIndexSortKey({ collection: "active", year: 8 })).toBe("DATE_INDEX#ACTIVE#0008");
-    expect(dateIndexSortKey({ collection: "archived", year: 2024 })).toBe("DATE_INDEX#ARCHIVED#2024");
+    expect(dateIndexSortKey({ collection: "trashed", year: 2024 })).toBe("DATE_INDEX#TRASHED#2024");
   });
 });
 
@@ -88,9 +88,9 @@ describe("PROCESSING_ISSUES_SUMMARY_SORT_KEY", () => {
 describe("timelineProjectionPrefix / dateIndexPrefix", () => {
   it("matches the prefix embedded in the full sort keys", () => {
     expect(timelineProjectionPrefix("active")).toBe("TIMELINE#ACTIVE#");
-    expect(timelineProjectionPrefix("archived")).toBe("TIMELINE#ARCHIVED#");
+    expect(timelineProjectionPrefix("trashed")).toBe("TIMELINE#TRASHED#");
     expect(dateIndexPrefix("active")).toBe("DATE_INDEX#ACTIVE#");
-    expect(dateIndexPrefix("archived")).toBe("DATE_INDEX#ARCHIVED#");
+    expect(dateIndexPrefix("trashed")).toBe("DATE_INDEX#TRASHED#");
   });
 });
 

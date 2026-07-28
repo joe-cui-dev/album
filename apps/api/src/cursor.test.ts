@@ -17,7 +17,7 @@ describe("cursor codec", () => {
 
   it("rejects a cursor scoped to a different collection", () => {
     const encoded = encodeTimelineCursor({ collection: "active", after: "TIMELINE#ACTIVE#x" });
-    expect(decodeTimelineCursor(encoded, "archived")).toBeUndefined();
+    expect(decodeTimelineCursor(encoded, "trashed")).toBeUndefined();
   });
 
   it("rejects garbage input", () => {

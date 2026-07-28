@@ -64,7 +64,7 @@ describe("PersonalAlbum contract", () => {
       photoId: "photo-1",
       userId: "user-1",
       processingState: "uploadRequested",
-      archived: false,
+      trashed: false,
     });
   });
 
@@ -101,7 +101,7 @@ describe("PersonalAlbum contract: publishReadyPhoto", () => {
     expect(projections).toEqual([
       expect.objectContaining({ photoId: "photo-1", collection: "active", capturedAt: june15 }),
     ]);
-    expect(await album.getTimelineProjections("archived")).toEqual([]);
+    expect(await album.getTimelineProjections("trashed")).toEqual([]);
 
     expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
   });
@@ -188,42 +188,42 @@ describe("PersonalAlbum contract: publishExactDuplicate", () => {
   });
 });
 
-describe("PersonalAlbum contract: setArchiveMembership", () => {
+describe("PersonalAlbum contract: setTrashMembership", () => {
   it("moves a Ready Photo between collections and transfers its Date Index count", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
 
     expect(await album.getTimelineProjections("active")).toEqual([]);
-    expect(await album.getTimelineProjections("archived")).toEqual([
-      expect.objectContaining({ photoId: "photo-1", collection: "archived" }),
+    expect(await album.getTimelineProjections("trashed")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", collection: "trashed" }),
     ]);
     expect(await album.getDateIndex("active", 2024)).toEqual({});
-    expect(await album.getDateIndex("archived", 2024)).toEqual({ "06": 1 });
-    expect((await album.getPhoto("photo-1"))?.archived).toBe(true);
+    expect(await album.getDateIndex("trashed", 2024)).toEqual({ "06": 1 });
+    expect((await album.getPhoto("photo-1"))?.trashed).toBe(true);
   });
 
   it("is idempotent when the Photo is already in the target collection", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
 
-    await album.setArchiveMembership({ photoId: "photo-1", archived: false });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: false });
 
     expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
     expect(await album.getTimelineProjections("active")).toHaveLength(1);
   });
 
-  it("moves Restore (Archived -> Active) symmetrically", async () => {
+  it("moves Restore (Trashed -> Active) symmetrically", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
 
-    await album.setArchiveMembership({ photoId: "photo-1", archived: false });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: false });
 
     expect(await album.getDateIndex("active", 2024)).toEqual({ "06": 1 });
-    expect(await album.getDateIndex("archived", 2024)).toEqual({});
-    expect((await album.getPhoto("photo-1"))?.archived).toBe(false);
+    expect(await album.getDateIndex("trashed", 2024)).toEqual({});
+    expect((await album.getPhoto("photo-1"))?.trashed).toBe(false);
   });
 });
 
@@ -270,14 +270,14 @@ describe("PersonalAlbum contract: replaceActiveChronology (Adjust Captured At)",
     ).rejects.toBeInstanceOf(StaleChronologyRevisionError);
   });
 
-  it("moves the projection within an Archived Photo without changing its collection", async () => {
+  it("moves the projection within an Trashed Photo without changing its collection", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "photo-1");
-    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
 
     await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
 
-    expect(await album.getTimelineProjections("archived")).toEqual([
+    expect(await album.getTimelineProjections("trashed")).toEqual([
       expect.objectContaining({ photoId: "photo-1", capturedAt: july04 }),
     ]);
     expect(await album.getTimelineProjections("active")).toEqual([]);

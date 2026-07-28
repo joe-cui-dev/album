@@ -1,7 +1,7 @@
 export const uiMessages = {
   album: "Album",
   addPhotos: "Add photos",
-  archive: "Archive",
+  trash: "Trash",
   signOut: "Sign out",
   signIn: {
     title: "Open your album",
@@ -24,9 +24,9 @@ export const uiMessages = {
     description: "Add your first photos to begin a timeline.",
     formats: "JPEG, PNG and HEIC",
   },
-  emptyArchive: {
-    title: "Your archive is empty",
-    description: "Archived photos will appear here.",
+  emptyTrash: {
+    title: "Your trash is empty",
+    description: "Trashed photos will appear here.",
   },
   processingIssues: {
     navLabel: "Needs attention",

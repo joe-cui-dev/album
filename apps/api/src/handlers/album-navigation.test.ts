@@ -11,7 +11,7 @@ const thumbnails = {
 const day = (localDate: string): CapturedAt => ({ precision: "day", localDate });
 
 describe("handleGetAlbumNavigation", () => {
-  it("returns non-empty Timeline and Archive year/month counts plus the exact open Processing Issue count", async () => {
+  it("returns non-empty Timeline and Trash year/month counts plus the exact open Processing Issue count", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
 
@@ -64,7 +64,7 @@ describe("handleGetAlbumNavigation", () => {
     expect(response.headers?.["cache-control"]).toBe("private, no-store");
     expect(JSON.parse(response.body ?? "{}")).toEqual({
       timeline: { years: [{ year: 2024, counts: { "06": 1 } }] },
-      archive: { years: [] },
+      trash: { years: [] },
       processingIssueCount: 1,
     });
   });
@@ -75,7 +75,7 @@ describe("handleGetAlbumNavigation", () => {
     const response = await handleGetAlbumNavigation({ user, album });
     expect(JSON.parse(response.body ?? "{}")).toEqual({
       timeline: { years: [] },
-      archive: { years: [] },
+      trash: { years: [] },
       processingIssueCount: 0,
     });
   });

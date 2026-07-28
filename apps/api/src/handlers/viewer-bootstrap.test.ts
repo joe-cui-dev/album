@@ -63,7 +63,7 @@ describe("handleViewerBootstrap", () => {
     const body = JSON.parse(response.body ?? "{}");
     expect(body.photoId).toBe("jun");
     expect(body.collection).toBe("active");
-    expect(body.archived).toBe(false);
+    expect(body.trashed).toBe(false);
     expect(body.newerPhotoId).toBe("dec");
     expect(body.olderPhotoId).toBe("jan");
     expect(body.chronology.active.revision).toBe(0);
@@ -94,7 +94,7 @@ describe("handleViewerBootstrap", () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
     await readyPhoto(album, "moved", day("2024-06-15"));
-    await album.setArchiveMembership({ photoId: "moved", archived: true });
+    await album.setTrashMembership({ photoId: "moved", trashed: true });
 
     const response = await handleViewerBootstrap({
       user,
@@ -106,7 +106,7 @@ describe("handleViewerBootstrap", () => {
     expect(response.statusCode).toBe(409);
     const body = JSON.parse(response.body ?? "{}");
     expect(body.code).toBe("photo_collection_changed");
-    expect(body.currentCollection).toBe("archived");
+    expect(body.currentCollection).toBe("trashed");
   });
 
   it("rejects an invalid collection query value", async () => {

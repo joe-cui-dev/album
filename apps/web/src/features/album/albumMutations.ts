@@ -108,8 +108,8 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     if (disposed) {
       return;
     }
-    const forwardArchived = fromCollection === "active";
-    const archived = registryOp === "apply" ? forwardArchived : !forwardArchived;
+    const forwardTrashed = fromCollection === "active";
+    const trashed = registryOp === "apply" ? forwardTrashed : !forwardTrashed;
 
     if (registryOp === "apply") {
       registry.applyMembershipChange({ photoId, leftCollection: fromCollection });
@@ -118,7 +118,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     }
     publishFeedback({
       kind: "success",
-      message: archived ? "Photo moved to Archive" : "Photo restored to Timeline",
+      message: trashed ? "Photo moved to Trash" : "Photo restored to Timeline",
       action: {
         label: "Undo",
         onInvoke: () => void runMembershipChange(photoId, fromCollection, registryOp === "apply" ? "revert" : "apply"),
@@ -128,7 +128,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     const controller = new AbortController();
     inFlightControllers.add(controller);
     try {
-      await port.setArchiveMembership({ photoId, archived, signal: controller.signal });
+      await port.setTrashMembership({ photoId, trashed, signal: controller.signal });
       if (disposed) {
         return;
       }
@@ -145,7 +145,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
       }
       publishFeedback({
         kind: "failure",
-        message: archived ? "Couldn't archive this Photo — try again" : "Couldn't restore this Photo — try again",
+        message: trashed ? "Couldn't trash this Photo — try again" : "Couldn't restore this Photo — try again",
         action: {
           label: "Retry",
           onInvoke: () => void runMembershipChange(photoId, fromCollection, registryOp),

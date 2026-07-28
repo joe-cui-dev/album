@@ -10,7 +10,7 @@ import { useCapturedAtEditorSnapshot } from "./useCapturedAtEditor.js";
 
 interface Props {
   photoId: string;
-  collection: "active" | "archived";
+  collection: "active" | "trashed";
   chronology: PhotoChronology;
   port: CapturedAtEditorPort;
   onSuccess(result: { kind: "adjust" | "revert"; capturedAt: import("@album/shared").CapturedAt; source: PhotoChronology["active"]["source"] }): void;

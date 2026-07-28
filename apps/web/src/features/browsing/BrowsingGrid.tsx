@@ -191,7 +191,7 @@ export function BrowsingGrid({
   return (
     <div onBlurCapture={onBlurCapture} onFocusCapture={onFocusCapture} ref={containerRef}>
       {snapshot.state === "empty" ? (
-        <PrismaticEmptyState action={emptyState.action} description={emptyState.description} title={emptyState.title} variant={sourceCollection === "active" ? "album" : "archive"} />
+        <PrismaticEmptyState action={emptyState.action} description={emptyState.description} title={emptyState.title} variant={sourceCollection === "active" ? "album" : "trash"} />
       ) : snapshot.state === "loading" ? (
         // The very first page hasn't landed yet, so there's no real layout to virtualize -- a
         // static neutral placeholder fills that space instead of leaving it blank (design doc

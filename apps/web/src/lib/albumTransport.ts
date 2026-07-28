@@ -117,7 +117,7 @@ const isAlbumErrorCode = (value: unknown): value is AlbumErrorCode =>
   typeof value === "string" && albumErrorCodes.has(value as AlbumErrorCode);
 
 const isPhotoCollection = (value: unknown): value is PhotoCollection =>
-  value === "active" || value === "archived";
+  value === "active" || value === "trashed";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

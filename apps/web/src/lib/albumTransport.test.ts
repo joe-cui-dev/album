@@ -78,14 +78,14 @@ describe("albumTransport.request", () => {
   it("carries currentCollection through for a photo_collection_changed conflict", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       Response.json(
-        { code: "photo_collection_changed", message: "moved", currentCollection: "archived" },
+        { code: "photo_collection_changed", message: "moved", currentCollection: "trashed" },
         { status: 409 },
       ),
     );
 
     await expect(albumTransport.request("/timeline")).rejects.toMatchObject({
       code: "photo_collection_changed",
-      currentCollection: "archived",
+      currentCollection: "trashed",
     });
   });
 

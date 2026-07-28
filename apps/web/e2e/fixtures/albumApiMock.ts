@@ -2,7 +2,7 @@ import type { Page, Request, Route } from "@playwright/test";
 import type {
   AlbumNavigationResponse,
   AlbumNavigationYear,
-  ArchiveMembershipResponse,
+  TrashMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
   CreateUploadBatchResponse,
   GetProcessingIssuesSummaryResponse,
@@ -52,15 +52,15 @@ export const verifySignInCodeAccepted = (
 
 export const emptyNavigation = (): AlbumNavigationResponse => ({
   timeline: { years: [] },
-  archive: { years: [] },
+  trash: { years: [] },
   processingIssueCount: 0,
 });
 
 export const navigationWithYears = (
-  overrides: Partial<{ timelineYears: AlbumNavigationYear[]; archiveYears: AlbumNavigationYear[] }>,
+  overrides: Partial<{ timelineYears: AlbumNavigationYear[]; trashYears: AlbumNavigationYear[] }>,
 ): AlbumNavigationResponse => ({
   timeline: { years: overrides.timelineYears ?? [] },
-  archive: { years: overrides.archiveYears ?? [] },
+  trash: { years: overrides.trashYears ?? [] },
   processingIssueCount: 0,
 });
 
@@ -107,7 +107,7 @@ export const buildViewerBootstrap = (
     original: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif" },
     active: { capturedAt: { precision: "day", localDate: "2025-01-02" }, source: "exif", revision: 1 },
   },
-  archived: false,
+  trashed: false,
   collection: "active",
   displayAccess: { url: TRANSPARENT_PIXEL, expiresAt: FAR_FUTURE_EXPIRY },
   ...overrides,
@@ -125,8 +125,8 @@ export const thumbnailAccessResponse = (
   ...overrides,
 });
 
-const photoIdFromArchivePath = (url: string): string => {
-  const match = /\/photos\/([^/]+)\/(?:archive|original-download|retry-processing)$/.exec(new URL(url).pathname);
+const photoIdFromTrashPath = (url: string): string => {
+  const match = /\/photos\/([^/]+)\/(?:trash|original-download|retry-processing)$/.exec(new URL(url).pathname);
   return match?.[1] ?? "unknown";
 };
 
@@ -271,18 +271,18 @@ export class AlbumApiMock {
   readonly verifySignInCode = new EndpointQueue((route) => respondJson(route, verifySignInCodeAccepted()));
   readonly navigation = new EndpointQueue((route) => respondJson(route, emptyNavigation()));
   readonly timeline = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
-  readonly archive = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
+  readonly trash = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
   readonly thumbnailAccess = new EndpointQueue((route) =>
     respondJson(route, { photos: [], expiresAt: FAR_FUTURE_EXPIRY } satisfies TimelineThumbnailAccessResponse),
   );
   readonly viewer = new EndpointQueue((route) =>
     respondAlbumError(route, 404, "not_found", "No viewer bootstrap mock queued for this Photo ID"),
   );
-  readonly archiveMembership = new EndpointQueue((route, request) =>
-    respondJson(route, { photoId: photoIdFromArchivePath(request.url()), archived: true } satisfies ArchiveMembershipResponse),
+  readonly trashMembership = new EndpointQueue((route, request) =>
+    respondJson(route, { photoId: photoIdFromTrashPath(request.url()), trashed: true } satisfies TrashMembershipResponse),
   );
   readonly restoreMembership = new EndpointQueue((route, request) =>
-    respondJson(route, { photoId: photoIdFromArchivePath(request.url()), archived: false } satisfies ArchiveMembershipResponse),
+    respondJson(route, { photoId: photoIdFromTrashPath(request.url()), trashed: false } satisfies TrashMembershipResponse),
   );
   readonly originalDownload = new EndpointQueue((route) =>
     respondJson(route, { url: TRANSPARENT_PIXEL, expiresInSeconds: 300 } satisfies CreateTemporaryPhotoUrlResponse),
@@ -348,8 +348,8 @@ export class AlbumApiMock {
       if (url.pathname === "/timeline" && method === "GET") {
         return this.timeline.handle(route, request);
       }
-      if (url.pathname === "/archive" && method === "GET") {
-        return this.archive.handle(route, request);
+      if (url.pathname === "/trash" && method === "GET") {
+        return this.trash.handle(route, request);
       }
       if (url.pathname === "/timeline-thumbnail-access" && method === "POST") {
         return this.thumbnailAccess.handle(route, request);
@@ -357,10 +357,10 @@ export class AlbumApiMock {
       if (/^\/photos\/[^/]+\/viewer$/.test(url.pathname) && method === "GET") {
         return this.viewer.handle(route, request);
       }
-      if (/^\/photos\/[^/]+\/archive$/.test(url.pathname) && method === "PUT") {
-        return this.archiveMembership.handle(route, request);
+      if (/^\/photos\/[^/]+\/trash$/.test(url.pathname) && method === "PUT") {
+        return this.trashMembership.handle(route, request);
       }
-      if (/^\/photos\/[^/]+\/archive$/.test(url.pathname) && method === "DELETE") {
+      if (/^\/photos\/[^/]+\/trash$/.test(url.pathname) && method === "DELETE") {
         return this.restoreMembership.handle(route, request);
       }
       if (/^\/photos\/[^/]+\/original-download$/.test(url.pathname) && method === "POST") {

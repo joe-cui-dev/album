@@ -47,29 +47,29 @@ test("direct route loads a standalone Darkroom page and Close focuses the destin
   await expect(page.getByRole("heading", { name: "Album", exact: true })).toBeFocused();
 });
 
-test("a direct Viewer route for an archived Photo closes back to Archive", async ({ mock, page }) => {
+test("a direct Viewer route for an trashed Photo closes back to Trash", async ({ mock, page }) => {
   mock.viewer.queueOnce((route) =>
     respondJson(
       route,
       buildViewerBootstrap({
         photoId: "photo-1",
-        fileName: "archived.jpg",
-        archived: true,
-        collection: "archived",
+        fileName: "trashed.jpg",
+        trashed: true,
+        collection: "trashed",
       }),
     ),
   );
 
   await page.goto("/album/photos/photo-1");
-  await expect(page.getByRole("img", { name: "archived.jpg" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "trashed.jpg" })).toBeVisible();
 
-  mock.archive.queueOnce((route) => respondJson(route, collectionPage([])));
+  mock.trash.queueOnce((route) => respondJson(route, collectionPage([])));
   mock.navigation.queueOnce((route) => respondJson(route, emptyNavigation()));
 
   await page.getByRole("button", { name: "Close" }).click();
 
-  await expect(page).toHaveURL("/album/archive");
-  await expect(page.getByRole("heading", { name: "Archive", exact: true })).toBeFocused();
+  await expect(page).toHaveURL("/album/trash");
+  await expect(page.getByRole("heading", { name: "Trash", exact: true })).toBeFocused();
 });
 
 test("traps Tab focus within the contextual Viewer", async ({ mock, page }) => {

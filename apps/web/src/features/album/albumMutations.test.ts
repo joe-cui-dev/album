@@ -38,8 +38,8 @@ describe("createAlbumMutations", () => {
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
 
     expect(registry.applyMembershipChange).toHaveBeenCalledWith({ photoId: "photo-1", leftCollection: "active" });
-    expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "success", message: "Photo moved to Archive" });
-    expect(test.setArchiveMembershipCalls).toEqual([{ photoId: "photo-1", archived: true }]);
+    expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "success", message: "Photo moved to Trash" });
+    expect(test.setTrashMembershipCalls).toEqual([{ photoId: "photo-1", trashed: true }]);
   });
 
   it("bumps navigationRevision on success without replacing the feedback entry", async () => {
@@ -47,7 +47,7 @@ describe("createAlbumMutations", () => {
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
     const feedbackId = mutations.getSnapshot().feedback?.id;
 
-    test.resolveNextSetArchiveMembership({ photoId: "photo-1", archived: true });
+    test.resolveNextSetTrashMembership({ photoId: "photo-1", trashed: true });
     await flush();
 
     expect(mutations.getSnapshot().navigationRevision).toBe(1);
@@ -58,7 +58,7 @@ describe("createAlbumMutations", () => {
     mutations = createAlbumMutations({ port: test.port, registry });
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
 
-    test.rejectNextSetArchiveMembership(new Error("boom"));
+    test.rejectNextSetTrashMembership(new Error("boom"));
     await flush();
 
     expect(registry.revertMembershipChange).toHaveBeenCalledWith({ photoId: "photo-1", leftCollection: "active" });
@@ -79,20 +79,20 @@ describe("createAlbumMutations", () => {
       photoId: "photo-1",
       leftCollection: "active",
     });
-    expect(test.setArchiveMembershipCalls).toEqual([
-      { photoId: "photo-1", archived: true },
-      { photoId: "photo-1", archived: false },
+    expect(test.setTrashMembershipCalls).toEqual([
+      { photoId: "photo-1", trashed: true },
+      { photoId: "photo-1", trashed: false },
     ]);
   });
 
-  it("treats a re-archive of an already-archived Photo as an ordinary success (server idempotency)", async () => {
+  it("treats a re-trash of an already-trashed Photo as an ordinary success (server idempotency)", async () => {
     mutations = createAlbumMutations({ port: test.port, registry });
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
-    test.resolveNextSetArchiveMembership({ photoId: "photo-1", archived: true });
+    test.resolveNextSetTrashMembership({ photoId: "photo-1", trashed: true });
     await flush();
 
     mutations.intents.setMembership({ photoId: "photo-1", collection: "active" });
-    test.resolveNextSetArchiveMembership({ photoId: "photo-1", archived: true });
+    test.resolveNextSetTrashMembership({ photoId: "photo-1", trashed: true });
     await flush();
 
     expect(mutations.getSnapshot().navigationRevision).toBe(2);
@@ -154,6 +154,6 @@ describe("createAlbumMutations", () => {
 
     expect(mutations.getSnapshot().feedback).toBeUndefined();
     mutations.intents.setMembership({ photoId: "photo-2", collection: "active" });
-    expect(test.setArchiveMembershipCalls).toHaveLength(1);
+    expect(test.setTrashMembershipCalls).toHaveLength(1);
   });
 });

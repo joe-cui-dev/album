@@ -40,7 +40,7 @@ export const handleViewerBootstrap = async ({
     return badRequest("photoId is required");
   }
   if (requestedCollection === "invalid") {
-    return badRequest("collection must be active or archived");
+    return badRequest("collection must be active or trashed");
   }
 
   const photo = await album.getPhoto(photoId);
@@ -75,7 +75,7 @@ export const handleViewerBootstrap = async ({
       ...(resolvedPhoto.metadata ? { metadata: resolvedPhoto.metadata } : {}),
       displayDimensions: resolvedPhoto.displayDimensions!,
       chronology: resolvedPhoto.chronology!,
-      archived: resolvedPhoto.archived,
+      trashed: resolvedPhoto.trashed,
       collection,
       displayAccess: {
         url: displayAccess.url,
@@ -88,11 +88,11 @@ export const handleViewerBootstrap = async ({
   );
 };
 
-const collectionOf = (photo: Photo): PhotoCollection => (photo.archived ? "archived" : "active");
+const collectionOf = (photo: Photo): PhotoCollection => (photo.trashed ? "trashed" : "active");
 
-/** True when a concurrent Archive/Restore or Adjust/Revert moved this Photo's projection. */
+/** True when a concurrent Trash/Restore or Adjust/Revert moved this Photo's projection. */
 const movedSince = (before: Photo, after: Photo): boolean =>
-  before.archived !== after.archived ||
+  before.trashed !== after.trashed ||
   before.chronology?.active.revision !== after.chronology?.active.revision;
 
 const queryNeighbours = (
@@ -124,7 +124,7 @@ type ResolveResult =
 /**
  * Reads live neighbours for the Photo's current projection, then re-reads the
  * Photo to confirm nothing moved while the neighbour queries ran. One retry
- * absorbs a single concurrent Archive/Restore or Adjust/Revert; a second
+ * absorbs a single concurrent Trash/Restore or Adjust/Revert; a second
  * observed move gives up with a recoverable conflict (ADR-0060).
  */
 const resolveWithOneRetry = async ({
@@ -156,5 +156,5 @@ const parseCollection = (raw: string | undefined): PhotoCollection | "invalid" |
   if (raw === undefined) {
     return undefined;
   }
-  return raw === "active" || raw === "archived" ? raw : "invalid";
+  return raw === "active" || raw === "trashed" ? raw : "invalid";
 };

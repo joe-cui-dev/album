@@ -89,7 +89,7 @@ export function BrowsingPage({ collection, registry, mutations, title, emptyStat
 
   const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
   const navigation = useAlbumNavigation(mutationsSnapshot.navigationRevision);
-  const years = (collection === "active" ? navigation.data?.timeline.years : navigation.data?.archive.years) ?? [];
+  const years = (collection === "active" ? navigation.data?.timeline.years : navigation.data?.trash.years) ?? [];
 
   // Exact Photo counts for the month marker's second line, keyed the same way as `periodKey`
   // ("YYYY-MM" or "YYYY-unknown") -- see `browsingWindow.ts`'s `periodKeyOf`.

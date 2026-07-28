@@ -62,18 +62,18 @@ describe("queryTimelinePage", () => {
     expect(secondPage.lastSortKey).toBeUndefined();
   });
 
-  it("keeps Active and Archived collections independent", async () => {
+  it("keeps Active and Trashed collections independent", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
-    await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
+    await createReadyPhoto(album, "trashed-1", day("2024-02-01"));
+    await album.setTrashMembership({ photoId: "trashed-1", trashed: true });
 
     await expect(
       album.queryTimelinePage({ collection: "active", limit: 10 }),
     ).resolves.toMatchObject({ projections: [{ photoId: "active-1" }] });
     await expect(
-      album.queryTimelinePage({ collection: "archived", limit: 10 }),
-    ).resolves.toMatchObject({ projections: [{ photoId: "archived-1" }] });
+      album.queryTimelinePage({ collection: "trashed", limit: 10 }),
+    ).resolves.toMatchObject({ projections: [{ photoId: "trashed-1" }] });
   });
 
   it("anchors a continuous older stream at a startAt period without a hole", async () => {
@@ -129,16 +129,16 @@ describe("listDateIndexYears", () => {
       { year: 2020, counts: { "01": 1 } },
       { year: 2024, counts: { "06": 1 } },
     ]);
-    await expect(album.listDateIndexYears("archived")).resolves.toEqual([]);
+    await expect(album.listDateIndexYears("trashed")).resolves.toEqual([]);
   });
 
   it("omits a year whose counters were all transferred away", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "solo", day("2024-06-15"));
-    await album.setArchiveMembership({ photoId: "solo", archived: true });
+    await album.setTrashMembership({ photoId: "solo", trashed: true });
 
     await expect(album.listDateIndexYears("active")).resolves.toEqual([]);
-    await expect(album.listDateIndexYears("archived")).resolves.toEqual([
+    await expect(album.listDateIndexYears("trashed")).resolves.toEqual([
       { year: 2024, counts: { "06": 1 } },
     ]);
   });
@@ -147,7 +147,7 @@ describe("listDateIndexYears", () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "june-photo", day("2024-06-15"));
     await createReadyPhoto(album, "july-photo", day("2024-07-01"));
-    await album.setArchiveMembership({ photoId: "july-photo", archived: true });
+    await album.setTrashMembership({ photoId: "july-photo", trashed: true });
 
     await expect(album.listDateIndexYears("active")).resolves.toEqual([
       { year: 2024, counts: { "06": 1 } },
@@ -252,8 +252,8 @@ describe("queryAdjacentProjection", () => {
   it("never crosses into the other collection", async () => {
     const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
-    await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
+    await createReadyPhoto(album, "trashed-1", day("2024-02-01"));
+    await album.setTrashMembership({ photoId: "trashed-1", trashed: true });
 
     await expect(
       album.queryAdjacentProjection({

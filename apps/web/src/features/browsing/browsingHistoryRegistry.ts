@@ -78,7 +78,7 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
     },
     applyMembershipChange: ({ photoId, leftCollection }) => {
       withholdInMountedWindow(photoId, leftCollection, true);
-      const arrivedCollection: PhotoCollection = leftCollection === "active" ? "archived" : "active";
+      const arrivedCollection: PhotoCollection = leftCollection === "active" ? "trashed" : "active";
       invalidateIfNotMounted(leftCollection);
       invalidateIfNotMounted(arrivedCollection);
     },

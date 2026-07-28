@@ -9,7 +9,7 @@ import type {
   UploadBatch,
 } from "@album/shared";
 
-export type PhotoCollection = "active" | "archived";
+export type PhotoCollection = "active" | "trashed";
 
 export type ProcessingIssueStatus = "failed" | "retrying";
 
@@ -35,6 +35,7 @@ export interface TimelineProjection {
   fileName: string;
   displayDimensions: Dimensions;
   timelineThumbnails: TimelineThumbnails;
+  deletedAt?: string;
 }
 
 export interface DateIndexPeriodCounts {
@@ -108,15 +109,15 @@ export interface PersonalAlbum {
   }): Promise<void>;
 
   /**
-   * Atomically moves a Ready Photo between the Active and Archived
+   * Atomically moves a Ready Photo between the Active and Trash
    * collections, transferring its Date Index count. A Photo already in the
    * target collection is left unchanged (idempotent membership).
    */
-  setArchiveMembership(input: { photoId: string; archived: boolean }): Promise<void>;
+  setTrashMembership(input: { photoId: string; trashed: boolean }): Promise<void>;
 
   /**
    * Replaces the complete active chronology (Adjust Captured At), moving the
-   * Timeline/Archive projection and transferring Date Index period counts.
+   * Timeline/Trash projection and transferring Date Index period counts.
    * An identical replacement of the current active value is a no-op that
    * does not advance the revision. Throws StaleChronologyRevisionError when
    * expectedRevision does not match the Photo's current active revision.

@@ -69,7 +69,7 @@ const issueSummaryKey = (userId: string) => ({
   sk: PROCESSING_ISSUES_SUMMARY_SORT_KEY,
 });
 
-/** Reads a Photo and guards that it has a Timeline/Archive projection to move. */
+/** Reads a Photo and guards that it has a Timeline/Trash projection to move. */
 const readReadyPhoto = async (
   documentClient: DynamoDBDocumentClient,
   tableName: string,
@@ -79,7 +79,7 @@ const readReadyPhoto = async (
   item: Record<string, unknown>;
   chronology: PhotoChronology;
   addedAt: string;
-  currentArchived: boolean;
+  currentTrashed: boolean;
 }> => {
   const result = await documentClient.send(
     new GetCommand({ TableName: tableName, Key: photoKey(userId, photoId) }),
@@ -98,7 +98,7 @@ const readReadyPhoto = async (
     item,
     chronology: item.chronology as PhotoChronology,
     addedAt: item.uploadRequestedAt,
-    currentArchived: Boolean(item.archived),
+    currentTrashed: Boolean(item.trashed),
   };
 };
 
@@ -179,12 +179,13 @@ export const createDynamoDbPersonalAlbumStore = ({
             TableName: tableName,
             KeyConditionExpression: "pk = :pk AND begins_with(sk, :photo)",
             FilterExpression:
-              "sha256 = :sha256 AND processingState = :ready AND photoId <> :photoId",
+              "sha256 = :sha256 AND processingState = :ready AND trashed = :notTrashed AND photoId <> :photoId",
             ExpressionAttributeValues: {
               ":pk": `USER#${userId}`,
               ":photo": "PHOTO#",
               ":sha256": sha256,
               ":ready": "ready",
+              ":notTrashed": false,
               ":photoId": excludePhotoId,
             },
             Limit: 1,
@@ -202,7 +203,7 @@ export const createDynamoDbPersonalAlbumStore = ({
               ...input,
               userId,
               processingState: "uploadRequested",
-              archived: false,
+              trashed: false,
             },
           }),
         );
@@ -335,19 +336,20 @@ export const createDynamoDbPersonalAlbumStore = ({
         await documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
       },
 
-      async setArchiveMembership({ photoId, archived }) {
-        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
+      async setTrashMembership({ photoId, trashed }) {
+        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
           photoId,
         );
-        if (currentArchived === archived) {
+        if (currentTrashed === trashed) {
           return;
         }
 
-        const fromCollection: PhotoCollection = currentArchived ? "archived" : "active";
-        const toCollection: PhotoCollection = archived ? "archived" : "active";
+        const fromCollection: PhotoCollection = currentTrashed ? "trashed" : "active";
+        const toCollection: PhotoCollection = trashed ? "trashed" : "active";
+        const deletedAt = trashed ? new Date().toISOString() : undefined;
         const capturedAt = chronology.active.capturedAt;
         const currentRevision = chronology.active.revision;
 
@@ -359,13 +361,14 @@ export const createDynamoDbPersonalAlbumStore = ({
                   Update: {
                     TableName: tableName,
                     Key: photoKey(userId, photoId),
-                    UpdateExpression: "SET archived = :archived",
+                    UpdateExpression: trashed ? "SET trashed = :trashed, deletedAt = :deletedAt" : "SET trashed = :trashed REMOVE deletedAt",
                     ConditionExpression:
-                      "archived = :currentArchived AND chronology.active.revision = :currentRevision",
+                      "trashed = :currentTrashed AND chronology.active.revision = :currentRevision",
                     ExpressionAttributeValues: {
-                      ":archived": archived,
-                      ":currentArchived": currentArchived,
+                      ":trashed": trashed,
+                      ":currentTrashed": currentTrashed,
                       ":currentRevision": currentRevision,
+                      ...(deletedAt ? { ":deletedAt": deletedAt } : {}),
                     },
                   },
                 },
@@ -388,6 +391,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                       fileName: item.fileName,
                       displayDimensions: item.displayDimensions,
                       timelineThumbnails: item.timelineThumbnails,
+                      ...(deletedAt ? { deletedAt } : {}),
                     },
                   },
                 },
@@ -405,7 +409,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
-        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -421,7 +425,7 @@ export const createDynamoDbPersonalAlbumStore = ({
           return { revision: chronology.active.revision };
         }
 
-        const collection: PhotoCollection = currentArchived ? "archived" : "active";
+        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
         const nextRevision = chronology.active.revision + 1;
 
         try {
@@ -434,11 +438,11 @@ export const createDynamoDbPersonalAlbumStore = ({
                     Key: photoKey(userId, photoId),
                     UpdateExpression: "SET chronology.active = :active",
                     ConditionExpression:
-                      "chronology.active.revision = :expectedRevision AND archived = :currentArchived",
+                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
                     ExpressionAttributeValues: {
                       ":active": { capturedAt, source: "userAdjusted", revision: nextRevision },
                       ":expectedRevision": expectedRevision,
-                      ":currentArchived": currentArchived,
+                      ":currentTrashed": currentTrashed,
                     },
                   },
                 },
@@ -485,7 +489,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async revertActiveChronology({ photoId, expectedRevision }) {
-        const { item, chronology, addedAt, currentArchived } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -502,7 +506,7 @@ export const createDynamoDbPersonalAlbumStore = ({
           return { revision: chronology.active.revision };
         }
 
-        const collection: PhotoCollection = currentArchived ? "archived" : "active";
+        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
         const nextRevision = chronology.active.revision + 1;
 
         try {
@@ -515,7 +519,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                     Key: photoKey(userId, photoId),
                     UpdateExpression: "SET chronology.active = :active",
                     ConditionExpression:
-                      "chronology.active.revision = :expectedRevision AND archived = :currentArchived",
+                      "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
                     ExpressionAttributeValues: {
                       ":active": {
                         capturedAt: original.capturedAt,
@@ -523,7 +527,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                         revision: nextRevision,
                       },
                       ":expectedRevision": expectedRevision,
-                      ":currentArchived": currentArchived,
+                      ":currentTrashed": currentTrashed,
                     },
                   },
                 },
@@ -1005,7 +1009,7 @@ export const asPhoto = (item: Record<string, unknown> | undefined): Photo | unde
     !isPhotoFormat(item.format) ||
     typeof item.fileSizeBytes !== "number" ||
     !isProcessingState(item.processingState) ||
-    typeof item.archived !== "boolean" ||
+    typeof item.trashed !== "boolean" ||
     typeof item.uploadLocalDateTime !== "string" ||
     typeof item.uploadContextTimeZone !== "string"
   ) {

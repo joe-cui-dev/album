@@ -414,7 +414,7 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const archivePhotos = new NodejsFunction(this, "ArchivePhotosHandler", {
+    const trashPhotos = new NodejsFunction(this, "TrashPhotosHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join(
         "..",
@@ -424,10 +424,10 @@ export class AlbumStack extends Stack {
         "handlers",
         "list-collection-photos.ts",
       ),
-      handler: "archivePhotosHandler",
+      handler: "trashPhotosHandler",
       environment: commonEnvironment,
       reservedConcurrentExecutions: 5,
-      logGroup: new LogGroup(this, "ArchivePhotosLogGroup", {
+      logGroup: new LogGroup(this, "TrashPhotosLogGroup", {
         retention: RetentionDays.ONE_WEEK,
       }),
     });
@@ -534,9 +534,9 @@ export class AlbumStack extends Stack {
       },
     );
 
-    const archiveMembership = new NodejsFunction(
+    const trashMembership = new NodejsFunction(
       this,
-      "ArchiveMembershipHandler",
+      "TrashMembershipHandler",
       {
         runtime: Runtime.NODEJS_22_X,
         entry: join(
@@ -545,12 +545,12 @@ export class AlbumStack extends Stack {
           "api",
           "src",
           "handlers",
-          "archive-membership.ts",
+          "trash-membership.ts",
         ),
-        handler: "archiveMembershipHandler",
+        handler: "trashMembershipHandler",
         environment: commonEnvironment,
         reservedConcurrentExecutions: 5,
-        logGroup: new LogGroup(this, "ArchiveMembershipLogGroup", {
+        logGroup: new LogGroup(this, "TrashMembershipLogGroup", {
           retention: RetentionDays.ONE_WEEK,
         }),
       },
@@ -567,7 +567,7 @@ export class AlbumStack extends Stack {
           "api",
           "src",
           "handlers",
-          "archive-membership.ts",
+          "trash-membership.ts",
         ),
         handler: "restoreMembershipHandler",
         environment: commonEnvironment,
@@ -662,7 +662,7 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(originalDownloadUrl);
     photosBucket.grantRead(viewerBootstrap);
     photosBucket.grantRead(timelinePhotos);
-    photosBucket.grantRead(archivePhotos);
+    photosBucket.grantRead(trashPhotos);
     photosBucket.grantRead(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(createUploadBatch);
     metadataTable.grantReadData(uploadBatchStatus);
@@ -672,12 +672,12 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(processingIssues);
     metadataTable.grantReadData(processingIssuesSummary);
     metadataTable.grantReadData(timelinePhotos);
-    metadataTable.grantReadData(archivePhotos);
+    metadataTable.grantReadData(trashPhotos);
     metadataTable.grantReadData(albumNavigation);
     metadataTable.grantReadData(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(adjustCapturedAt);
     metadataTable.grantReadWriteData(revertCapturedAt);
-    metadataTable.grantReadWriteData(archiveMembership);
+    metadataTable.grantReadWriteData(trashMembership);
     metadataTable.grantReadWriteData(restoreMembership);
     metadataTable.grantReadWriteData(processPhoto);
     processingQueue.grantConsumeMessages(processPhoto);
@@ -883,11 +883,11 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/archive",
+      path: "/trash",
       methods: [HttpMethod.GET],
       integration: new HttpLambdaIntegration(
-        "ArchivePhotosIntegration",
-        archivePhotos,
+        "TrashPhotosIntegration",
+        trashPhotos,
       ),
     });
 
@@ -937,16 +937,16 @@ export class AlbumStack extends Stack {
     });
 
     api.addRoutes({
-      path: "/photos/{photoId}/archive",
+      path: "/photos/{photoId}/trash",
       methods: [HttpMethod.PUT],
       integration: new HttpLambdaIntegration(
-        "ArchiveMembershipIntegration",
-        archiveMembership,
+        "TrashMembershipIntegration",
+        trashMembership,
       ),
     });
 
     api.addRoutes({
-      path: "/photos/{photoId}/archive",
+      path: "/photos/{photoId}/trash",
       methods: [HttpMethod.DELETE],
       integration: new HttpLambdaIntegration(
         "RestoreMembershipIntegration",

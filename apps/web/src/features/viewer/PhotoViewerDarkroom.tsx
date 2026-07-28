@@ -153,7 +153,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     }
   };
 
-  const handleArchiveOrRestore = (): void => {
+  const handleTrashOrRestore = (): void => {
     if (!bootstrap) {
       return;
     }
@@ -195,7 +195,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       ref={dialogRef}
       // A direct/standalone load (refresh or shared link) has no background page underneath --
       // this is the page's whole content, so it needs a landmark (axe "region") rather than the
-      // dialog role reserved for the contextual overlay atop a Timeline/Archive background.
+      // dialog role reserved for the contextual overlay atop a Timeline/Trash background.
       role={mode === "contextual" ? "dialog" : "main"}
       onFocusCapture={revealChrome}
     >
@@ -267,11 +267,11 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                   </button>
                   <button
                     className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10"
-                    onClick={handleArchiveOrRestore}
+                    onClick={handleTrashOrRestore}
                     role="menuitem"
                     type="button"
                   >
-                    {bootstrap.collection === "active" ? "Archive photo" : "Restore to timeline"}
+                    {bootstrap.collection === "active" ? "Trash photo" : "Restore to timeline"}
                   </button>
                   <button
                     className="block w-full px-4 py-2 text-left hover:bg-white/10 focus:outline-none focus:bg-white/10 disabled:opacity-50"
@@ -360,14 +360,14 @@ function CollectionChangedNotice({
   onReturn,
   onSwitch,
 }: {
-  currentCollection: "active" | "archived";
+  currentCollection: "active" | "trashed";
   onReturn: () => void;
   onSwitch: () => void;
 }) {
   return (
     <div className="flex max-w-sm flex-col items-center gap-3 text-center">
       <p>
-        This photo moved to {currentCollection === "archived" ? "Archive" : "Timeline"} since you opened it.
+        This photo moved to {currentCollection === "trashed" ? "Trash" : "Timeline"} since you opened it.
       </p>
       <div className="flex gap-2">
         <button
@@ -375,7 +375,7 @@ function CollectionChangedNotice({
           onClick={onSwitch}
           type="button"
         >
-          View in {currentCollection === "archived" ? "Archive" : "Timeline"}
+          View in {currentCollection === "trashed" ? "Trash" : "Timeline"}
         </button>
         <button className="rounded-md border border-white/40 px-3 py-2 text-sm font-semibold" onClick={onReturn} type="button">
           Return

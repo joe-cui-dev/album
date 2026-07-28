@@ -34,10 +34,10 @@ describe("createBrowsingHistoryRegistry", () => {
   it("retains the previously active window as the inactive slot, deactivated but not disposed", () => {
     const registry = createBrowsingHistoryRegistry();
     const timeline = fakeWindow();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
 
     registry.activate("timeline", "active", () => timeline);
-    registry.activate("archive", "archived", () => archive);
+    registry.activate("trash", "trashed", () => trash);
 
     expect(timeline.lifecycle.deactivate).toHaveBeenCalledTimes(1);
     expect(timeline.lifecycle.dispose).not.toHaveBeenCalled();
@@ -53,7 +53,7 @@ describe("createBrowsingHistoryRegistry", () => {
     const b = fakeWindow();
 
     registry.activate("a", "active", () => a);
-    registry.activate("b", "archived", () => b);
+    registry.activate("b", "trashed", () => b);
     registry.activate("a", "active", () => a);
 
     expect(a.lifecycle.activate).toHaveBeenNthCalledWith(1);
@@ -66,28 +66,28 @@ describe("createBrowsingHistoryRegistry", () => {
   it("disposes the evicted window once a third distinct key is activated", () => {
     const registry = createBrowsingHistoryRegistry();
     const timeline = fakeWindow();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
     const jump = fakeWindow();
 
     registry.activate("timeline", "active", () => timeline);
-    registry.activate("archive", "archived", () => archive);
+    registry.activate("trash", "trashed", () => trash);
     registry.activate("jump:2024-06", "active", () => jump);
 
     expect(timeline.lifecycle.dispose).toHaveBeenCalledTimes(1);
-    expect(archive.lifecycle.dispose).not.toHaveBeenCalled();
+    expect(trash.lifecycle.dispose).not.toHaveBeenCalled();
   });
 
   it("disposeAll disposes both retained windows and forgets them", () => {
     const registry = createBrowsingHistoryRegistry();
     const timeline = fakeWindow();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
     registry.activate("timeline", "active", () => timeline);
-    registry.activate("archive", "archived", () => archive);
+    registry.activate("trash", "trashed", () => trash);
 
     registry.disposeAll();
 
     expect(timeline.lifecycle.dispose).toHaveBeenCalledTimes(1);
-    expect(archive.lifecycle.dispose).toHaveBeenCalledTimes(1);
+    expect(trash.lifecycle.dispose).toHaveBeenCalledTimes(1);
 
     const recreated = fakeWindow();
     const create = vi.fn(() => recreated);
@@ -110,29 +110,29 @@ describe("applyMembershipChange", () => {
   it("invalidates a retained-inactive slot for a collection that isn't mounted", () => {
     const registry = createBrowsingHistoryRegistry();
     const timeline = fakeWindow();
-    const archive = fakeWindow();
-    registry.activate("archive-key", "archived", () => archive);
+    const trash = fakeWindow();
+    registry.activate("trash-key", "trashed", () => trash);
     registry.activate("active-key", "active", () => timeline);
 
     registry.applyMembershipChange({ photoId: "photo-1", leftCollection: "active" });
 
-    // "archived" (the arrival collection) is retained-inactive and not mounted: invalidated.
-    expect(archive.lifecycle.dispose).toHaveBeenCalledTimes(1);
-    const recreatedArchive = fakeWindow();
-    const create = vi.fn(() => recreatedArchive);
-    expect(registry.activate("archive-key-2", "archived", create)).toBe(recreatedArchive);
+    // "trashed" (the arrival collection) is retained-inactive and not mounted: invalidated.
+    expect(trash.lifecycle.dispose).toHaveBeenCalledTimes(1);
+    const recreatedTrash = fakeWindow();
+    const create = vi.fn(() => recreatedTrash);
+    expect(registry.activate("trash-key-2", "trashed", create)).toBe(recreatedTrash);
     expect(create).toHaveBeenCalledTimes(1);
   });
 
   it("does not withhold in a mounted window whose collection is only the arrival side", () => {
     const registry = createBrowsingHistoryRegistry();
-    const archive = fakeWindow();
-    registry.activate("archive-key", "archived", () => archive);
+    const trash = fakeWindow();
+    registry.activate("trash-key", "trashed", () => trash);
 
     registry.applyMembershipChange({ photoId: "photo-1", leftCollection: "active" });
 
-    expect(archive.lifecycle.setWithheld).not.toHaveBeenCalled();
-    expect(archive.lifecycle.dispose).not.toHaveBeenCalled();
+    expect(trash.lifecycle.setWithheld).not.toHaveBeenCalled();
+    expect(trash.lifecycle.dispose).not.toHaveBeenCalled();
   });
 
   it("is a no-op with no mounted or retained windows (direct-route Viewer case)", () => {
@@ -157,13 +157,13 @@ describe("revertMembershipChange", () => {
 
   it("is a no-op when that collection isn't mounted", () => {
     const registry = createBrowsingHistoryRegistry();
-    const archive = fakeWindow();
-    registry.activate("archive-key", "archived", () => archive);
+    const trash = fakeWindow();
+    registry.activate("trash-key", "trashed", () => trash);
 
     expect(() =>
       registry.revertMembershipChange({ photoId: "photo-1", leftCollection: "active" }),
     ).not.toThrow();
-    expect(archive.lifecycle.setWithheld).not.toHaveBeenCalled();
+    expect(trash.lifecycle.setWithheld).not.toHaveBeenCalled();
   });
 });
 
@@ -181,10 +181,10 @@ describe("notifyPhotosArrived", () => {
 
   it("invalidates a retained-inactive Timeline slot so the next activation refetches", () => {
     const registry = createBrowsingHistoryRegistry();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
     const timeline = fakeWindow();
     registry.activate("active-key", "active", () => timeline);
-    registry.activate("archive-key", "archived", () => archive);
+    registry.activate("trash-key", "trashed", () => trash);
 
     registry.notifyPhotosArrived();
 
@@ -204,23 +204,23 @@ describe("notifyPhotosArrived", () => {
 describe("applyChronologyChange", () => {
   it("withholds the stale mounted placement without a live jump", () => {
     const registry = createBrowsingHistoryRegistry();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
     const timeline = fakeWindow();
-    registry.activate("archive-key", "archived", () => archive);
+    registry.activate("trash-key", "trashed", () => trash);
     registry.activate("active-key", "active", () => timeline);
 
     registry.applyChronologyChange({ photoId: "photo-1", collection: "active" });
 
     expect(timeline.lifecycle.setWithheld).toHaveBeenCalledWith("photo-1", true);
-    expect(archive.lifecycle.dispose).not.toHaveBeenCalled();
+    expect(trash.lifecycle.dispose).not.toHaveBeenCalled();
   });
 
   it("invalidates a retained window for the changed collection", () => {
     const registry = createBrowsingHistoryRegistry();
     const timeline = fakeWindow();
-    const archive = fakeWindow();
+    const trash = fakeWindow();
     registry.activate("active-key", "active", () => timeline);
-    registry.activate("archive-key", "archived", () => archive);
+    registry.activate("trash-key", "trashed", () => trash);
 
     registry.applyChronologyChange({ photoId: "photo-1", collection: "active" });
 

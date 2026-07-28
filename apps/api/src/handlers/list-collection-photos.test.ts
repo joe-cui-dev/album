@@ -179,7 +179,7 @@ describe("handleListCollectionPhotos", () => {
     const response = await handleListCollectionPhotos({
       user,
       album,
-      collection: "archived",
+      collection: "trashed",
       query: { cursor: nextCursor },
       deps: deps(),
     });
@@ -259,12 +259,12 @@ describe("handleListCollectionPhotos", () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it("keeps Active and Archived independent", async () => {
+  it("keeps Active and Trashed independent", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");
     await createReadyPhoto(album, "active-1", day("2024-01-01"));
-    await createReadyPhoto(album, "archived-1", day("2024-02-01"));
-    await album.setArchiveMembership({ photoId: "archived-1", archived: true });
+    await createReadyPhoto(album, "trashed-1", day("2024-02-01"));
+    await album.setTrashMembership({ photoId: "trashed-1", trashed: true });
 
     const timeline = await handleListCollectionPhotos({
       user,
@@ -273,18 +273,18 @@ describe("handleListCollectionPhotos", () => {
       query: {},
       deps: deps(),
     });
-    const archive = await handleListCollectionPhotos({
+    const trash = await handleListCollectionPhotos({
       user,
       album,
-      collection: "archived",
+      collection: "trashed",
       query: {},
       deps: deps(),
     });
     expect(JSON.parse(timeline.body ?? "{}").photos.map((p: { photoId: string }) => p.photoId)).toEqual([
       "active-1",
     ]);
-    expect(JSON.parse(archive.body ?? "{}").photos.map((p: { photoId: string }) => p.photoId)).toEqual([
-      "archived-1",
+    expect(JSON.parse(trash.body ?? "{}").photos.map((p: { photoId: string }) => p.photoId)).toEqual([
+      "trashed-1",
     ]);
   });
 });

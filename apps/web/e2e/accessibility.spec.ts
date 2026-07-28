@@ -69,19 +69,19 @@ test("populated Timeline renders without axe violations", async ({ mock, page })
   await expectNoAxeViolations(page);
 });
 
-test("empty Archive renders without axe violations", async ({ mock, page }) => {
+test("empty Trash renders without axe violations", async ({ mock, page }) => {
   mock.navigation.setDefault((route) => respondJson(route, emptyNavigation()));
-  mock.archive.queueOnce((route) => respondJson(route, collectionPage([])));
-  await page.goto("/album/archive");
-  await expect(page.getByRole("heading", { name: "Your archive is empty" })).toBeVisible();
+  mock.trash.queueOnce((route) => respondJson(route, collectionPage([])));
+  await page.goto("/album/trash");
+  await expect(page.getByRole("heading", { name: "Your trash is empty" })).toBeVisible();
   await expectNoAxeViolations(page);
 });
 
-test("populated Archive renders without axe violations", async ({ mock, page }) => {
+test("populated Trash renders without axe violations", async ({ mock, page }) => {
   const photo = buildPhoto({ fileName: "beach.jpg" });
   mock.navigation.setDefault((route) => respondJson(route, emptyNavigation()));
-  mock.archive.queueOnce((route) => respondJson(route, collectionPage([photo])));
-  await page.goto("/album/archive");
+  mock.trash.queueOnce((route) => respondJson(route, collectionPage([photo])));
+  await page.goto("/album/trash");
   await expect(page.getByRole("link", { name: /beach\.jpg/ })).toBeVisible();
   await expectNoAxeViolations(page);
 });

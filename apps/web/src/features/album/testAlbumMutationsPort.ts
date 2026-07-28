@@ -1,5 +1,5 @@
 import type {
-  ArchiveMembershipResponse,
+  TrashMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
   RetryProcessingResponse,
 } from "@album/shared";
@@ -10,9 +10,9 @@ interface Deferred<T> {
   reject: (error: unknown) => void;
 }
 
-export interface SetArchiveMembershipCall {
+export interface SetTrashMembershipCall {
   photoId: string;
-  archived: boolean;
+  trashed: boolean;
 }
 
 export interface RetryProcessingCall {
@@ -25,11 +25,11 @@ export interface PresignOriginalDownloadCall {
 
 export interface TestAlbumMutationsPort {
   port: AlbumMutationsPort;
-  setArchiveMembershipCalls: SetArchiveMembershipCall[];
+  setTrashMembershipCalls: SetTrashMembershipCall[];
   retryProcessingCalls: RetryProcessingCall[];
   presignOriginalDownloadCalls: PresignOriginalDownloadCall[];
-  resolveNextSetArchiveMembership(response: ArchiveMembershipResponse): void;
-  rejectNextSetArchiveMembership(error: unknown): void;
+  resolveNextSetTrashMembership(response: TrashMembershipResponse): void;
+  rejectNextSetTrashMembership(error: unknown): void;
   resolveNextRetryProcessing(response: RetryProcessingResponse): void;
   rejectNextRetryProcessing(error: unknown): void;
   resolveNextPresignOriginalDownload(response: CreateTemporaryPhotoUrlResponse): void;
@@ -38,18 +38,18 @@ export interface TestAlbumMutationsPort {
 
 /** A fully controllable `albumMutations` port for deep-module tests: every call queues until the test resolves it. */
 export const createTestAlbumMutationsPort = (): TestAlbumMutationsPort => {
-  const setArchiveMembershipCalls: SetArchiveMembershipCall[] = [];
+  const setTrashMembershipCalls: SetTrashMembershipCall[] = [];
   const retryProcessingCalls: RetryProcessingCall[] = [];
   const presignOriginalDownloadCalls: PresignOriginalDownloadCall[] = [];
-  const pendingSetArchiveMembership: Array<Deferred<ArchiveMembershipResponse>> = [];
+  const pendingSetTrashMembership: Array<Deferred<TrashMembershipResponse>> = [];
   const pendingRetryProcessing: Array<Deferred<RetryProcessingResponse>> = [];
   const pendingPresignOriginalDownload: Array<Deferred<CreateTemporaryPhotoUrlResponse>> = [];
 
   const port: AlbumMutationsPort = {
-    setArchiveMembership: ({ photoId, archived, signal }) => {
-      setArchiveMembershipCalls.push({ photoId, archived });
+    setTrashMembership: ({ photoId, trashed, signal }) => {
+      setTrashMembershipCalls.push({ photoId, trashed });
       return new Promise((resolve, reject) => {
-        pendingSetArchiveMembership.push({ resolve, reject });
+        pendingSetTrashMembership.push({ resolve, reject });
         signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       });
     },
@@ -71,11 +71,11 @@ export const createTestAlbumMutationsPort = (): TestAlbumMutationsPort => {
 
   return {
     port,
-    setArchiveMembershipCalls,
+    setTrashMembershipCalls,
     retryProcessingCalls,
     presignOriginalDownloadCalls,
-    resolveNextSetArchiveMembership: (response) => pendingSetArchiveMembership.shift()?.resolve(response),
-    rejectNextSetArchiveMembership: (error) => pendingSetArchiveMembership.shift()?.reject(error),
+    resolveNextSetTrashMembership: (response) => pendingSetTrashMembership.shift()?.resolve(response),
+    rejectNextSetTrashMembership: (error) => pendingSetTrashMembership.shift()?.reject(error),
     resolveNextRetryProcessing: (response) => pendingRetryProcessing.shift()?.resolve(response),
     rejectNextRetryProcessing: (error) => pendingRetryProcessing.shift()?.reject(error),
     resolveNextPresignOriginalDownload: (response) => pendingPresignOriginalDownload.shift()?.resolve(response),

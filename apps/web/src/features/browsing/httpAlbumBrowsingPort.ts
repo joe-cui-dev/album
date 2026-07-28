@@ -1,8 +1,8 @@
 import { albumTransport } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
 
-const pathForCollection = (collection: "active" | "archived"): string =>
-  collection === "active" ? "/timeline" : "/archive";
+const pathForCollection = (collection: "active" | "trashed"): string =>
+  collection === "active" ? "/timeline" : "/trash";
 
 export const createHttpAlbumBrowsingPort = (): AlbumBrowsingPort => ({
   loadCollectionPage: ({ collection, cursor, startAt, signal }) => {

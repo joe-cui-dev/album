@@ -1,15 +1,15 @@
 import { buildChronologyKey, getCapturedAtComponents, type CapturedAt } from "@album/shared";
 
-export type PhotoCollection = "active" | "archived";
+export type PhotoCollection = "active" | "trashed";
 
-const collectionSegment = (collection: PhotoCollection): "ACTIVE" | "ARCHIVED" =>
-  collection === "active" ? "ACTIVE" : "ARCHIVED";
+const collectionSegment = (collection: PhotoCollection): "ACTIVE" | "TRASHED" =>
+  collection === "active" ? "ACTIVE" : "TRASHED";
 
-/** Bare SK prefix for one collection's Timeline/Archive projections. */
+/** Bare SK prefix for one collection's Timeline/Trash projections. */
 export const timelineProjectionPrefix = (collection: PhotoCollection): string =>
   `TIMELINE#${collectionSegment(collection)}#`;
 
-/** SK for the lightweight Timeline/Archive projection of one Ready Photo. */
+/** SK for the lightweight Timeline/Trash projection of one Ready Photo. */
 export const timelineProjectionSortKey = ({
   collection,
   capturedAt,

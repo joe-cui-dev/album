@@ -45,7 +45,7 @@ export interface PhotoViewer {
 
 export interface PhotoViewerOptions {
   photoId: string;
-  /** Present only for a contextual open from Timeline or Archive; a direct route infers the current collection. */
+  /** Present only for a contextual open from Timeline or Trash; a direct route infers the current collection. */
   sourceCollection?: PhotoCollection;
   port: PhotoViewerPort;
   /**

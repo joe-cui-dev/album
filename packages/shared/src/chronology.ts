@@ -406,7 +406,7 @@ const UNKNOWN_SUBSECOND_SEGMENT = "------";
  * (never Capture Time Offset). Unknown components use a marker that sorts
  * below every known digit, so a descending scan visits known components
  * before unknown ones at each boundary, and higher known values (newer)
- * before lower ones -- matching Timeline/Archive newest-first order.
+ * before lower ones -- matching Timeline/Trash newest-first order.
  * Store adapters own the surrounding SK; callers never reconstruct this key.
  */
 export const buildChronologyKey = (capturedAt: CapturedAt): string => {

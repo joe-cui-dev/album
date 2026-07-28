@@ -35,8 +35,8 @@ test("uploads a photo, survives a route change, and 'View new photos' jumps to i
   await page.getByRole("button", { name: "Minimize" }).click();
   await expect(page.getByRole("button", { name: "Show upload progress" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Archive" }).click();
-  await expect(page.getByRole("heading", { name: "Archive", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Trash" }).click();
+  await expect(page.getByRole("heading", { name: "Trash", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Show upload progress" })).toBeVisible();
 
   await page.getByRole("button", { name: "Show upload progress" }).click();

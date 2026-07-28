@@ -1,5 +1,5 @@
 import type {
-  ArchiveMembershipResponse,
+  TrashMembershipResponse,
   CreateTemporaryPhotoUrlResponse,
   RetryProcessingResponse,
 } from "@album/shared";
@@ -11,11 +11,11 @@ import { albumTransport } from "../../lib/albumTransport.js";
  * deep module never imports the global HTTP client directly.
  */
 export interface AlbumMutationsPort {
-  setArchiveMembership(input: {
+  setTrashMembership(input: {
     photoId: string;
-    archived: boolean;
+    trashed: boolean;
     signal: AbortSignal;
-  }): Promise<ArchiveMembershipResponse>;
+  }): Promise<TrashMembershipResponse>;
 
   retryProcessing(input: { photoId: string; signal: AbortSignal }): Promise<RetryProcessingResponse>;
 
@@ -26,9 +26,9 @@ export interface AlbumMutationsPort {
 }
 
 export const createHttpAlbumMutationsPort = (): AlbumMutationsPort => ({
-  setArchiveMembership: ({ photoId, archived, signal }) =>
-    albumTransport.request(`/photos/${photoId}/archive`, {
-      method: archived ? "PUT" : "DELETE",
+  setTrashMembership: ({ photoId, trashed, signal }) =>
+    albumTransport.request(`/photos/${photoId}/trash`, {
+      method: trashed ? "PUT" : "DELETE",
       signal,
     }),
 

@@ -170,11 +170,11 @@ describe("DynamoDbPersonalAlbumStore commands: publishReadyPhoto", () => {
   });
 });
 
-describe("DynamoDbPersonalAlbumStore commands: setArchiveMembership", () => {
+describe("DynamoDbPersonalAlbumStore commands: setTrashMembership", () => {
   it("moves the projection and transfers the Date Index count", async () => {
     const { documentClient, commands } = fakeClient({
       processingState: "ready",
-      archived: false,
+      trashed: false,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
       fileName: "photo-1.jpg",
       displayDimensions: { width: 100, height: 50 },
@@ -188,29 +188,29 @@ describe("DynamoDbPersonalAlbumStore commands: setArchiveMembership", () => {
       "user-1",
     );
 
-    await album.setArchiveMembership({ photoId: "photo-1", archived: true });
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
 
     const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
     const items = transact.input.TransactItems ?? [];
     expect(items[0]?.Update).toEqual(
       expect.objectContaining({
-        UpdateExpression: "SET archived = :archived",
-        ConditionExpression: "archived = :currentArchived AND chronology.active.revision = :currentRevision",
-        ExpressionAttributeValues: { ":archived": true, ":currentArchived": false, ":currentRevision": 0 },
+        UpdateExpression: "SET trashed = :trashed, deletedAt = :deletedAt",
+        ConditionExpression: "trashed = :currentTrashed AND chronology.active.revision = :currentRevision",
+        ExpressionAttributeValues: expect.objectContaining({ ":trashed": true, ":currentTrashed": false, ":currentRevision": 0, ":deletedAt": expect.any(String) }),
       }),
     );
     expect(items[1]?.Delete?.Key?.sk).toContain("TIMELINE#ACTIVE#");
-    expect(items[2]?.Put?.Item?.sk).toContain("TIMELINE#ARCHIVED#");
+    expect(items[2]?.Put?.Item?.sk).toContain("TIMELINE#TRASHED#");
     expect(items[3]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "DATE_INDEX#ACTIVE#2024" });
     expect(items[3]?.Update?.ExpressionAttributeValues?.[":delta"]).toBe(-1);
-    expect(items[4]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "DATE_INDEX#ARCHIVED#2024" });
+    expect(items[4]?.Update?.Key).toEqual({ pk: "USER#user-1", sk: "DATE_INDEX#TRASHED#2024" });
     expect(items[4]?.Update?.ExpressionAttributeValues?.[":delta"]).toBe(1);
   });
 
   it("throws ConcurrentPhotoModificationError when a concurrent write cancels the transaction", async () => {
     const { documentClient } = fakeClientThatCancelsTransactions({
       processingState: "ready",
-      archived: false,
+      trashed: false,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
       fileName: "photo-1.jpg",
       displayDimensions: { width: 100, height: 50 },
@@ -225,7 +225,7 @@ describe("DynamoDbPersonalAlbumStore commands: setArchiveMembership", () => {
     );
 
     await expect(
-      album.setArchiveMembership({ photoId: "photo-1", archived: true }),
+      album.setTrashMembership({ photoId: "photo-1", trashed: true }),
     ).rejects.toBeInstanceOf(ConcurrentPhotoModificationError);
   });
 });
@@ -234,7 +234,7 @@ describe("DynamoDbPersonalAlbumStore commands: replaceActiveChronology", () => {
   it("conditions the update on the expected revision", async () => {
     const { documentClient, commands } = fakeClient({
       processingState: "ready",
-      archived: false,
+      trashed: false,
       uploadRequestedAt: "2026-07-19T00:00:00.000Z",
       fileName: "photo-1.jpg",
       displayDimensions: { width: 100, height: 50 },
@@ -260,7 +260,7 @@ describe("DynamoDbPersonalAlbumStore commands: replaceActiveChronology", () => {
     expect(items[0]?.Update).toEqual(
       expect.objectContaining({
         UpdateExpression: "SET chronology.active = :active",
-        ConditionExpression: "chronology.active.revision = :expectedRevision AND archived = :currentArchived",
+        ConditionExpression: "chronology.active.revision = :expectedRevision AND trashed = :currentTrashed",
       }),
     );
     expect(items[0]?.Update?.ExpressionAttributeValues?.[":active"]).toEqual({

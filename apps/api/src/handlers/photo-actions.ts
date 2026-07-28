@@ -59,7 +59,7 @@ export const toPhotoDetail = (photo: Photo): PhotoDetail => ({
   format: photo.format,
   fileSizeBytes: photo.fileSizeBytes,
   processingState: photo.processingState,
-  archived: photo.archived,
+  trashed: photo.trashed,
   ...(photo.metadata ? { metadata: photo.metadata } : {}),
   ...(photo.displayDimensions
     ? { displayDimensions: photo.displayDimensions }

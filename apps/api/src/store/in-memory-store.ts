@@ -176,7 +176,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             (candidate) =>
               candidate.photoId !== excludePhotoId &&
               candidate.sha256 === sha256 &&
-              candidate.processingState === "ready",
+              candidate.processingState === "ready" && !candidate.trashed,
           );
           return match ? { photoId: match.photoId } : undefined;
         },
@@ -185,7 +185,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             ...input,
             userId,
             processingState: "uploadRequested",
-            archived: false,
+            trashed: false,
           });
         },
         async createUploadBatch(input) {
@@ -260,15 +260,15 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           }
         },
 
-        async setArchiveMembership({ photoId, archived }) {
+        async setTrashMembership({ photoId, trashed }) {
           const candidate = requirePhoto(userId, photoId);
           const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
-          if (candidate.archived === archived) {
+          if (candidate.trashed === trashed) {
             return;
           }
 
-          const fromCollection: PhotoCollection = candidate.archived ? "archived" : "active";
-          const toCollection: PhotoCollection = archived ? "archived" : "active";
+          const fromCollection: PhotoCollection = candidate.trashed ? "trashed" : "active";
+          const toCollection: PhotoCollection = trashed ? "trashed" : "active";
           const capturedAt = chronology.active.capturedAt;
 
           deleteProjection(userId, { collection: fromCollection, capturedAt, addedAt, photoId });
@@ -280,10 +280,13 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             fileName: candidate.fileName,
             displayDimensions: candidate.displayDimensions!,
             timelineThumbnails,
+            ...(trashed ? { deletedAt: new Date().toISOString() } : {}),
           });
           incrementDateIndex(userId, fromCollection, capturedAt, -1);
           incrementDateIndex(userId, toCollection, capturedAt, 1);
-          candidate.archived = archived;
+          candidate.trashed = trashed;
+          if (trashed) candidate.deletedAt = new Date().toISOString();
+          else delete candidate.deletedAt;
         },
 
         async replaceActiveChronology({ photoId, capturedAt, expectedRevision }) {
@@ -298,7 +301,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             return { revision: current.revision };
           }
 
-          const collection: PhotoCollection = candidate.archived ? "archived" : "active";
+          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
           deleteProjection(userId, { collection, capturedAt: current.capturedAt, addedAt, photoId });
           writeProjection(userId, {
             photoId,
@@ -332,7 +335,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             return { revision: current.revision };
           }
 
-          const collection: PhotoCollection = candidate.archived ? "archived" : "active";
+          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
           deleteProjection(userId, { collection, capturedAt: current.capturedAt, addedAt, photoId });
           writeProjection(userId, {
             photoId,

@@ -13,7 +13,7 @@ import { expect, test } from "./fixtures/test.js";
 const beachCapturedAt = { precision: "day", localDate: "2025-02-10" } as const;
 const mountainCapturedAt = { precision: "day", localDate: "2025-01-05" } as const;
 
-test("archives a Photo from the contextual Viewer, an unrelated row doesn't reflow, and the Viewer advances", async ({
+test("trashs a Photo from the contextual Viewer, an unrelated row doesn't reflow, and the Viewer advances", async ({
   mock,
   page,
 }) => {
@@ -40,9 +40,9 @@ test("archives a Photo from the contextual Viewer, an unrelated row doesn't refl
   mock.navigation.queueOnce((route) => respondJson(route, emptyNavigation()));
 
   await page.getByRole("button", { name: "More" }).click();
-  await page.getByRole("menuitem", { name: "Archive photo" }).click();
+  await page.getByRole("menuitem", { name: "Trash photo" }).click();
 
-  // The Viewer advances toward the older neighbour once the archive intent fires.
+  // The Viewer advances toward the older neighbour once the trash intent fires.
   await expect(page.getByRole("dialog", { name: "mountain.jpg" })).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -50,7 +50,7 @@ test("archives a Photo from the contextual Viewer, an unrelated row doesn't refl
   const mountainBoxAfter = await mountainLink.boundingBox();
   expect(mountainBoxAfter).toEqual(mountainBoxBefore);
 
-  await expect(page.getByRole("status")).toContainText("Photo moved to Archive");
+  await expect(page.getByRole("status")).toContainText("Photo moved to Trash");
 });
 
 test("Undo restores the Photo without disturbing the unrelated row", async ({ mock, page }) => {
@@ -75,7 +75,7 @@ test("Undo restores the Photo without disturbing the unrelated row", async ({ mo
   mock.navigation.queueOnce((route) => respondJson(route, emptyNavigation()));
 
   await page.getByRole("button", { name: "More" }).click();
-  await page.getByRole("menuitem", { name: "Archive photo" }).click();
+  await page.getByRole("menuitem", { name: "Trash photo" }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("link", { name: /beach\.jpg/ })).toHaveCount(0);
 
@@ -87,7 +87,7 @@ test("Undo restores the Photo without disturbing the unrelated row", async ({ mo
   expect(mountainBoxAfter).toEqual(mountainBoxBefore);
 });
 
-test("a failed archive returns the Photo to the Timeline and shows a persistent error, without a late backwards jump", async ({
+test("a failed trash returns the Photo to the Timeline and shows a persistent error, without a late backwards jump", async ({
   mock,
   page,
 }) => {
@@ -102,14 +102,14 @@ test("a failed archive returns the Photo to the Timeline and shows a persistent 
   await page.getByRole("link", { name: /beach\.jpg/ }).click();
   await expect(page.getByRole("dialog", { name: "beach.jpg" })).toBeVisible();
 
-  mock.archiveMembership.queueOnce((route) => respondAlbumError(route, 500, "unexpected", "Internal error"));
+  mock.trashMembership.queueOnce((route) => respondAlbumError(route, 500, "unexpected", "Internal error"));
 
   await page.getByRole("button", { name: "More" }).click();
-  await page.getByRole("menuitem", { name: "Archive photo" }).click();
+  await page.getByRole("menuitem", { name: "Trash photo" }).click();
 
   // No older/newer neighbour, so the Viewer advances by closing immediately -- the design
   // deliberately does not yank it backwards once the later failure arrives (ADR-0068).
   await expect(page).toHaveURL("/album");
-  await expect(page.getByRole("alert")).toContainText(/couldn't archive/i);
+  await expect(page.getByRole("alert")).toContainText(/couldn't trash/i);
   await expect(page.getByRole("link", { name: /beach\.jpg/ })).toBeVisible();
 });
