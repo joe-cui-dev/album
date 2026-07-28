@@ -67,3 +67,53 @@ test("a retry failure shows a persistent error naming the retry action, without 
 
   await expect(page.getByRole("alert")).toContainText(/couldn't start retry processing/i);
 });
+
+test("abandoning a Processing Failed Photo permanently deletes it, removes it from the list, and zeroes the nav count", async ({
+  mock,
+  page,
+}) => {
+  mock.processingIssuesSummary.queueOnce((route) => respondJson(route, { openCount: 1 }));
+  await page.goto("/album");
+
+  const issue = buildProcessingIssue({ photoId: "photo-1", fileName: "corrupt.jpg", reasonCode: "unsupportedImage" });
+  mock.processingIssues.queueOnce((route) => respondJson(route, processingIssuesPage([issue])));
+  mock.processingIssuesSummary.queueOnce((route) => respondJson(route, { openCount: 1 }));
+  await page.getByRole("link", { name: /Needs attention/ }).click();
+  await expect(page.getByText("corrupt.jpg")).toBeVisible();
+
+  await page.getByRole("button", { name: "Abandon photo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Abandon this photo?" });
+  await expect(dialog).toBeVisible();
+
+  mock.processingIssues.queueOnce((route) => respondJson(route, processingIssuesPage([])));
+  mock.processingIssuesSummary.queueOnce((route) => respondJson(route, { openCount: 0 }));
+  await dialog.getByRole("button", { name: "Abandon photo" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("No processing issues")).toBeVisible();
+  expect(mock.requests.some((request) => new URL(request.url()).pathname === "/photos/photo-1" && request.method() === "DELETE")).toBe(true);
+
+  // The nav entry stays visible while standing on the view; it drops once the count has caught up (implementation doc "Navigation count").
+  await page.getByRole("link", { name: "Album home" }).click();
+  await expect(page.getByRole("link", { name: /Needs attention/ })).toHaveCount(0);
+});
+
+test("an abandon failure shows a persistent, retryable error and leaves the issue in the list", async ({ mock, page }) => {
+  mock.processingIssuesSummary.queueOnce((route) => respondJson(route, { openCount: 1 }));
+  await page.goto("/album");
+
+  const issue = buildProcessingIssue({ photoId: "photo-1", fileName: "corrupt.jpg" });
+  mock.processingIssues.queueOnce((route) => respondJson(route, processingIssuesPage([issue])));
+  mock.processingIssuesSummary.queueOnce((route) => respondJson(route, { openCount: 1 }));
+  await page.getByRole("link", { name: /Needs attention/ }).click();
+  await expect(page.getByText("corrupt.jpg")).toBeVisible();
+
+  await page.getByRole("button", { name: "Abandon photo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Abandon this photo?" });
+  mock.permanentDeletion.queueOnce((route) => respondAlbumError(route, 500, "unexpected", "Internal error"));
+  await dialog.getByRole("button", { name: "Abandon photo" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("alert")).toContainText(/couldn't abandon this photo/i);
+  await expect(page.getByText("corrupt.jpg")).toBeVisible();
+});

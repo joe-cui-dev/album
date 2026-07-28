@@ -2,6 +2,7 @@ import type { CapturedAt } from "@album/shared";
 import { createInMemoryPersonalAlbumStore } from "../store/in-memory-store.js";
 import { createInMemoryPhotoObjectStore } from "../store/in-memory-photo-object-store.js";
 import { handlePermanentDeletion } from "./permanent-deletion.js";
+import { handleGetProcessingIssuesSummary } from "./processing-issues.js";
 import { permanentlyDeletePhoto } from "../permanent-deletion.js";
 
 const user = { userId: "user-1", email: "user@example.com" };
@@ -125,5 +126,80 @@ describe("handlePermanentDeletion", () => {
     await permanentlyDeletePhoto({ album, photoObjects, photoId: "photo-1" });
 
     await expect(album.getPhoto("photo-1")).resolves.toBeUndefined();
+  });
+
+  it("rejects an in-progress Photo as ineligible for Permanent Deletion", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    const photoObjects = createInMemoryPhotoObjectStore();
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: objectKeys[0]!,
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
+    });
+
+    const response = await handlePermanentDeletion({ user, album, photoId: "photo-1", deps: { photoObjects } });
+
+    expect(response.statusCode).toBe(409);
+    await expect(album.getPhoto("photo-1")).resolves.toBeDefined();
+  });
+});
+
+describe("handlePermanentDeletion for a Processing Failed Photo (Abandon Photo)", () => {
+  const originalObjectKey = "originals/user-1/batch-1/photo-1.jpg";
+
+  const createFailedPhoto = async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf(user.userId);
+    const photoObjects = createInMemoryPhotoObjectStore([
+      { objectKey: originalObjectKey, body: Uint8Array.from([1]), contentType: "image/jpeg", metadata: {} },
+    ]);
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey,
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
+    });
+    await album.recordProcessingIssue({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      reasonCode: "unsupportedImage",
+      attemptedAt: "2026-01-01T00:01:00.000Z",
+    });
+    return { album, photoObjects };
+  };
+
+  it("permanently deletes a Processing Failed Photo's object and resolves its Processing Issue", async () => {
+    const { album, photoObjects } = await createFailedPhoto();
+
+    const response = await handlePermanentDeletion({ user, album, photoId: "photo-1", deps: { photoObjects } });
+
+    expect(response.statusCode).toBe(204);
+    await expect(album.getPhoto("photo-1")).resolves.toBeUndefined();
+    await expect(photoObjects.objectExists(originalObjectKey)).resolves.toBe(false);
+    const summary = await handleGetProcessingIssuesSummary({ user, album });
+    expect(JSON.parse(summary.body ?? "{}")).toEqual({ openCount: 0 });
+  });
+
+  it("is safe to repeat after a Processing Failed Photo is already permanently deleted", async () => {
+    const { album, photoObjects } = await createFailedPhoto();
+    const input = { user, album, photoId: "photo-1", deps: { photoObjects } };
+
+    await handlePermanentDeletion(input);
+
+    await expect(handlePermanentDeletion(input)).resolves.toMatchObject({ statusCode: 204 });
   });
 });

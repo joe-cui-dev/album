@@ -34,6 +34,7 @@ export const uiMessages = {
     addedAt: "Added",
     retry: "Retry processing",
     retrying: "Retrying…",
+    abandon: "Abandon photo",
     emptyTitle: "No processing issues",
     emptyDescription: "Every photo you've added has been processed.",
     loadFailed: "Couldn't load processing issues — try again",

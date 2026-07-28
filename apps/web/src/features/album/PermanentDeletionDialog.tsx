@@ -1,18 +1,41 @@
 import { useEffect, useRef } from "react";
 import { trapTab } from "../../lib/focusTrap.js";
 
+const copyFor = (target: "photo" | "trash" | "abandon"): { title: string; description: string; confirmLabel: string } => {
+  switch (target) {
+    case "trash":
+      return {
+        title: "Empty Trash permanently?",
+        description: "Every photo in Trash will be permanently deleted. This cannot be undone.",
+        confirmLabel: "Empty Trash",
+      };
+    case "abandon":
+      return {
+        title: "Abandon this photo?",
+        description: "This photo couldn't be processed and can't be added to your album. Abandoning it permanently deletes it. This cannot be undone.",
+        confirmLabel: "Abandon photo",
+      };
+    case "photo":
+      return {
+        title: "Delete permanently?",
+        description: "This photo will be permanently deleted. This cannot be undone.",
+        confirmLabel: "Delete permanently",
+      };
+  }
+};
+
 export function PermanentDeletionDialog({
   target,
   onCancel,
   onConfirm,
 }: {
-  target: "photo" | "trash";
+  target: "photo" | "trash" | "abandon";
   onCancel(): void;
   onConfirm(): void;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const isTrash = target === "trash";
+  const { title, description, confirmLabel } = copyFor(target);
 
   useEffect(() => {
     confirmRef.current?.focus();
@@ -33,15 +56,15 @@ export function PermanentDeletionDialog({
         role="dialog"
       >
         <h2 className="text-xl font-bold" id="permanent-deletion-title">
-          {isTrash ? "Empty Trash permanently?" : "Delete permanently?"}
+          {title}
         </h2>
         <p className="mt-3 text-sm text-slate-300" id="permanent-deletion-description">
-          {isTrash ? "Every photo in Trash will be permanently deleted. This cannot be undone." : "This photo will be permanently deleted. This cannot be undone."}
+          {description}
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <button className="rounded px-3 py-2" onClick={onCancel} type="button">Cancel</button>
           <button className="rounded bg-danger px-3 py-2 font-semibold text-white" onClick={onConfirm} ref={confirmRef} type="button">
-            {isTrash ? "Empty Trash" : "Delete permanently"}
+            {confirmLabel}
           </button>
         </div>
       </section>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProcessingIssue } from "@album/shared";
 import type { AlbumMutations } from "../album/albumMutations.js";
+import { PermanentDeletionDialog } from "../album/PermanentDeletionDialog.js";
+import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { uiMessages } from "../../lib/uiMessages.js";
 import type { ProcessingIssuesNavCount } from "./processingIssuesNavCount.js";
 import { createHttpProcessingIssuesPort, type ProcessingIssuesPort } from "./processingIssuesPort.js";
@@ -25,7 +27,9 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
   const [issues, setIssues] = useState<ProcessingIssue[]>();
   const [loadError, setLoadError] = useState<string>();
   const [pendingRetryIds, setPendingRetryIds] = useState<ReadonlySet<string>>(new Set());
+  const [abandonPhotoId, setAbandonPhotoId] = useState<string>();
   const previousOpenCountRef = useRef<number | undefined>(undefined);
+  const mutationsSnapshot = useAlbumMutationsSnapshot(mutations);
 
   const loadAll = async (signal: AbortSignal): Promise<void> => {
     try {
@@ -69,8 +73,8 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
     navCount.intents.refresh();
     void loadAll(controller.signal);
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadAll reads no reactive state, only stable refs.
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadAll reads no reactive state, only stable refs; navigationRevision is the intentional re-fetch trigger (e.g. a successful Abandon Photo).
+  }, [mutationsSnapshot.navigationRevision]);
 
   const isRetrying = (issue: ProcessingIssue): boolean => issue.status === "retrying" || pendingRetryIds.has(issue.photoId);
   const anyRetrying = (issues ?? []).some(isRetrying);
@@ -95,6 +99,14 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
     mutations.intents.retryProcessing(photoId);
   };
 
+  const confirmAbandon = (): void => {
+    if (!abandonPhotoId) {
+      return;
+    }
+    mutations.intents.abandonPhoto(abandonPhotoId);
+    setAbandonPhotoId(undefined);
+  };
+
   return (
     <main className="album-content">
       <h1>{uiMessages.processingIssues.title}</h1>
@@ -117,11 +129,20 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
               isRetrying={isRetrying(issue)}
               issue={issue}
               key={issue.photoId}
+              onAbandon={setAbandonPhotoId}
               onRetry={retry}
             />
           ))}
         </ul>
       )}
+
+      {abandonPhotoId ? (
+        <PermanentDeletionDialog
+          onCancel={() => setAbandonPhotoId(undefined)}
+          onConfirm={confirmAbandon}
+          target="abandon"
+        />
+      ) : null}
     </main>
   );
 }
@@ -129,10 +150,12 @@ export function ProcessingIssuesView({ mutations, navCount }: ProcessingIssuesVi
 function ProcessingIssueRow({
   issue,
   isRetrying,
+  onAbandon,
   onRetry,
 }: {
   issue: ProcessingIssue;
   isRetrying: boolean;
+  onAbandon: (photoId: string) => void;
   onRetry: (photoId: string) => void;
 }) {
   return (
@@ -144,14 +167,24 @@ function ProcessingIssueRow({
           {uiMessages.processingIssues.addedAt} {new Date(issue.addedAt).toLocaleDateString()}
         </p>
       </div>
-      <button
-        className="prismatic-secondary-action disabled:cursor-not-allowed disabled:text-ink-muted/50"
-        disabled={isRetrying}
-        onClick={() => onRetry(issue.photoId)}
-        type="button"
-      >
-        {isRetrying ? uiMessages.processingIssues.retrying : uiMessages.processingIssues.retry}
-      </button>
+      <div className="flex gap-2 sm:justify-end">
+        <button
+          className="prismatic-secondary-action text-danger disabled:cursor-not-allowed disabled:text-ink-muted/50"
+          disabled={isRetrying}
+          onClick={() => onAbandon(issue.photoId)}
+          type="button"
+        >
+          {uiMessages.processingIssues.abandon}
+        </button>
+        <button
+          className="prismatic-secondary-action disabled:cursor-not-allowed disabled:text-ink-muted/50"
+          disabled={isRetrying}
+          onClick={() => onRetry(issue.photoId)}
+          type="button"
+        >
+          {isRetrying ? uiMessages.processingIssues.retrying : uiMessages.processingIssues.retry}
+        </button>
+      </div>
     </li>
   );
 }

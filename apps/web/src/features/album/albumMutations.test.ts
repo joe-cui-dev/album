@@ -68,6 +68,31 @@ describe("createAlbumMutations", () => {
     expect(mutations.getSnapshot()).toMatchObject({ navigationRevision: 1, feedback: { message: "Photo permanently deleted" } });
   });
 
+  it("abandonPhoto permanently deletes without touching the registry, then updates navigation on success", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.abandonPhoto("photo-1");
+
+    expect(registry.applyPermanentDeletion).not.toHaveBeenCalled();
+    expect(test.permanentlyDeletePhotoCalls).toEqual([{ photoId: "photo-1" }]);
+    test.resolveNextPermanentDeletion();
+    await flush();
+    expect(mutations.getSnapshot()).toMatchObject({ navigationRevision: 1, feedback: { message: "Photo abandoned" } });
+  });
+
+  it("abandonPhoto failure publishes a persistent, retryable error without rolling back a registry it never touched", async () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+    mutations.intents.abandonPhoto("photo-1");
+
+    test.rejectNextPermanentDeletion(new Error("boom"));
+    await flush();
+
+    expect(registry.revertPermanentDeletion).not.toHaveBeenCalled();
+    const feedback = mutations.getSnapshot().feedback;
+    expect(feedback).toMatchObject({ kind: "failure", message: "Couldn't abandon this Photo — try again" });
+    expect(feedback?.action?.label).toBe("Retry");
+  });
+
   it("refetches Trash after a successful Empty Trash and offers a retry when it fails", async () => {
     mutations = createAlbumMutations({ port: test.port, registry });
 

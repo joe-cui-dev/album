@@ -33,6 +33,8 @@ export interface AlbumMutationsIntents {
   /** Shell-level chronology intent used by the Viewer after a successful Adjust or Revert. */
   chronologyChanged(input: { photoId: string; collection: PhotoCollection }): void;
   permanentlyDeletePhoto(photoId: string): void;
+  /** Abandon Photo: Permanent Deletion of a Processing Failed Photo, which never entered a Browsing Window. */
+  abandonPhoto(photoId: string): void;
   emptyTrash(): void;
   dismissFeedback(): void;
 }
@@ -244,6 +246,27 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     }
   };
 
+  const runAbandonPhoto = async (photoId: string): Promise<void> => {
+    if (disposed) return;
+    const controller = new AbortController();
+    inFlightControllers.add(controller);
+    try {
+      await port.permanentlyDeletePhoto({ photoId, signal: controller.signal });
+      if (disposed) return;
+      navigationRevision += 1;
+      publishFeedback({ kind: "success", message: "Photo abandoned" });
+    } catch (error) {
+      if (disposed || isCancelled(error)) return;
+      publishFeedback({
+        kind: "failure",
+        message: "Couldn't abandon this Photo — try again",
+        action: { label: "Retry", onInvoke: () => void runAbandonPhoto(photoId) },
+      });
+    } finally {
+      inFlightControllers.delete(controller);
+    }
+  };
+
   const runEmptyTrash = async (): Promise<void> => {
     if (disposed) return;
     const controller = new AbortController();
@@ -286,6 +309,9 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     },
     permanentlyDeletePhoto: (photoId) => {
       void runPermanentDeletion(photoId);
+    },
+    abandonPhoto: (photoId) => {
+      void runAbandonPhoto(photoId);
     },
     emptyTrash: () => {
       void runEmptyTrash();
