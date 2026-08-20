@@ -229,7 +229,7 @@ A User action that applies Permanent Deletion to every one of the User's Deleted
 _Avoid_: clear all, bulk delete, delete all
 
 **Favourite Photo**:
-A Ready Photo the User has marked to return to easily. Being a Favourite Photo is a mark on the Photo rather than a move between collections: it stays in the Timeline and continues to appear there.
+A Ready Photo the User has marked to return to easily. The mark does not move the Photo: favouriting a Photo does not take it out of the Timeline; a Deleted Photo keeps its Favourite mark and returns to Favourites when restored.
 _Avoid_: starred photo, liked photo, pinned photo
 
 **Favourite**:

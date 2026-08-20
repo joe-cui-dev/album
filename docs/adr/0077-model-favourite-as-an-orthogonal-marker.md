@@ -6,6 +6,7 @@ Duplicating the projection rather than filtering on a marker attribute keeps Fav
 
 ## Consequences
 
-- Every operation that moves or removes a Photo's projection -- Adjust Captured At, Revert Captured At, Delete Photo, Restore Photo, Permanent Deletion -- must maintain two rows and two Date Index counters within the same transaction when the Photo is a Favourite Photo.
+- A `favourite` projection row exists if and only if the Photo is favourited AND not trashed. Delete removes the row (and decrements its Date Index); Restore recreates it when the Favourite mark is still set. The Favourite mark itself is an attribute on the Photo and survives trashing, so a Deleted Photo still shows as favourited even though its `favourite` row is gone.
+- Only three operations must maintain two rows and two Date Index counters within the same transaction when the Photo is a Favourite Photo: Delete/Restore (`setTrashMembership`), Adjust Captured At (`replaceActiveChronology`) and Revert Captured At (`revertActiveChronology`). Permanent Deletion and the daily sweeper need no change: under the invariant above, a Photo eligible for Permanent Deletion is already trashed and therefore already has no `favourite` row.
 - The marker ships first on its own, as a Photo attribute plus a Timeline and Viewer badge, with no Favourites view. The Favourites projection and destination follow as a separate change, which keeps the two-row consistency work isolated from the deletion work.
 - Until Favourites exists, the navigation slot reserved for it stays empty rather than being filled by Trash.
