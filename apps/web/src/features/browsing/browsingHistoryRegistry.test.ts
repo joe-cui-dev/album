@@ -226,4 +226,106 @@ describe("applyChronologyChange", () => {
 
     expect(timeline.lifecycle.dispose).toHaveBeenCalledTimes(1);
   });
+
+  it("also withholds/invalidates the favourite collection (conservative propagation, decision 4)", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+    registry.activate("active-key", "active", () => timeline);
+
+    registry.applyChronologyChange({ photoId: "photo-1", collection: "active" });
+
+    expect(favourites.lifecycle.dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("applyMembershipChange: conservative favourite propagation (decision 4)", () => {
+  it("withholds in a mounted Favourites window regardless of whether the Photo was favourited", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+
+    registry.applyMembershipChange({ photoId: "photo-1", leftCollection: "active" });
+
+    expect(favourites.lifecycle.setWithheld).toHaveBeenCalledWith("photo-1", true);
+  });
+
+  it("invalidates a retained-inactive Favourites slot", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+    registry.activate("active-key", "active", () => timeline);
+
+    registry.applyMembershipChange({ photoId: "photo-1", leftCollection: "trashed" });
+
+    expect(favourites.lifecycle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("revertMembershipChange also un-withholds in the favourite collection", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+    registry.applyMembershipChange({ photoId: "photo-1", leftCollection: "active" });
+
+    registry.revertMembershipChange({ photoId: "photo-1", leftCollection: "active" });
+
+    expect(favourites.lifecycle.setWithheld).toHaveBeenLastCalledWith("photo-1", false);
+  });
+});
+
+describe("applyFavouriteChange / revertFavouriteChange", () => {
+  it("withholds an unfavourited Photo in the mounted Favourites window", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+
+    registry.applyFavouriteChange({ photoId: "photo-1", favourite: false });
+
+    expect(favourites.lifecycle.setWithheld).toHaveBeenCalledWith("photo-1", true);
+  });
+
+  it("does not withhold a newly-favourited Photo", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+
+    registry.applyFavouriteChange({ photoId: "photo-1", favourite: true });
+
+    expect(favourites.lifecycle.setWithheld).toHaveBeenCalledWith("photo-1", false);
+  });
+
+  it("invalidates a retained-inactive Favourites slot", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+    registry.activate("active-key", "active", () => timeline);
+
+    registry.applyFavouriteChange({ photoId: "photo-1", favourite: false });
+
+    expect(favourites.lifecycle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not touch active or trashed windows", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const timeline = fakeWindow();
+    registry.activate("active-key", "active", () => timeline);
+
+    registry.applyFavouriteChange({ photoId: "photo-1", favourite: false });
+
+    expect(timeline.lifecycle.setWithheld).not.toHaveBeenCalled();
+  });
+
+  it("revertFavouriteChange un-withholds in the mounted Favourites window", () => {
+    const registry = createBrowsingHistoryRegistry();
+    const favourites = fakeWindow();
+    registry.activate("favourites-key", "favourite", () => favourites);
+    registry.applyFavouriteChange({ photoId: "photo-1", favourite: false });
+
+    registry.revertFavouriteChange({ photoId: "photo-1" });
+
+    expect(favourites.lifecycle.setWithheld).toHaveBeenLastCalledWith("photo-1", false);
+  });
 });

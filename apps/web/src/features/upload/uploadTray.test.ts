@@ -20,6 +20,8 @@ const fakeRegistry = (): BrowsingHistoryRegistry => ({
   revertPermanentDeletion: vi.fn(),
   notifyPhotosArrived: vi.fn(),
   applyChronologyChange: vi.fn(),
+  applyFavouriteChange: vi.fn(),
+  revertFavouriteChange: vi.fn(),
   disposeAll: vi.fn(),
 });
 

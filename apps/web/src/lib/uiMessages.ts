@@ -28,6 +28,17 @@ export const uiMessages = {
     title: "Your trash is empty",
     description: "Trashed photos will appear here.",
   },
+  favourites: "Favourites",
+  emptyFavourites: {
+    title: "No favourites yet",
+    description: "Tap the heart on a photo to add it here.",
+  },
+  trashRetention: {
+    /** `N` days remain; used for N >= 2. */
+    daysLeft: (days: number) => `${days} days left`,
+    lastDay: "Last day",
+    deletingSoon: "Deleting soon",
+  },
   processingIssues: {
     navLabel: "Needs attention",
     title: "Processing issues",

@@ -18,6 +18,7 @@ interface PhotoDescriptor {
   aspectRatio: number;
   periodKey: string;
   favourite: boolean;
+  deletedAt?: string;
 }
 
 export interface SequencePosition {
@@ -41,6 +42,7 @@ export interface RenderReadyCell {
   sequencePosition: SequencePosition;
   presentation: CellPresentation;
   favourite: boolean;
+  deletedAt?: string;
 }
 
 export interface BrowsingMonthMarker {
@@ -227,6 +229,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
     aspectRatio: photo.displayDimensions.width / photo.displayDimensions.height,
     periodKey: periodKeyOf(photo.capturedAt),
     favourite: photo.favourite,
+    ...(photo.deletedAt !== undefined ? { deletedAt: photo.deletedAt } : {}),
   });
 
   const toLayoutDescriptor = (photoId: string): { photoId: string; aspectRatio: number; periodKey: string } => {
@@ -353,6 +356,7 @@ export const createBrowsingWindow = (options: BrowsingWindowOptions): BrowsingWi
           sequencePosition: sequencePositionOf(photoId),
           presentation: presentationFor(photoId),
           favourite: descriptorsById.get(photoId)!.favourite,
+          ...(descriptorsById.get(photoId)!.deletedAt !== undefined ? { deletedAt: descriptorsById.get(photoId)!.deletedAt } : {}),
         })),
       };
       nextRowsByKey.set(key, row);

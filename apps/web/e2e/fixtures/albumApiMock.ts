@@ -54,14 +54,20 @@ export const verifySignInCodeAccepted = (
 export const emptyNavigation = (): AlbumNavigationResponse => ({
   timeline: { years: [] },
   trash: { years: [] },
+  favourites: { years: [] },
   processingIssueCount: 0,
 });
 
 export const navigationWithYears = (
-  overrides: Partial<{ timelineYears: AlbumNavigationYear[]; trashYears: AlbumNavigationYear[] }>,
+  overrides: Partial<{
+    timelineYears: AlbumNavigationYear[];
+    trashYears: AlbumNavigationYear[];
+    favouriteYears: AlbumNavigationYear[];
+  }>,
 ): AlbumNavigationResponse => ({
   timeline: { years: overrides.timelineYears ?? [] },
   trash: { years: overrides.trashYears ?? [] },
+  favourites: { years: overrides.favouriteYears ?? [] },
   processingIssueCount: 0,
 });
 
@@ -277,6 +283,7 @@ export class AlbumApiMock {
   readonly navigation = new EndpointQueue((route) => respondJson(route, emptyNavigation()));
   readonly timeline = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
   readonly trash = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
+  readonly favourites = new EndpointQueue((route) => respondJson(route, emptyCollectionPage()));
   readonly thumbnailAccess = new EndpointQueue((route) =>
     respondJson(route, { photos: [], expiresAt: FAR_FUTURE_EXPIRY } satisfies TimelineThumbnailAccessResponse),
   );
@@ -366,6 +373,9 @@ export class AlbumApiMock {
       }
       if (url.pathname === "/trash" && method === "DELETE") {
         return this.emptyTrash.handle(route, request);
+      }
+      if (url.pathname === "/favourites" && method === "GET") {
+        return this.favourites.handle(route, request);
       }
       if (url.pathname === "/timeline-thumbnail-access" && method === "POST") {
         return this.thumbnailAccess.handle(route, request);

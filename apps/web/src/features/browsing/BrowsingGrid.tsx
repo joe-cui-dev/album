@@ -5,6 +5,7 @@ import { Heart } from "lucide-react";
 import { Link, useLocation, useViewTransitionState } from "react-router";
 import type { PhotoCollection } from "@album/shared";
 import { formatCapturedAt, photoLinkName } from "../../lib/capturedAtFormat.js";
+import { daysRemainingInTrash, isRetentionUrgent, retentionBadgeLabel } from "../../lib/trashRetention.js";
 import { PHOTO_VIEW_TRANSITION_NAME } from "../../lib/viewTransitionNames.js";
 import { BROWSING_ROW_SPACING, BROWSING_TARGET_ROW_HEIGHT } from "./browsingLayoutConstants.js";
 import type { BrowsingLayoutItem, BrowsingRow, BrowsingWindow, RenderReadyCell } from "./browsingWindow.js";
@@ -385,7 +386,12 @@ function PhotoLink({
   to: string;
 }) {
   const isOpeningViewer = useViewTransitionState(to);
-  const accessibleName = cell.favourite
+  // Each collection has its own badge language (decision 6): Timeline shows the heart,
+  // Trash shows days remaining, Favourites shows nothing -- every cell there is already
+  // favourited, so a heart would be zero-information noise.
+  const showFavouriteBadge = sourceCollection === "active" && cell.favourite;
+  const daysRemaining = sourceCollection === "trashed" && cell.deletedAt !== undefined ? daysRemainingInTrash(cell.deletedAt) : undefined;
+  const accessibleName = showFavouriteBadge
     ? `${photoLinkName(cell.fileName, cell.capturedAt)}, Favourite`
     : photoLinkName(cell.fileName, cell.capturedAt);
   return (
@@ -418,8 +424,18 @@ function PhotoLink({
           <span aria-hidden="true" className="block h-full w-full bg-table-glow" style={{ height, width: cell.width }} />
         )}
       </span>
-      {cell.favourite ? (
+      {showFavouriteBadge ? (
         <Heart aria-hidden="true" className="absolute right-1 top-1 h-4 w-4 fill-danger text-danger drop-shadow" />
+      ) : null}
+      {daysRemaining !== undefined ? (
+        <span
+          aria-hidden="true"
+          className={`absolute right-1 top-1 rounded-sm px-1 py-0.5 font-mono text-[0.65rem] font-semibold uppercase tracking-wider text-white drop-shadow ${
+            isRetentionUrgent(daysRemaining) ? "bg-danger/80" : "bg-ink/60"
+          }`}
+        >
+          {retentionBadgeLabel(daysRemaining)}
+        </span>
       ) : null}
       <span aria-hidden="true" className="timeline-photo-overlay">
         {formatCapturedAt(cell.capturedAt, "compact")}

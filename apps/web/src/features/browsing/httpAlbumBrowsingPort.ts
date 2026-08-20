@@ -1,8 +1,17 @@
+import type { PhotoCollection } from "@album/shared";
 import { albumTransport } from "../../lib/albumTransport.js";
 import type { AlbumBrowsingPort } from "./albumBrowsingPort.js";
 
-const pathForCollection = (collection: "active" | "trashed"): string =>
-  collection === "active" ? "/timeline" : "/trash";
+const pathForCollection = (collection: PhotoCollection): string => {
+  switch (collection) {
+    case "active":
+      return "/timeline";
+    case "trashed":
+      return "/trash";
+    case "favourite":
+      return "/favourites";
+  }
+};
 
 export const createHttpAlbumBrowsingPort = (): AlbumBrowsingPort => ({
   loadCollectionPage: ({ collection, cursor, startAt, signal }) => {

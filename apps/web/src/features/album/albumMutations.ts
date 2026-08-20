@@ -1,4 +1,4 @@
-import type { PhotoCollection } from "@album/shared";
+import type { MembershipCollection, PhotoCollection } from "@album/shared";
 import { AlbumTransportError } from "../../lib/albumTransport.js";
 import type { BrowsingHistoryRegistry } from "../browsing/browsingHistoryRegistry.js";
 import type { AlbumMutationsPort } from "./albumMutationsPort.js";
@@ -29,13 +29,18 @@ export interface AlbumMutationsSnapshot {
 
 export interface AlbumMutationsIntents {
   /** `collection` is the collection the Photo is currently in and about to leave (ADR-0067). */
-  setMembership(input: { photoId: string; collection: PhotoCollection }): void;
+  setMembership(input: { photoId: string; collection: MembershipCollection }): void;
   retryProcessing(photoId: string): void;
   downloadOriginal(input: { photoId: string; fileName: string }): void;
   /** Shell-level chronology intent used by the Viewer after a successful Adjust or Revert. */
-  chronologyChanged(input: { photoId: string; collection: PhotoCollection }): void;
-  /** Marks or unmarks a Ready Photo as a Favourite Photo (ADR-0077); does not move it out of the Timeline. */
-  setFavourite(input: { photoId: string; favourite: boolean }): void;
+  chronologyChanged(input: { photoId: string; collection: MembershipCollection }): void;
+  /**
+   * Marks or unmarks a Ready Photo as a Favourite Photo (ADR-0077); does not move it out of the
+   * Timeline or Trash. `sourceCollection` is the Viewer's currently resolved collection (decision
+   * 5): Undo feedback is offered only when unfavouriting makes the Photo disappear from the
+   * current view, i.e. `sourceCollection === "favourite"`.
+   */
+  setFavourite(input: { photoId: string; favourite: boolean; sourceCollection: PhotoCollection }): void;
   permanentlyDeletePhoto(photoId: string): void;
   /** Abandon Photo: Permanent Deletion of a Processing Failed Photo, which never entered a Browsing Window. */
   abandonPhoto(photoId: string): void;
@@ -114,7 +119,7 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
    */
   const runMembershipChange = async (
     photoId: string,
-    fromCollection: PhotoCollection,
+    fromCollection: MembershipCollection,
     registryOp: "apply" | "revert",
   ): Promise<void> => {
     if (disposed) {
@@ -168,28 +173,62 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
     }
   };
 
-  const runSetFavourite = async (photoId: string, favourite: boolean): Promise<void> => {
+  const runSetFavourite = async (
+    photoId: string,
+    favourite: boolean,
+    sourceCollection: PhotoCollection,
+  ): Promise<void> => {
     if (disposed) {
       return;
     }
+    // Decision 5: only unfavouriting out of the Favourites view itself makes the Photo disappear
+    // from the current view -- that's the only case that earns Undo feedback. Every other
+    // favourite/unfavourite is silent; the heart alone carries the result.
+    const offersUndo = !favourite && sourceCollection === "favourite";
+
     favouriteOverrides.set(photoId, favourite);
-    notify();
+    registry.applyFavouriteChange({ photoId, favourite });
+    if (offersUndo) {
+      publishFeedback({
+        kind: "success",
+        message: "Removed from Favourites",
+        action: {
+          label: "Undo",
+          onInvoke: () => void runSetFavourite(photoId, true, sourceCollection),
+        },
+      });
+    } else {
+      // Silent per decision 5 -- the heart alone carries the result. Still replaces whatever
+      // feedback entry was showing (e.g. this exact Undo's own banner), the same "newest
+      // mutation wins" rule every other feedback-publishing intent follows.
+      if (feedback !== undefined) {
+        clearFeedbackTimer();
+        feedback = undefined;
+      }
+      notify();
+    }
 
     const controller = new AbortController();
     inFlightControllers.add(controller);
     try {
       await port.setFavourite({ photoId, favourite, signal: controller.signal });
+      if (disposed) {
+        return;
+      }
+      navigationRevision += 1;
+      notify();
     } catch (error) {
       if (disposed || isCancelled(error)) {
         return;
       }
       favouriteOverrides.set(photoId, !favourite);
+      registry.revertFavouriteChange({ photoId });
       publishFeedback({
         kind: "failure",
         message: favourite ? "Couldn't favourite this Photo — try again" : "Couldn't unfavourite this Photo — try again",
         action: {
           label: "Retry",
-          onInvoke: () => void runSetFavourite(photoId, favourite),
+          onInvoke: () => void runSetFavourite(photoId, favourite, sourceCollection),
         },
       });
     } finally {
@@ -341,8 +380,8 @@ export const createAlbumMutations = (options: AlbumMutationsOptions): AlbumMutat
       navigationRevision += 1;
       notify();
     },
-    setFavourite: ({ photoId, favourite }) => {
-      void runSetFavourite(photoId, favourite);
+    setFavourite: ({ photoId, favourite, sourceCollection }) => {
+      void runSetFavourite(photoId, favourite, sourceCollection);
     },
     permanentlyDeletePhoto: (photoId) => {
       void runPermanentDeletion(photoId);

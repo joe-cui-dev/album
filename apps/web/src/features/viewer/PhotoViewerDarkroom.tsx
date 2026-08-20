@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Heart, Info, MoreVertical, X } from "lucide-
 import { formatCapturedAt } from "../../lib/capturedAtFormat.js";
 import { trapTab } from "../../lib/focusTrap.js";
 import { capturedAtSourceLabel } from "../../lib/capturedAtSource.js";
+import { daysRemainingInTrash, isRetentionUrgent, retentionBadgeLabel } from "../../lib/trashRetention.js";
 import type { AlbumMutations } from "../album/albumMutations.js";
 import { useAlbumMutationsSnapshot } from "../album/useAlbumMutations.js";
 import { ALBUM_BACKGROUND_ROOT_ID } from "../shell/albumBackgroundRoot.js";
@@ -160,7 +161,9 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       return;
     }
     setMoreOpen(false);
-    mutations.intents.setMembership({ photoId: bootstrap.photoId, collection: bootstrap.collection });
+    // `setMembership`'s `collection` is the membership collection the Photo is leaving, which
+    // `bootstrap.trashed` gives even when the Viewer Sequence itself is scoped to `favourite`.
+    mutations.intents.setMembership({ photoId: bootstrap.photoId, collection: bootstrap.trashed ? "trashed" : "active" });
     advanceOrClose();
   };
 
@@ -208,7 +211,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
     if (!bootstrap) {
       return;
     }
-    mutations.intents.setFavourite({ photoId: bootstrap.photoId, favourite: !favourite });
+    mutations.intents.setFavourite({ photoId: bootstrap.photoId, favourite: !favourite, sourceCollection: bootstrap.collection });
   };
 
   return (
@@ -306,9 +309,9 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
                     role="menuitem"
                     type="button"
                   >
-                    {bootstrap.collection === "active" ? "Trash photo" : "Restore to timeline"}
+                    {bootstrap.trashed ? "Restore to timeline" : "Trash photo"}
                   </button>
-                  {bootstrap.collection === "trashed" ? (
+                  {bootstrap.trashed ? (
                     <button
                       className="block w-full px-4 py-2 text-left text-danger hover:bg-white/10 focus:outline-none focus:bg-white/10"
                       onClick={openPermanentDeletion}
@@ -339,6 +342,7 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
             currentCollection={snapshot.collectionChanged.currentCollection}
             onReturn={onClose}
             onSwitch={() => viewer.intents.switchToCurrentCollection()}
+            requestedFavourites={snapshot.collectionChanged.requestedCollection === "favourite"}
           />
         ) : <ViewerMediaStage bootstrap={bootstrap} chromeVisible={chromeVisible} isLoading={snapshot.isLoading} loadError={snapshot.loadError} onActivity={revealChrome} onGesture={setGestureActive} onToggleChrome={() => setChromeVisible((visible) => !visible)} viewer={viewer}>
         {bootstrap?.newerPhotoId !== undefined ? (
@@ -353,11 +357,11 @@ export function PhotoViewerDarkroom({ viewer, mutations, mode, onClose }: PhotoV
       {editorOpen && bootstrap ? (
         <CapturedAtEditorDialog
           chronology={bootstrap.chronology}
-          collection={bootstrap.collection}
+          collection={bootstrap.trashed ? "trashed" : "active"}
           historyBackSignal={editorHistoryBackSignal}
           onDismiss={closeEditor}
           onSuccess={(result) => {
-            mutations.intents.chronologyChanged({ photoId: bootstrap.photoId, collection: bootstrap.collection });
+            mutations.intents.chronologyChanged({ photoId: bootstrap.photoId, collection: bootstrap.trashed ? "trashed" : "active" });
             setChronologyAnnouncement(`${result.kind === "adjust" ? "Date and time adjusted" : "Date and time reverted"}. ${formatCapturedAt(result.capturedAt, "accessible")}. ${capturedAtSourceLabel(result.source)}.`);
             viewer.intents.refresh();
           }}
@@ -411,15 +415,23 @@ function CollectionChangedNotice({
   currentCollection,
   onReturn,
   onSwitch,
+  requestedFavourites,
 }: {
   currentCollection: "active" | "trashed";
   onReturn: () => void;
   onSwitch: () => void;
+  /** This exact request asked for `collection=favourite`; the client phrases the notice around
+      that (decision 7) rather than claiming the Photo "moved", since it may simply have been
+      unfavourited without leaving the Timeline at all. */
+  requestedFavourites: boolean;
 }) {
+  const destinationLabel = currentCollection === "trashed" ? "Trash" : "Timeline";
   return (
     <div className="flex max-w-sm flex-col items-center gap-3 text-center">
       <p>
-        This photo moved to {currentCollection === "trashed" ? "Trash" : "Timeline"} since you opened it.
+        {requestedFavourites
+          ? "This photo is no longer a Favourite."
+          : `This photo moved to ${destinationLabel} since you opened it.`}
       </p>
       <div className="flex gap-2">
         <button
@@ -427,7 +439,7 @@ function CollectionChangedNotice({
           onClick={onSwitch}
           type="button"
         >
-          View in {currentCollection === "trashed" ? "Trash" : "Timeline"}
+          View in {destinationLabel}
         </button>
         <button className="rounded-md border border-white/40 px-3 py-2 text-sm font-semibold" onClick={onReturn} type="button">
           Return
@@ -441,6 +453,16 @@ function InfoPanel({ bootstrap }: { bootstrap: NonNullable<ReturnType<typeof use
   return (
     <aside aria-label="Photo information" className="max-h-[40vh] overflow-y-auto border-t border-white/10 bg-darkroom-elevated p-4 text-sm" id="photo-information" role="region">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
+        {bootstrap.trashed && bootstrap.deletedAt !== undefined ? (
+          <>
+            <dt className="font-semibold text-white/70">Retention</dt>
+            {/* This is where restore-or-let-it-go is actually decided (§6), so the days-remaining
+                line stands beside the rest of the Photo's metadata rather than only in the grid. */}
+            <dd className={isRetentionUrgent(daysRemainingInTrash(bootstrap.deletedAt)) ? "font-semibold text-danger" : undefined}>
+              {retentionBadgeLabel(daysRemainingInTrash(bootstrap.deletedAt))}
+            </dd>
+          </>
+        ) : null}
         <dt className="font-semibold text-white/70">Captured</dt>
         <dd>{formatCapturedAt(bootstrap.chronology.active.capturedAt, "detail")}</dd>
         <dt className="font-semibold text-white/70">Source</dt>

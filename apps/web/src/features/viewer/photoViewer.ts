@@ -1,4 +1,4 @@
-import type { PhotoCollection, ViewerBootstrapResponse } from "@album/shared";
+import type { MembershipCollection, PhotoCollection, ViewerBootstrapResponse } from "@album/shared";
 import { AlbumTransportError, type AlbumTransportErrorCode } from "../../lib/albumTransport.js";
 import type { PhotoViewerPort } from "./photoViewerPort.js";
 
@@ -15,7 +15,11 @@ export interface PhotoViewerSnapshot {
   bootstrap?: ViewerBootstrapResponse;
   loadError?: AlbumTransportErrorCode;
   /** ADR-0061: the requested source collection no longer contains the Photo; the client must offer an explicit switch or return rather than silently changing the Sequence. */
-  collectionChanged?: { currentCollection: PhotoCollection };
+  collectionChanged?: {
+    currentCollection: MembershipCollection;
+    /** The collection THIS failed request asked for; absent only for an inferred direct-route request (never `favourite`, decision 7). */
+    requestedCollection?: PhotoCollection;
+  };
   /** A non-estimated "n of total"; absent whenever reliability isn't established for the current Photo. */
   sequencePosition?: SequencePosition;
 }
@@ -75,7 +79,7 @@ export const createPhotoViewer = (options: PhotoViewerOptions): PhotoViewer => {
   let isLoading = false;
   let bootstrap: ViewerBootstrapResponse | undefined;
   let loadError: AlbumTransportErrorCode | undefined;
-  let collectionChanged: { currentCollection: PhotoCollection } | undefined;
+  let collectionChanged: { currentCollection: MembershipCollection; requestedCollection?: PhotoCollection } | undefined;
   let sequencePosition: SequencePosition | undefined = options.initialSequencePosition;
   let currentAbortController: AbortController | undefined;
   const prefetchAbortControllers = new Set<AbortController>();
@@ -122,7 +126,11 @@ export const createPhotoViewer = (options: PhotoViewerOptions): PhotoViewer => {
         return;
       }
       if (error instanceof AlbumTransportError && error.code === "photo_collection_changed" && error.currentCollection) {
-        collectionChanged = { currentCollection: error.currentCollection };
+        // `collection` is what THIS failed request asked for, so the client can phrase the
+        // notice around what it knows it asked for (decision 7) -- "no longer a Favourite" for
+        // a rejected `favourite` request, versus "moved to Trash/Timeline" for a stale
+        // active/trashed source.
+        collectionChanged = { currentCollection: error.currentCollection, ...(collection !== undefined ? { requestedCollection: collection } : {}) };
       } else {
         loadError = error instanceof AlbumTransportError ? error.code : "unexpected";
       }

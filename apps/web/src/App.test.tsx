@@ -19,6 +19,7 @@ const session = { signedIn: true, user: { userId: "user-1", email: "joe@example.
 const emptyNavigation: AlbumNavigationResponse = {
   timeline: { years: [] },
   trash: { years: [] },
+  favourites: { years: [] },
   processingIssueCount: 0,
 };
 

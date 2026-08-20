@@ -1,4 +1,4 @@
-import type { AlbumErrorCode, PhotoCollection } from "@album/shared";
+import type { AlbumErrorCode, MembershipCollection } from "@album/shared";
 import { apiBaseUrl } from "./config.js";
 import { sessionExpiredEvent } from "./sessionEvents.js";
 
@@ -16,12 +16,12 @@ export class AlbumTransportError extends Error {
   readonly code: AlbumTransportErrorCode;
   readonly status?: number;
   /** Present only for `photo_collection_changed`. */
-  readonly currentCollection?: PhotoCollection;
+  readonly currentCollection?: MembershipCollection;
 
   constructor(
     code: AlbumTransportErrorCode,
     message: string,
-    options?: { status?: number; currentCollection?: PhotoCollection; cause?: unknown },
+    options?: { status?: number; currentCollection?: MembershipCollection; cause?: unknown },
   ) {
     super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = "AlbumTransportError";
@@ -96,7 +96,7 @@ export const albumTransport = {
       const code = isAlbumErrorCode(parsed.code) ? parsed.code : "unexpected";
       throw new AlbumTransportError(code, typeof parsed.message === "string" ? parsed.message : "Request failed", {
         status: response.status,
-        ...(code === "photo_collection_changed" && isPhotoCollection(parsed.currentCollection)
+        ...(code === "photo_collection_changed" && isMembershipCollection(parsed.currentCollection)
           ? { currentCollection: parsed.currentCollection }
           : {}),
       });
@@ -120,7 +120,7 @@ const albumErrorCodes = new Set<AlbumErrorCode>([
 const isAlbumErrorCode = (value: unknown): value is AlbumErrorCode =>
   typeof value === "string" && albumErrorCodes.has(value as AlbumErrorCode);
 
-const isPhotoCollection = (value: unknown): value is PhotoCollection =>
+const isMembershipCollection = (value: unknown): value is MembershipCollection =>
   value === "active" || value === "trashed";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

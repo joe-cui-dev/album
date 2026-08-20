@@ -1,4 +1,4 @@
-import type { PhotoCollection } from "@album/shared";
+import type { MembershipCollection, PhotoCollection } from "@album/shared";
 import type { BrowsingWindow } from "./browsingWindow.js";
 
 /**
@@ -13,23 +13,38 @@ export interface BrowsingHistoryRegistry {
   /**
    * Applies ADR-0067's membership rule: the mounted window whose collection the Photo just left
    * withholds it; every collection not currently mounted is invalidated (its retained-inactive
-   * slot, if any, is disposed so the next activation refetches).
+   * slot, if any, is disposed so the next activation refetches). Also applies ADR-0067's
+   * conservative propagation: the `favourite` collection is unconditionally withheld in / invalidated
+   * too, without checking whether the Photo was favourited (decision 4) -- safe because a withhold on
+   * an unloaded photoId is already a no-op.
    */
-  applyMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
+  applyMembershipChange(change: { photoId: string; leftCollection: MembershipCollection }): void;
   /** Reverses a mounted-window withhold applied by `applyMembershipChange` (rollback on mutation failure). */
-  revertMembershipChange(change: { photoId: string; leftCollection: PhotoCollection }): void;
+  revertMembershipChange(change: { photoId: string; leftCollection: MembershipCollection }): void;
   /** Withholds a permanently deleted Photo without pretending it moved to another collection. */
-  applyPermanentDeletion(change: { photoId: string; collection: PhotoCollection }): void;
+  applyPermanentDeletion(change: { photoId: string; collection: MembershipCollection }): void;
   /** Restores the mounted view after a failed Permanent Deletion. */
-  revertPermanentDeletion(change: { photoId: string; collection: PhotoCollection }): void;
+  revertPermanentDeletion(change: { photoId: string; collection: MembershipCollection }): void;
   /**
    * New Photos from a completed Upload Batch always arrive in `active`. Per ADR-0067, a mounted
    * Timeline is deliberately left alone so it does not reflow or jump; a non-mounted Timeline slot
    * is invalidated so the next activation refetches and picks the new Photos up.
    */
   notifyPhotosArrived(): void;
-  /** A Viewer Adjust/Revert moved chronology. Retained windows must refetch; a mounted one keeps its anchor and withholds its stale placement. */
-  applyChronologyChange(change: { photoId: string; collection: PhotoCollection }): void;
+  /**
+   * A Viewer Adjust/Revert moved chronology. Retained windows must refetch; a mounted one keeps
+   * its anchor and withholds its stale placement. Also applies conservative propagation to the
+   * `favourite` collection (decision 4), since Adjust/Revert can move a Favourite Photo's row too.
+   */
+  applyChronologyChange(change: { photoId: string; collection: MembershipCollection }): void;
+  /**
+   * Applies favouriting/unfavouriting as its own, narrower membership change (ADR-0067): it
+   * withholds in / invalidates only the `favourite` collection, since favouriting cannot affect
+   * `active` or `trashed` membership.
+   */
+  applyFavouriteChange(change: { photoId: string; favourite: boolean }): void;
+  /** Reverses a mounted-window withhold applied by `applyFavouriteChange` (rollback on mutation failure). */
+  revertFavouriteChange(change: { photoId: string }): void;
   /** Disposes every retained window (Session loss or explicit Sign Out; ADR-0062). */
   disposeAll(): void;
 }
@@ -82,12 +97,15 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
     },
     applyMembershipChange: ({ photoId, leftCollection }) => {
       withholdInMountedWindow(photoId, leftCollection, true);
-      const arrivedCollection: PhotoCollection = leftCollection === "active" ? "trashed" : "active";
+      const arrivedCollection: MembershipCollection = leftCollection === "active" ? "trashed" : "active";
       invalidateIfNotMounted(leftCollection);
       invalidateIfNotMounted(arrivedCollection);
+      withholdInMountedWindow(photoId, "favourite", true);
+      invalidateIfNotMounted("favourite");
     },
     revertMembershipChange: ({ photoId, leftCollection }) => {
       withholdInMountedWindow(photoId, leftCollection, false);
+      withholdInMountedWindow(photoId, "favourite", false);
     },
     applyPermanentDeletion: ({ photoId, collection }) => {
       withholdInMountedWindow(photoId, collection, true);
@@ -105,6 +123,15 @@ export const createBrowsingHistoryRegistry = (): BrowsingHistoryRegistry => {
       // forcing a surprise live jump. Retained windows are recreated on return.
       withholdInMountedWindow(photoId, collection, true);
       invalidateIfNotMounted(collection);
+      withholdInMountedWindow(photoId, "favourite", true);
+      invalidateIfNotMounted("favourite");
+    },
+    applyFavouriteChange: ({ photoId, favourite }) => {
+      withholdInMountedWindow(photoId, "favourite", !favourite);
+      invalidateIfNotMounted("favourite");
+    },
+    revertFavouriteChange: ({ photoId }) => {
+      withholdInMountedWindow(photoId, "favourite", false);
     },
     disposeAll: () => {
       active?.window.lifecycle.dispose();

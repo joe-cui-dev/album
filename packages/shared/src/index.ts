@@ -395,6 +395,8 @@ export interface ViewerBootstrapResponse {
   /** Original and active Captured At, source, and active chronology revision. */
   chronology: PhotoChronology;
   trashed: boolean;
+  /** Present only when `trashed`; when the Retention Window started (client computes days remaining). */
+  deletedAt?: string;
   favourite: boolean;
   /** The resolved Viewer Sequence collection: which view's neighbour order this Photo Viewer session is scoped to. */
   collection: PhotoCollection;

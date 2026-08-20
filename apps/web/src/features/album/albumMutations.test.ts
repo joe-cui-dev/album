@@ -11,6 +11,8 @@ const fakeRegistry = (): BrowsingHistoryRegistry => ({
   revertPermanentDeletion: vi.fn(),
   notifyPhotosArrived: vi.fn(),
   applyChronologyChange: vi.fn(),
+  applyFavouriteChange: vi.fn(),
+  revertFavouriteChange: vi.fn(),
   disposeAll: vi.fn(),
 });
 
@@ -202,33 +204,72 @@ describe("createAlbumMutations", () => {
   it("setFavourite applies an optimistic override immediately, before the request resolves", () => {
     mutations = createAlbumMutations({ port: test.port, registry });
 
-    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true, sourceCollection: "active" });
 
     expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(true);
     expect(test.setFavouriteCalls).toEqual([{ photoId: "photo-1", favourite: true }]);
     expect(mutations.getSnapshot().feedback).toBeUndefined();
+    expect(registry.applyFavouriteChange).toHaveBeenCalledWith({ photoId: "photo-1", favourite: true });
   });
 
-  it("setFavourite keeps the optimistic override on success, without publishing feedback", async () => {
+  it("setFavourite keeps the optimistic override on success, without publishing feedback, and bumps navigationRevision", async () => {
     mutations = createAlbumMutations({ port: test.port, registry });
-    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true, sourceCollection: "active" });
+    const revisionBefore = mutations.getSnapshot().navigationRevision;
 
     test.resolveNextSetFavourite({ photoId: "photo-1", favourite: true });
     await flush();
 
     expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(true);
     expect(mutations.getSnapshot().feedback).toBeUndefined();
+    expect(mutations.getSnapshot().navigationRevision).toBe(revisionBefore + 1);
   });
 
   it("setFavourite reverts the optimistic override and publishes a retryable failure", async () => {
     mutations = createAlbumMutations({ port: test.port, registry });
-    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: true, sourceCollection: "active" });
 
     test.rejectNextSetFavourite(new Error("boom"));
     await flush();
 
     expect(mutations.getSnapshot().favouriteOverrides.get("photo-1")).toBe(false);
     expect(mutations.getSnapshot().feedback).toMatchObject({ kind: "failure", action: { label: "Retry" } });
+    expect(registry.revertFavouriteChange).toHaveBeenCalledWith({ photoId: "photo-1" });
+  });
+
+  it("unfavouriting from the Timeline stays silent (decision 5)", () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: false, sourceCollection: "active" });
+
+    expect(mutations.getSnapshot().feedback).toBeUndefined();
+    expect(registry.applyFavouriteChange).toHaveBeenCalledWith({ photoId: "photo-1", favourite: false });
+  });
+
+  it("unfavouriting from Favourites publishes Undo feedback, since the Photo disappears from view (decision 5)", () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: false, sourceCollection: "favourite" });
+
+    expect(mutations.getSnapshot().feedback).toMatchObject({
+      kind: "success",
+      message: "Removed from Favourites",
+      action: { label: "Undo" },
+    });
+  });
+
+  it("Undo from a Favourites unfavourite re-favourites silently", () => {
+    mutations = createAlbumMutations({ port: test.port, registry });
+    mutations.intents.setFavourite({ photoId: "photo-1", favourite: false, sourceCollection: "favourite" });
+    const undo = mutations.getSnapshot().feedback?.action;
+
+    undo?.onInvoke();
+
+    expect(test.setFavouriteCalls).toEqual([
+      { photoId: "photo-1", favourite: false },
+      { photoId: "photo-1", favourite: true },
+    ]);
+    expect(mutations.getSnapshot().feedback).toBeUndefined();
   });
 
   it("dispose aborts in-flight requests and becomes a no-op for further intents", async () => {

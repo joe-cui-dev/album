@@ -77,6 +77,43 @@ describe("BrowsingGrid", () => {
     expect(screen.getByRole("link", { name: /^b\.jpg/ })).toBeInTheDocument();
   });
 
+  it("renders no heart badge or Favourite suffix in the Favourites view itself (decision 6)", async () => {
+    test = createTestAlbumBrowsingPort();
+    const window_ = createBrowsingWindow({ collection: "favourite", port: test.port, layout, environment: createTestBrowsingEnvironment().environment });
+    window_.lifecycle.activate();
+    browsingWindow = window_;
+
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="favourite" />,
+    );
+
+    test.resolveNextLoad({ photos: [photo("a", { favourite: true })], expiresAt: "2030-01-01T00:00:00.000Z" });
+
+    expect(await screen.findByRole("link", { name: /^a\.jpg/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Favourite/ })).not.toBeInTheDocument();
+  });
+
+  it("renders a days-remaining badge, not a heart, in the Trash view", async () => {
+    test = createTestAlbumBrowsingPort();
+    const window_ = createBrowsingWindow({ collection: "trashed", port: test.port, layout, environment: createTestBrowsingEnvironment().environment });
+    window_.lifecycle.activate();
+    browsingWindow = window_;
+
+    renderWithRouter(
+      <BrowsingGrid browsingWindow={browsingWindow} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="trashed" />,
+    );
+
+    const deletedAt = new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString();
+    test.resolveNextLoad({
+      photos: [photo("a", { favourite: true, deletedAt })],
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+
+    const link = await screen.findByRole("link", { name: /^a\.jpg/ });
+    expect(link).toHaveTextContent("5 days left");
+    expect(screen.queryByRole("link", { name: /Favourite/ })).not.toBeInTheDocument();
+  });
+
   it("shows the empty state once loading finishes with no Photos", async () => {
     test = createTestAlbumBrowsingPort();
     browsingWindow = createActiveWindow(test.port);

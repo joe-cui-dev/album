@@ -101,8 +101,18 @@ describe("createPhotoViewer", () => {
     await flush();
 
     const snapshot = viewer.getSnapshot();
-    expect(snapshot.collectionChanged).toEqual({ currentCollection: "active" });
+    expect(snapshot.collectionChanged).toEqual({ currentCollection: "active", requestedCollection: "trashed" });
     expect(snapshot.loadError).toBeUndefined();
+  });
+
+  it("records requestedCollection as favourite so the client can phrase its own wording (decision 7)", async () => {
+    viewer = createPhotoViewer({ photoId: "b", sourceCollection: "favourite", port: test.port });
+    test.rejectNextBootstrap(
+      new AlbumTransportError("photo_collection_changed", "no longer favourited", { currentCollection: "active" }),
+    );
+    await flush();
+
+    expect(viewer.getSnapshot().collectionChanged).toEqual({ currentCollection: "active", requestedCollection: "favourite" });
   });
 
   it("switchToCurrentCollection re-requests with the conflict's current collection", async () => {

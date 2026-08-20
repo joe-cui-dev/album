@@ -89,6 +89,7 @@ export const handleViewerBootstrap = async ({
       displayDimensions: resolvedPhoto.displayDimensions!,
       chronology: resolvedPhoto.chronology!,
       trashed: resolvedPhoto.trashed,
+      ...(resolvedPhoto.deletedAt ? { deletedAt: resolvedPhoto.deletedAt } : {}),
       favourite: resolvedPhoto.favourite,
       collection,
       displayAccess: {

@@ -198,6 +198,18 @@ function AlbumRoutes({ registry, mutations, navCount, uploadTray }: AlbumRoutesP
             path="trash"
           />
           <Route
+            element={
+              <BrowsingPage
+                collection="favourite"
+                emptyState={{ title: uiMessages.emptyFavourites.title, description: uiMessages.emptyFavourites.description }}
+                mutations={mutations}
+                registry={registry}
+                title={uiMessages.favourites}
+              />
+            }
+            path="favourites"
+          />
+          <Route
             element={<ProcessingIssuesView mutations={mutations} navCount={navCount} />}
             path="processing-issues"
           />
