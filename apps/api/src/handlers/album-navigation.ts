@@ -14,9 +14,10 @@ export const handler: APIGatewayProxyHandlerV2 = withAuth((context) =>
 export const handleGetAlbumNavigation = async ({
   album,
 }: AuthedContext): Promise<APIGatewayProxyStructuredResultV2> => {
-  const [timelineYears, trashYears, processingIssueCount] = await Promise.all([
+  const [timelineYears, trashYears, favouriteYears, processingIssueCount] = await Promise.all([
     album.listDateIndexYears("active"),
     album.listDateIndexYears("trashed"),
+    album.listDateIndexYears("favourite"),
     album.getProcessingIssuesSummary(),
   ]);
 
@@ -24,6 +25,7 @@ export const handleGetAlbumNavigation = async ({
     {
       timeline: { years: timelineYears },
       trash: { years: trashYears },
+      favourites: { years: favouriteYears },
       processingIssueCount,
     } satisfies AlbumNavigationResponse,
     { headers: { "cache-control": "private, no-store" } },

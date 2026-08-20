@@ -111,6 +111,88 @@ describe("handleViewerBootstrap", () => {
     expect(body.currentCollection).toBe("trashed");
   });
 
+  it("resolves collection=favourite against the favourite collection's own neighbour order", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await readyPhoto(album, "jan", day("2024-01-01"));
+    await readyPhoto(album, "jun", day("2024-06-15"));
+    await readyPhoto(album, "dec", day("2024-12-31"));
+    await album.setFavourite({ photoId: "jan", favourite: true });
+    await album.setFavourite({ photoId: "dec", favourite: true });
+
+    const response = await handleViewerBootstrap({
+      user,
+      album,
+      photoId: "dec",
+      requestedCollection: "favourite",
+      deps: deps(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.collection).toBe("favourite");
+    // "jun" is not favourited, so it's skipped in the favourite collection's own order.
+    expect(body.olderPhotoId).toBe("jan");
+    expect(body.newerPhotoId).toBeUndefined();
+  });
+
+  it("returns a structured conflict for collection=favourite when the Photo is not favourited", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await readyPhoto(album, "plain", day("2024-06-15"));
+
+    const response = await handleViewerBootstrap({
+      user,
+      album,
+      photoId: "plain",
+      requestedCollection: "favourite",
+      deps: deps(),
+    });
+
+    expect(response.statusCode).toBe(409);
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.code).toBe("photo_collection_changed");
+    expect(body.currentCollection).toBe("active");
+  });
+
+  it("returns a structured conflict for collection=favourite when the Photo is trashed", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await readyPhoto(album, "gone", day("2024-06-15"));
+    await album.setFavourite({ photoId: "gone", favourite: true });
+    await album.setTrashMembership({ photoId: "gone", trashed: true });
+
+    const response = await handleViewerBootstrap({
+      user,
+      album,
+      photoId: "gone",
+      requestedCollection: "favourite",
+      deps: deps(),
+    });
+
+    expect(response.statusCode).toBe(409);
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.currentCollection).toBe("trashed");
+  });
+
+  it("never infers favourite for a direct Viewer URL, even when the Photo is favourited", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await readyPhoto(album, "solo", day("2024-06-15"));
+    await album.setFavourite({ photoId: "solo", favourite: true });
+
+    const response = await handleViewerBootstrap({
+      user,
+      album,
+      photoId: "solo",
+      requestedCollection: undefined,
+      deps: deps(),
+    });
+
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.collection).toBe("active");
+  });
+
   it("rejects an invalid collection query value", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");

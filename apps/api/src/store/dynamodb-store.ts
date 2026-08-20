@@ -26,6 +26,7 @@ import {
 } from "./errors.js";
 import type {
   DateIndexPeriodCounts,
+  MembershipCollection,
   PersonalAlbum,
   PersonalAlbumStore,
   PhotoCollection,
@@ -60,6 +61,23 @@ const dateIndexKey = (
   userId: string,
   input: { collection: PhotoCollection; year: number },
 ) => ({ pk: `USER#${userId}`, sk: dateIndexSortKey(input) });
+/** The `favourite` projection row's full Item body (ADR-0077 §2.2): the same shape a Timeline/Trash Put uses, always with `favourite: true`. */
+const favouriteProjectionItem = (
+  userId: string,
+  input: { photoId: string; capturedAt: CapturedAt; addedAt: string; item: Record<string, unknown> },
+) => ({
+  ...projectionKey(userId, { collection: "favourite", capturedAt: input.capturedAt, addedAt: input.addedAt, photoId: input.photoId }),
+  userId,
+  photoId: input.photoId,
+  collection: "favourite" as const,
+  capturedAt: input.capturedAt,
+  addedAt: input.addedAt,
+  fileName: input.item.fileName,
+  displayDimensions: input.item.displayDimensions,
+  timelineThumbnails: input.item.timelineThumbnails,
+  favourite: true,
+});
+
 const issueKey = (userId: string, photoId: string, addedAt: string) => ({
   pk: `USER#${userId}`,
   sk: processingIssueSortKey({ addedAt, photoId }),
@@ -147,6 +165,75 @@ const dateIndexIncrementItem = (
       ...(delta < 0 ? { ConditionExpression: "#period >= :absDelta" } : {}),
     },
   };
+};
+
+interface DateIndexDelta {
+  collection: PhotoCollection;
+  capturedAt: CapturedAt;
+  delta: number;
+}
+
+/**
+ * Aggregates Date Index deltas by their exact (pk, sk) item key -- collection
+ * and year -- before building transact items, netting each period's delta
+ * within a key and omitting a net-zero delta entirely. DynamoDB rejects a
+ * TransactWriteItems list that touches one item twice, which an old/new pair
+ * landing in the same year (e.g. Adjust Captured At refining 2024-06 to
+ * 2024-06-15) would otherwise do by emitting two separate `Update`s against
+ * the identical key.
+ */
+const buildDateIndexUpdateItems = (
+  tableName: string,
+  userId: string,
+  deltas: DateIndexDelta[],
+): NonNullable<TransactWriteCommandInput["TransactItems"]> => {
+  const groups = new Map<string, { collection: PhotoCollection; year: number; periods: Map<string, number> }>();
+  for (const { collection, capturedAt, delta } of deltas) {
+    const year = dateIndexYear(capturedAt);
+    const period = dateIndexPeriodSegment(capturedAt);
+    const key = `${collection}#${year}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { collection, year, periods: new Map() };
+      groups.set(key, group);
+    }
+    group.periods.set(period, (group.periods.get(period) ?? 0) + delta);
+  }
+
+  const items: NonNullable<TransactWriteCommandInput["TransactItems"]> = [];
+  for (const group of groups.values()) {
+    const netPeriods = [...group.periods.entries()].filter(([, net]) => net !== 0);
+    if (netPeriods.length === 0) {
+      continue;
+    }
+    const expressionNames: Record<string, string> = {};
+    const expressionValues: Record<string, number> = {};
+    const addClauses: string[] = [];
+    const conditionClauses: string[] = [];
+    netPeriods.forEach(([period, net], index) => {
+      const nameKey = `#period${index}`;
+      const deltaKey = `:delta${index}`;
+      expressionNames[nameKey] = period;
+      expressionValues[deltaKey] = net;
+      addClauses.push(`${nameKey} ${deltaKey}`);
+      if (net < 0) {
+        const absKey = `:absDelta${index}`;
+        expressionValues[absKey] = -net;
+        conditionClauses.push(`${nameKey} >= ${absKey}`);
+      }
+    });
+    items.push({
+      Update: {
+        TableName: tableName,
+        Key: dateIndexKey(userId, { collection: group.collection, year: group.year }),
+        UpdateExpression: `ADD ${addClauses.join(", ")}`,
+        ExpressionAttributeNames: expressionNames,
+        ExpressionAttributeValues: expressionValues,
+        ...(conditionClauses.length > 0 ? { ConditionExpression: conditionClauses.join(" AND ") } : {}),
+      },
+    });
+  }
+  return items;
 };
 
 const issuesSummaryIncrementItem = (
@@ -389,11 +476,36 @@ export const createDynamoDbPersonalAlbumStore = ({
           return;
         }
 
-        const fromCollection: PhotoCollection = currentTrashed ? "trashed" : "active";
-        const toCollection: PhotoCollection = trashed ? "trashed" : "active";
+        const fromCollection: MembershipCollection = currentTrashed ? "trashed" : "active";
+        const toCollection: MembershipCollection = trashed ? "trashed" : "active";
         const deletedAt = trashed ? new Date().toISOString() : undefined;
         const capturedAt = chronology.active.capturedAt;
         const currentRevision = chronology.active.revision;
+
+        // ADR-0077 invariant: a `favourite` row exists iff the Photo is favourited AND not
+        // trashed. Trashing a Favourite Photo removes its row; restoring one recreates it. The
+        // `favourite` attribute itself (SET above) is untouched either way.
+        const favouriteRowItems: NonNullable<TransactWriteCommandInput["TransactItems"]> = currentFavourite
+          ? trashed
+            ? [
+                {
+                  Delete: {
+                    TableName: tableName,
+                    Key: projectionKey(userId, { collection: "favourite", capturedAt, addedAt, photoId }),
+                  },
+                },
+                dateIndexIncrementItem(tableName, userId, "favourite", capturedAt, -1),
+              ]
+            : [
+                {
+                  Put: {
+                    TableName: tableName,
+                    Item: favouriteProjectionItem(userId, { photoId, capturedAt, addedAt, item }),
+                  },
+                },
+                dateIndexIncrementItem(tableName, userId, "favourite", capturedAt, 1),
+              ]
+          : [];
 
         try {
           await documentClient.send(
@@ -440,6 +552,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                 },
                 dateIndexIncrementItem(tableName, userId, fromCollection, capturedAt, -1),
                 dateIndexIncrementItem(tableName, userId, toCollection, capturedAt, 1),
+                ...favouriteRowItems,
               ],
             }),
           );
@@ -452,7 +565,7 @@ export const createDynamoDbPersonalAlbumStore = ({
       },
 
       async setFavourite({ photoId, favourite }) {
-        const { chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
+        const { item, chronology, addedAt, currentTrashed, currentFavourite } = await readReadyPhoto(
           documentClient,
           tableName,
           userId,
@@ -462,9 +575,34 @@ export const createDynamoDbPersonalAlbumStore = ({
           return;
         }
 
-        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
+        const collection: MembershipCollection = currentTrashed ? "trashed" : "active";
         const capturedAt = chronology.active.capturedAt;
         const currentRevision = chronology.active.revision;
+
+        // ADR-0077 invariant: the `favourite` row only exists while the Photo is not trashed, so
+        // toggling the mark on a trashed Photo flips just the attribute and its Trash projection
+        // row's copy -- there is no `favourite` row to add or remove.
+        const favouriteRowItems: NonNullable<TransactWriteCommandInput["TransactItems"]> = currentTrashed
+          ? []
+          : favourite
+            ? [
+                {
+                  Put: {
+                    TableName: tableName,
+                    Item: favouriteProjectionItem(userId, { photoId, capturedAt, addedAt, item }),
+                  },
+                },
+                dateIndexIncrementItem(tableName, userId, "favourite", capturedAt, 1),
+              ]
+            : [
+                {
+                  Delete: {
+                    TableName: tableName,
+                    Key: projectionKey(userId, { collection: "favourite", capturedAt, addedAt, photoId }),
+                  },
+                },
+                dateIndexIncrementItem(tableName, userId, "favourite", capturedAt, -1),
+              ];
 
         try {
           await documentClient.send(
@@ -493,6 +631,7 @@ export const createDynamoDbPersonalAlbumStore = ({
                     ExpressionAttributeValues: { ":favourite": favourite },
                   },
                 },
+                ...favouriteRowItems,
               ],
             }),
           );
@@ -626,8 +765,11 @@ export const createDynamoDbPersonalAlbumStore = ({
           return { revision: chronology.active.revision };
         }
 
-        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
+        const collection: MembershipCollection = currentTrashed ? "trashed" : "active";
         const nextRevision = chronology.active.revision + 1;
+        // ADR-0077 invariant: a non-trashed Favourite Photo also has its `favourite` row moved
+        // to the new Captured At, in the same transaction as the membership-collection move.
+        const isFavouriteRowMoved = !currentTrashed && currentFavourite;
 
         try {
           await documentClient.send(
@@ -678,8 +820,37 @@ export const createDynamoDbPersonalAlbumStore = ({
                     },
                   },
                 },
-                dateIndexIncrementItem(tableName, userId, collection, chronology.active.capturedAt, -1),
-                dateIndexIncrementItem(tableName, userId, collection, capturedAt, 1),
+                ...(isFavouriteRowMoved
+                  ? [
+                      {
+                        Delete: {
+                          TableName: tableName,
+                          Key: projectionKey(userId, {
+                            collection: "favourite" as const,
+                            capturedAt: chronology.active.capturedAt,
+                            addedAt,
+                            photoId,
+                          }),
+                        },
+                      },
+                      {
+                        Put: {
+                          TableName: tableName,
+                          Item: favouriteProjectionItem(userId, { photoId, capturedAt, addedAt, item }),
+                        },
+                      },
+                    ]
+                  : []),
+                ...buildDateIndexUpdateItems(tableName, userId, [
+                  { collection, capturedAt: chronology.active.capturedAt, delta: -1 },
+                  { collection, capturedAt, delta: 1 },
+                  ...(isFavouriteRowMoved
+                    ? [
+                        { collection: "favourite" as const, capturedAt: chronology.active.capturedAt, delta: -1 },
+                        { collection: "favourite" as const, capturedAt, delta: 1 },
+                      ]
+                    : []),
+                ]),
               ],
             }),
           );
@@ -711,8 +882,11 @@ export const createDynamoDbPersonalAlbumStore = ({
           return { revision: chronology.active.revision };
         }
 
-        const collection: PhotoCollection = currentTrashed ? "trashed" : "active";
+        const collection: MembershipCollection = currentTrashed ? "trashed" : "active";
         const nextRevision = chronology.active.revision + 1;
+        // ADR-0077 invariant: a non-trashed Favourite Photo also has its `favourite` row moved
+        // back to the original Captured At, in the same transaction as the membership move.
+        const isFavouriteRowMoved = !currentTrashed && currentFavourite;
 
         try {
           await documentClient.send(
@@ -767,8 +941,37 @@ export const createDynamoDbPersonalAlbumStore = ({
                     },
                   },
                 },
-                dateIndexIncrementItem(tableName, userId, collection, chronology.active.capturedAt, -1),
-                dateIndexIncrementItem(tableName, userId, collection, original.capturedAt, 1),
+                ...(isFavouriteRowMoved
+                  ? [
+                      {
+                        Delete: {
+                          TableName: tableName,
+                          Key: projectionKey(userId, {
+                            collection: "favourite" as const,
+                            capturedAt: chronology.active.capturedAt,
+                            addedAt,
+                            photoId,
+                          }),
+                        },
+                      },
+                      {
+                        Put: {
+                          TableName: tableName,
+                          Item: favouriteProjectionItem(userId, { photoId, capturedAt: original.capturedAt, addedAt, item }),
+                        },
+                      },
+                    ]
+                  : []),
+                ...buildDateIndexUpdateItems(tableName, userId, [
+                  { collection, capturedAt: chronology.active.capturedAt, delta: -1 },
+                  { collection, capturedAt: original.capturedAt, delta: 1 },
+                  ...(isFavouriteRowMoved
+                    ? [
+                        { collection: "favourite" as const, capturedAt: chronology.active.capturedAt, delta: -1 },
+                        { collection: "favourite" as const, capturedAt: original.capturedAt, delta: 1 },
+                      ]
+                    : []),
+                ]),
               ],
             }),
           );

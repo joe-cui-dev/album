@@ -1,8 +1,8 @@
+import { RETENTION_WINDOW_DAYS } from "@album/shared";
 import { permanentlyDeletePhoto } from "./permanent-deletion.js";
 import type { PersonalAlbumStore } from "./store/personal-album.js";
 import type { PhotoObjectStore } from "./store/photo-objects.js";
 
-export const RETENTION_WINDOW_DAYS = 30;
 const SWEEP_PAGE_SIZE = 100;
 
 /** Sweeps every due Deleted Photo, including Photos belonging to inactive Users. */

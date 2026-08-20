@@ -1,15 +1,17 @@
 import type {
   CapturedAt,
   Dimensions,
+  MembershipCollection,
   OriginalCapturedAtSource,
   Photo,
+  PhotoCollection,
   PhotoFormat,
   PhotoMetadata,
   TimelineThumbnails,
   UploadBatch,
 } from "@album/shared";
 
-export type PhotoCollection = "active" | "trashed";
+export type { MembershipCollection, PhotoCollection };
 
 export type ProcessingIssueStatus = "failed" | "retrying";
 
@@ -118,14 +120,22 @@ export interface PersonalAlbum {
   /**
    * Atomically moves a Ready Photo between the Active and Trash
    * collections, transferring its Date Index count. A Photo already in the
-   * target collection is left unchanged (idempotent membership).
+   * target collection is left unchanged (idempotent membership). Per the
+   * ADR-0077 invariant, a Favourite Photo also has its `favourite`
+   * projection row and Date Index count deleted when trashed and recreated
+   * when restored; the `favourite` attribute itself is untouched.
    */
   setTrashMembership(input: { photoId: string; trashed: boolean }): Promise<void>;
 
   /**
    * Marks or unmarks a Ready Photo as a Favourite Photo (ADR-0077): an
    * orthogonal Photo attribute, carried onto its Timeline/Trash projection
-   * row, that never moves or duplicates the projection. Idempotent.
+   * row. A `favourite` projection row exists if and only if the Photo is
+   * favourited AND not trashed, so marking a non-trashed Photo also adds a
+   * duplicate row (and Date Index count) in the `favourite` collection, and
+   * unmarking removes it; marking/unmarking a trashed Photo only flips the
+   * attribute and its Trash projection row, since no `favourite` row exists
+   * to touch. Idempotent.
    */
   setFavourite(input: { photoId: string; favourite: boolean }): Promise<void>;
 

@@ -285,6 +285,101 @@ describe("PersonalAlbum contract: setFavourite", () => {
       expect.objectContaining({ photoId: "photo-1", capturedAt: july04, favourite: true }),
     ]);
   });
+
+  it("adds a favourite projection row and Date Index count when marking a non-trashed Photo", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", collection: "favourite", capturedAt: june15 }),
+    ]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({ "06": 1 });
+  });
+
+  it("removes the favourite projection row and Date Index count when unmarking", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.setFavourite({ photoId: "photo-1", favourite: false });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({});
+  });
+
+  it("only flips the attribute and Trash projection row when toggling Favourite on a trashed Photo (no favourite row)", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(true);
+    expect(await album.getTimelineProjections("trashed")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: true }),
+    ]);
+    expect(await album.getTimelineProjections("favourite")).toEqual([]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({});
+
+    // Unfavouriting a trashed Photo is allowed too and stays just as narrow.
+    await album.setFavourite({ photoId: "photo-1", favourite: false });
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(false);
+    expect(await album.getTimelineProjections("trashed")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: false }),
+    ]);
+  });
+
+  it("removes the favourite row when a Favourite Photo is trashed, and recreates it on Restore", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({});
+    // The mark itself survives trashing.
+    expect((await album.getPhoto("photo-1"))?.favourite).toBe(true);
+    expect(await album.getTimelineProjections("trashed")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", favourite: true }),
+    ]);
+
+    await album.setTrashMembership({ photoId: "photo-1", trashed: false });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", collection: "favourite", capturedAt: june15 }),
+    ]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({ "06": 1 });
+  });
+
+  it("moves the favourite row's Date Index count across an Adjust Captured At move", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", capturedAt: july04, favourite: true }),
+    ]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({ "07": 1 });
+  });
+
+  it("moves the favourite row's Date Index count across a Revert Captured At move", async () => {
+    const album = createInMemoryPersonalAlbumStore().personalAlbumOf("user-1");
+    await createReadyPhoto(album, "photo-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: july04, expectedRevision: 0 });
+
+    await album.revertActiveChronology({ photoId: "photo-1", expectedRevision: 1 });
+
+    expect(await album.getTimelineProjections("favourite")).toEqual([
+      expect.objectContaining({ photoId: "photo-1", capturedAt: june15, favourite: true }),
+    ]);
+    expect(await album.getDateIndex("favourite", 2024)).toEqual({ "06": 1 });
+  });
 });
 
 describe("PersonalAlbum contract: replaceActiveChronology (Adjust Captured At)", () => {

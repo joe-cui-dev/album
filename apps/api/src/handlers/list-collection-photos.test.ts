@@ -277,6 +277,26 @@ describe("handleListCollectionPhotos", () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it("serves the favourite collection, independent of Timeline and Trash", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await createReadyPhoto(album, "jan", day("2024-01-01"));
+    await createReadyPhoto(album, "feb", day("2024-02-01"));
+    await album.setFavourite({ photoId: "jan", favourite: true });
+
+    const response = await handleListCollectionPhotos({
+      user,
+      album,
+      collection: "favourite",
+      query: {},
+      deps: deps(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body ?? "{}");
+    expect(body.photos.map((p: { photoId: string }) => p.photoId)).toEqual(["jan"]);
+  });
+
   it("keeps Active and Trashed independent", async () => {
     const store = createInMemoryPersonalAlbumStore();
     const album = store.personalAlbumOf("user-1");

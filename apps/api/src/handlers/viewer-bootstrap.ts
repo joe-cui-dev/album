@@ -2,7 +2,7 @@ import type {
   APIGatewayProxyHandlerV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import type { Photo, PhotoCollection, ViewerBootstrapResponse } from "@album/shared";
+import type { MembershipCollection, Photo, PhotoCollection, ViewerBootstrapResponse } from "@album/shared";
 import { conservativeExpiresAt } from "../access-expiry.js";
 import type { AuthedContext } from "../auth-wrapper.js";
 import { withAuth } from "../configured-auth.js";
@@ -40,7 +40,7 @@ export const handleViewerBootstrap = async ({
     return badRequest("photoId is required");
   }
   if (requestedCollection === "invalid") {
-    return badRequest("collection must be active or trashed");
+    return badRequest("collection must be active, trashed, or favourite");
   }
 
   const photo = await album.getPhoto(photoId);
@@ -51,14 +51,27 @@ export const handleViewerBootstrap = async ({
     return json(409, { message: "Photo is not Ready" });
   }
 
+  // `currentCollection` answers a membership question (ADR-0061): it is never `favourite`,
+  // because a Photo can be favourited while also belonging to `active` or `trashed`.
   const currentCollection = collectionOf(photo);
-  if (requestedCollection && requestedCollection !== currentCollection) {
+  if (requestedCollection === "favourite") {
+    if (photo.trashed || !photo.favourite) {
+      return conflict("photo_collection_changed", "The Photo's collection changed", {
+        currentCollection,
+      });
+    }
+  } else if (requestedCollection && requestedCollection !== currentCollection) {
     return conflict("photo_collection_changed", "The Photo's collection changed", {
       currentCollection,
     });
   }
 
-  const resolution = await resolveWithOneRetry({ album, photoId, photo });
+  const resolution = await resolveWithOneRetry({
+    album,
+    photoId,
+    photo,
+    target: requestedCollection === "favourite" ? "favourite" : "membership",
+  });
   if (resolution.outcome === "concurrent_movement") {
     return conflict("concurrent_projection_movement", "The Photo changed concurrently; refresh and try again");
   }
@@ -89,11 +102,17 @@ export const handleViewerBootstrap = async ({
   );
 };
 
-const collectionOf = (photo: Photo): PhotoCollection => (photo.trashed ? "trashed" : "active");
+const collectionOf = (photo: Photo): MembershipCollection => (photo.trashed ? "trashed" : "active");
 
 /** True when a concurrent Trash/Restore or Adjust/Revert moved this Photo's projection. */
 const movedSince = (before: Photo, after: Photo): boolean =>
   before.trashed !== after.trashed ||
+  before.chronology?.active.revision !== after.chronology?.active.revision;
+
+/** True when a concurrent change took the Photo out of the `favourite` collection: trashed, unfavourited, or its chronology moved. */
+const leftFavouriteSince = (before: Photo, after: Photo): boolean =>
+  after.trashed ||
+  !after.favourite ||
   before.chronology?.active.revision !== after.chronology?.active.revision;
 
 const queryNeighbours = (
@@ -126,27 +145,33 @@ type ResolveResult =
  * Reads live neighbours for the Photo's current projection, then re-reads the
  * Photo to confirm nothing moved while the neighbour queries ran. One retry
  * absorbs a single concurrent Trash/Restore or Adjust/Revert; a second
- * observed move gives up with a recoverable conflict (ADR-0060).
+ * observed move gives up with a recoverable conflict (ADR-0060). `target`
+ * "favourite" pins the Viewer Sequence to the `favourite` collection (already
+ * validated by the caller); "membership" re-derives active/trashed from the
+ * Photo on every attempt, which also covers a direct URL's inferred collection.
  */
 const resolveWithOneRetry = async ({
   album,
   photoId,
   photo,
+  target,
 }: {
   album: PersonalAlbum;
   photoId: string;
   photo: Photo;
+  target: "membership" | "favourite";
 }): Promise<ResolveResult> => {
   let current = photo;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const collection = collectionOf(current);
+    const collection: PhotoCollection = target === "favourite" ? "favourite" : collectionOf(current);
     const [newer, older] = await queryNeighbours(album, current, collection);
     const refreshed = await album.getPhoto(photoId);
-    if (refreshed && !movedSince(current, refreshed)) {
-      return { outcome: "resolved", photo: refreshed, collection, ...(newer ? { newer } : {}), ...(older ? { older } : {}) };
-    }
     if (!refreshed) {
       return { outcome: "concurrent_movement" };
+    }
+    const moved = target === "favourite" ? leftFavouriteSince(current, refreshed) : movedSince(current, refreshed);
+    if (!moved) {
+      return { outcome: "resolved", photo: refreshed, collection, ...(newer ? { newer } : {}), ...(older ? { older } : {}) };
     }
     current = refreshed;
   }
@@ -157,5 +182,5 @@ const parseCollection = (raw: string | undefined): PhotoCollection | "invalid" |
   if (raw === undefined) {
     return undefined;
   }
-  return raw === "active" || raw === "trashed" ? raw : "invalid";
+  return raw === "active" || raw === "trashed" || raw === "favourite" ? raw : "invalid";
 };

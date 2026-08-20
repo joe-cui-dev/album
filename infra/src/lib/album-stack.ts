@@ -441,6 +441,24 @@ export class AlbumStack extends Stack {
       }),
     });
 
+    const favouritePhotos = new NodejsFunction(this, "FavouritePhotosHandler", {
+      runtime: Runtime.NODEJS_22_X,
+      entry: join(
+        "..",
+        "apps",
+        "api",
+        "src",
+        "handlers",
+        "list-collection-photos.ts",
+      ),
+      handler: "favouritePhotosHandler",
+      environment: commonEnvironment,
+      reservedConcurrentExecutions: 5,
+      logGroup: new LogGroup(this, "FavouritePhotosLogGroup", {
+        retention: RetentionDays.ONE_WEEK,
+      }),
+    });
+
     const albumNavigation = new NodejsFunction(this, "AlbumNavigationHandler", {
       runtime: Runtime.NODEJS_22_X,
       entry: join(
@@ -755,6 +773,7 @@ export class AlbumStack extends Stack {
     photosBucket.grantRead(viewerBootstrap);
     photosBucket.grantRead(timelinePhotos);
     photosBucket.grantRead(trashPhotos);
+    photosBucket.grantRead(favouritePhotos);
     photosBucket.grantDelete(trashSweeper);
     photosBucket.grantDelete(permanentDeletion);
     photosBucket.grantDelete(emptyTrash);
@@ -768,6 +787,7 @@ export class AlbumStack extends Stack {
     metadataTable.grantReadData(processingIssuesSummary);
     metadataTable.grantReadData(timelinePhotos);
     metadataTable.grantReadData(trashPhotos);
+    metadataTable.grantReadData(favouritePhotos);
     metadataTable.grantReadData(albumNavigation);
     metadataTable.grantReadData(timelineThumbnailAccess);
     metadataTable.grantReadWriteData(adjustCapturedAt);
@@ -988,6 +1008,15 @@ export class AlbumStack extends Stack {
       integration: new HttpLambdaIntegration(
         "TrashPhotosIntegration",
         trashPhotos,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/favourites",
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration(
+        "FavouritePhotosIntegration",
+        favouritePhotos,
       ),
     });
 

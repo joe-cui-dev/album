@@ -11,6 +11,9 @@ export const timelineThumbnailLargeLongestEdgePixels = 640;
 
 export const supportedPhotoFormats = ["jpeg", "png", "heic"] as const;
 
+/** Days a Deleted Photo spends in Trash (its Retention Window) before the daily sweeper permanently deletes it. */
+export const RETENTION_WINDOW_DAYS = 30;
+
 export {
   DISPLAY_KEY_PREFIX,
   ORIGINALS_KEY_PREFIX,
@@ -338,6 +341,7 @@ export interface AlbumNavigationYear {
 export interface AlbumNavigationResponse {
   timeline: { years: AlbumNavigationYear[] };
   trash: { years: AlbumNavigationYear[] };
+  favourites: { years: AlbumNavigationYear[] };
   processingIssueCount: number;
 }
 
@@ -351,7 +355,17 @@ export interface TimelineThumbnailAccessResponse {
   expiresAt: string;
 }
 
-export type PhotoCollection = "active" | "trashed";
+/**
+ * A projection/browsing-view key (ADR-0077): `"active"` and `"trashed"` are
+ * membership -- every Ready Photo belongs to exactly one -- while
+ * `"favourite"` is a duplicated view a Photo also appears in without leaving
+ * its membership collection. Use `MembershipCollection` wherever only a
+ * membership transition (Delete/Restore) is meaningful.
+ */
+export type PhotoCollection = "active" | "trashed" | "favourite";
+
+/** The two membership collections every Ready Photo belongs to exactly one of; never `"favourite"`. */
+export type MembershipCollection = "active" | "trashed";
 
 /** Stable, machine-readable codes carried alongside a human diagnostic message on error responses. */
 export type AlbumErrorCode =
@@ -365,10 +379,10 @@ export interface AlbumErrorBody {
   message: string;
 }
 
-/** `photo_collection_changed`: the Photo's current collection differs from the one the Viewer requested. */
+/** `photo_collection_changed`: the Photo's current membership collection differs from the one the Viewer requested (ADR-0061). */
 export interface PhotoCollectionChangedErrorBody extends AlbumErrorBody {
   code: "photo_collection_changed";
-  currentCollection: PhotoCollection;
+  currentCollection: MembershipCollection;
 }
 
 export interface ViewerBootstrapResponse {
@@ -382,7 +396,7 @@ export interface ViewerBootstrapResponse {
   chronology: PhotoChronology;
   trashed: boolean;
   favourite: boolean;
-  /** The resolved Viewer Sequence collection: where this Photo actually lives right now. */
+  /** The resolved Viewer Sequence collection: which view's neighbour order this Photo Viewer session is scoped to. */
   collection: PhotoCollection;
   displayAccess: { url: string; expiresAt: string };
   /** Nearest newer neighbour in the resolved collection's live projection order, when present. */

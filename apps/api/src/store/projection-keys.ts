@@ -1,9 +1,17 @@
-import { buildChronologyKey, getCapturedAtComponents, type CapturedAt } from "@album/shared";
+import { buildChronologyKey, getCapturedAtComponents, type CapturedAt, type PhotoCollection } from "@album/shared";
 
-export type PhotoCollection = "active" | "trashed";
+export type { PhotoCollection };
 
-const collectionSegment = (collection: PhotoCollection): "ACTIVE" | "TRASHED" =>
-  collection === "active" ? "ACTIVE" : "TRASHED";
+const collectionSegment = (collection: PhotoCollection): "ACTIVE" | "TRASHED" | "FAVOURITE" => {
+  switch (collection) {
+    case "active":
+      return "ACTIVE";
+    case "trashed":
+      return "TRASHED";
+    case "favourite":
+      return "FAVOURITE";
+  }
+};
 
 /** Bare SK prefix for one collection's Timeline/Trash projections. */
 export const timelineProjectionPrefix = (collection: PhotoCollection): string =>

@@ -65,6 +65,7 @@ describe("handleGetAlbumNavigation", () => {
     expect(JSON.parse(response.body ?? "{}")).toEqual({
       timeline: { years: [{ year: 2024, counts: { "06": 1 } }] },
       trash: { years: [] },
+      favourites: { years: [] },
       processingIssueCount: 1,
     });
   });
@@ -76,7 +77,41 @@ describe("handleGetAlbumNavigation", () => {
     expect(JSON.parse(response.body ?? "{}")).toEqual({
       timeline: { years: [] },
       trash: { years: [] },
+      favourites: { years: [] },
       processingIssueCount: 0,
     });
+  });
+
+  it("returns non-empty Favourites year/month counts", async () => {
+    const store = createInMemoryPersonalAlbumStore();
+    const album = store.personalAlbumOf("user-1");
+    await album.createPhoto({
+      photoId: "photo-1",
+      uploadBatchId: "batch-1",
+      originalObjectKey: "originals/user-1/batch-1/photo-1",
+      fileName: "photo-1.jpg",
+      format: "jpeg",
+      contentType: "image/jpeg",
+      fileSizeBytes: 42,
+      uploadRequestedAt: "2026-01-01T00:00:00.000Z",
+      uploadLocalDateTime: "2026-01-01T00:00:00",
+      uploadContextTimeZone: "UTC",
+    });
+    await album.publishReadyPhoto({
+      photoId: "photo-1",
+      fileName: "photo-1.jpg",
+      sha256: "hash",
+      displayObjectKey: "display/user-1/photo-1.jpg",
+      displayDimensions: dimensions,
+      timelineThumbnails: thumbnails,
+      metadata: {},
+      originalCapturedAt: day("2024-06-15"),
+      originalCapturedAtSource: "exif",
+      hadOpenProcessingIssue: false,
+    });
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    const response = await handleGetAlbumNavigation({ user, album });
+    expect(JSON.parse(response.body ?? "{}").favourites).toEqual({ years: [{ year: 2024, counts: { "06": 1 } }] });
   });
 });

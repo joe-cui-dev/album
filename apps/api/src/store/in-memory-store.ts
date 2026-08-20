@@ -2,6 +2,7 @@ import { isSameCapturedAt, type CapturedAt, type Photo, type UploadBatch } from 
 import { ConcurrentPhotoModificationError, ProcessingAttemptConflictError, StaleChronologyRevisionError } from "./errors.js";
 import type {
   DateIndexPeriodCounts,
+  MembershipCollection,
   PersonalAlbum,
   PersonalAlbumStore,
   PhotoCollection,
@@ -88,6 +89,21 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
   ): void => {
     projectionsOf(userId).delete(timelineProjectionSortKey(input));
   };
+
+  /** The `favourite` projection row's full shape (ADR-0077 §2.2), always with `favourite: true`. */
+  const favouriteProjection = (
+    candidate: Photo,
+    input: { capturedAt: CapturedAt; addedAt: string; timelineThumbnails: NonNullable<Photo["timelineThumbnails"]> },
+  ): TimelineProjection => ({
+    photoId: candidate.photoId,
+    collection: "favourite",
+    capturedAt: input.capturedAt,
+    addedAt: input.addedAt,
+    fileName: candidate.fileName,
+    displayDimensions: candidate.displayDimensions!,
+    timelineThumbnails: input.timelineThumbnails,
+    favourite: true,
+  });
 
   const incrementDateIndex = (
     userId: string,
@@ -293,8 +309,8 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             throw new ConcurrentPhotoModificationError(photoId);
           }
 
-          const fromCollection: PhotoCollection = candidate.trashed ? "trashed" : "active";
-          const toCollection: PhotoCollection = trashed ? "trashed" : "active";
+          const fromCollection: MembershipCollection = candidate.trashed ? "trashed" : "active";
+          const toCollection: MembershipCollection = trashed ? "trashed" : "active";
           const capturedAt = chronology.active.capturedAt;
           const deletedAt = trashed ? new Date().toISOString() : undefined;
 
@@ -312,6 +328,18 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           });
           incrementDateIndex(userId, fromCollection, capturedAt, -1);
           incrementDateIndex(userId, toCollection, capturedAt, 1);
+
+          // ADR-0077 invariant: a `favourite` row exists iff favourited AND not trashed.
+          if (candidate.favourite) {
+            if (trashed) {
+              deleteProjection(userId, { collection: "favourite", capturedAt, addedAt, photoId });
+              incrementDateIndex(userId, "favourite", capturedAt, -1);
+            } else {
+              writeProjection(userId, favouriteProjection(candidate, { capturedAt, addedAt, timelineThumbnails }));
+              incrementDateIndex(userId, "favourite", capturedAt, 1);
+            }
+          }
+
           candidate.trashed = trashed;
           if (deletedAt) candidate.deletedAt = deletedAt;
           else delete candidate.deletedAt;
@@ -319,7 +347,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
 
         async setFavourite({ photoId, favourite }) {
           const candidate = requirePhoto(userId, photoId);
-          const { chronology, addedAt } = requireReadyPhoto(candidate);
+          const { chronology, addedAt, timelineThumbnails } = requireReadyPhoto(candidate);
           if (candidate.favourite === favourite) {
             return;
           }
@@ -327,14 +355,26 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             throw new ConcurrentPhotoModificationError(photoId);
           }
 
-          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
+          const collection: MembershipCollection = candidate.trashed ? "trashed" : "active";
+          const capturedAt = chronology.active.capturedAt;
           const projection = projectionsOf(userId).get(
-            timelineProjectionSortKey({ collection, capturedAt: chronology.active.capturedAt, addedAt, photoId }),
+            timelineProjectionSortKey({ collection, capturedAt, addedAt, photoId }),
           );
           if (projection) {
             projection.favourite = favourite;
           }
           candidate.favourite = favourite;
+
+          // ADR-0077 invariant: the `favourite` row only exists while not trashed.
+          if (!candidate.trashed) {
+            if (favourite) {
+              writeProjection(userId, favouriteProjection(candidate, { capturedAt, addedAt, timelineThumbnails }));
+              incrementDateIndex(userId, "favourite", capturedAt, 1);
+            } else {
+              deleteProjection(userId, { collection: "favourite", capturedAt, addedAt, photoId });
+              incrementDateIndex(userId, "favourite", capturedAt, -1);
+            }
+          }
         },
 
         async reservePermanentDeletion({ photo: expected, reservationId }) {
@@ -391,7 +431,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             return { revision: current.revision };
           }
 
-          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
+          const collection: MembershipCollection = candidate.trashed ? "trashed" : "active";
           deleteProjection(userId, { collection, capturedAt: current.capturedAt, addedAt, photoId });
           writeProjection(userId, {
             photoId,
@@ -406,6 +446,14 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);
           incrementDateIndex(userId, collection, capturedAt, 1);
+
+          // ADR-0077 invariant: a non-trashed Favourite Photo's `favourite` row moves too.
+          if (!candidate.trashed && candidate.favourite) {
+            deleteProjection(userId, { collection: "favourite", capturedAt: current.capturedAt, addedAt, photoId });
+            writeProjection(userId, favouriteProjection(candidate, { capturedAt, addedAt, timelineThumbnails }));
+            incrementDateIndex(userId, "favourite", current.capturedAt, -1);
+            incrementDateIndex(userId, "favourite", capturedAt, 1);
+          }
 
           chronology.active = { capturedAt, source: "userAdjusted", revision: current.revision + 1 };
           return { revision: chronology.active.revision };
@@ -428,7 +476,7 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
             return { revision: current.revision };
           }
 
-          const collection: PhotoCollection = candidate.trashed ? "trashed" : "active";
+          const collection: MembershipCollection = candidate.trashed ? "trashed" : "active";
           deleteProjection(userId, { collection, capturedAt: current.capturedAt, addedAt, photoId });
           writeProjection(userId, {
             photoId,
@@ -443,6 +491,14 @@ export const createInMemoryPersonalAlbumStore = (): PersonalAlbumStore => {
           });
           incrementDateIndex(userId, collection, current.capturedAt, -1);
           incrementDateIndex(userId, collection, original.capturedAt, 1);
+
+          // ADR-0077 invariant: a non-trashed Favourite Photo's `favourite` row moves too.
+          if (!candidate.trashed && candidate.favourite) {
+            deleteProjection(userId, { collection: "favourite", capturedAt: current.capturedAt, addedAt, photoId });
+            writeProjection(userId, favouriteProjection(candidate, { capturedAt: original.capturedAt, addedAt, timelineThumbnails }));
+            incrementDateIndex(userId, "favourite", current.capturedAt, -1);
+            incrementDateIndex(userId, "favourite", original.capturedAt, 1);
+          }
 
           chronology.active = {
             capturedAt: original.capturedAt,

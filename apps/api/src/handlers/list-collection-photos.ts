@@ -48,6 +48,15 @@ export const trashPhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, e
   }),
 );
 
+export const favouritePhotosHandler: APIGatewayProxyHandlerV2 = withAuth((context, event) =>
+  handleListCollectionPhotos({
+    ...context,
+    collection: "favourite",
+    query: event.queryStringParameters ?? {},
+    deps: { photoObjects: photoObjectStore },
+  }),
+);
+
 export const handleListCollectionPhotos = async ({
   album,
   collection,

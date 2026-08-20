@@ -250,7 +250,7 @@ describe("DynamoDbPersonalAlbumStore commands: setFavourite", () => {
     ...overrides,
   });
 
-  it("marks the Photo and its Timeline projection row in one transaction", async () => {
+  it("marks the Photo, its Timeline projection row, and creates the favourite row in one transaction", async () => {
     const { documentClient, commands } = fakeClient(readyPhotoItem());
     const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
       "user-1",
@@ -260,7 +260,7 @@ describe("DynamoDbPersonalAlbumStore commands: setFavourite", () => {
 
     const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
     const items = transact.input.TransactItems ?? [];
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(4);
     expect(items[0]?.Update).toEqual(
       expect.objectContaining({
         Key: { pk: "USER#user-1", sk: "PHOTO#photo-1" },
@@ -277,6 +277,57 @@ describe("DynamoDbPersonalAlbumStore commands: setFavourite", () => {
         ExpressionAttributeValues: { ":favourite": true },
       }),
     );
+    expect(items[2]?.Put?.Item).toEqual(
+      expect.objectContaining({
+        pk: "USER#user-1",
+        sk: "TIMELINE#FAVOURITE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1",
+        collection: "favourite",
+        favourite: true,
+      }),
+    );
+    expect(items[3]?.Update).toEqual(
+      expect.objectContaining({
+        Key: { pk: "USER#user-1", sk: "DATE_INDEX#FAVOURITE#2024" },
+        ExpressionAttributeValues: { ":delta": 1 },
+      }),
+    );
+  });
+
+  it("deletes the favourite row and decrements its Date Index when unfavouriting", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem({ favourite: true }));
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.setFavourite({ photoId: "photo-1", favourite: false });
+
+    const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
+    const items = transact.input.TransactItems ?? [];
+    expect(items).toHaveLength(4);
+    expect(items[2]?.Delete?.Key).toEqual({
+      pk: "USER#user-1",
+      sk: "TIMELINE#FAVOURITE#2024.06.15.--.--.--.------#2026-07-19T00:00:00.000Z#photo-1",
+    });
+    expect(items[3]?.Update).toEqual(
+      expect.objectContaining({
+        Key: { pk: "USER#user-1", sk: "DATE_INDEX#FAVOURITE#2024" },
+        ExpressionAttributeValues: { ":delta": -1, ":absDelta": 1 },
+      }),
+    );
+  });
+
+  it("does not touch a favourite row when toggling the mark on a trashed Photo", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem({ trashed: true }));
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+
+    const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
+    const items = transact.input.TransactItems ?? [];
+    expect(items).toHaveLength(2);
+    expect(items.some((entry) => String(entry.Put?.Item?.sk ?? entry.Delete?.Key?.sk ?? "").includes("FAVOURITE"))).toBe(false);
   });
 
   it("is a no-op when the Photo already has the target Favourite state", async () => {
@@ -358,6 +409,153 @@ describe("DynamoDbPersonalAlbumStore commands: replaceActiveChronology", () => {
       source: "userAdjusted",
       revision: 1,
     });
+  });
+
+  it("combines a same-year, different-month old/new Date Index pair into one Update instead of touching the item twice", async () => {
+    const { documentClient, commands } = fakeClient({
+      processingState: "ready",
+      trashed: false,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      fileName: "photo-1.jpg",
+      displayDimensions: { width: 100, height: 50 },
+      timelineThumbnails: thumbnails,
+      chronology: {
+        original: { capturedAt: june15, source: "exif" },
+        active: { capturedAt: june15, source: "exif", revision: 0 },
+      },
+    });
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    // Moves 2024-06-15 to 2024-08-01: old and new Date Index deltas land on the exact
+    // same (pk, sk) (both "DATE_INDEX#ACTIVE#2024"), which a real DynamoDB table
+    // rejects unless they're combined into a single Update.
+    await album.replaceActiveChronology({
+      photoId: "photo-1",
+      capturedAt: { precision: "day", localDate: "2024-08-01" },
+      expectedRevision: 0,
+    });
+
+    const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
+    const items = transact.input.TransactItems ?? [];
+    const dateIndexUpdates = items.filter((item) => item.Update?.Key?.sk === "DATE_INDEX#ACTIVE#2024");
+    expect(dateIndexUpdates).toHaveLength(1);
+    expect(dateIndexUpdates[0]?.Update?.UpdateExpression).toBe("ADD #period0 :delta0, #period1 :delta1");
+    expect(dateIndexUpdates[0]?.Update?.ExpressionAttributeNames).toEqual({ "#period0": "06", "#period1": "08" });
+    expect(dateIndexUpdates[0]?.Update?.ExpressionAttributeValues).toEqual({ ":delta0": -1, ":absDelta0": 1, ":delta1": 1 });
+    expect(dateIndexUpdates[0]?.Update?.ConditionExpression).toBe("#period0 >= :absDelta0");
+  });
+
+  it("nets a same-month old/new pair to a genuine no-op, emitting no Date Index Update at all", async () => {
+    const { documentClient, commands } = fakeClient({
+      processingState: "ready",
+      trashed: false,
+      uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+      fileName: "photo-1.jpg",
+      displayDimensions: { width: 100, height: 50 },
+      timelineThumbnails: thumbnails,
+      chronology: {
+        original: { capturedAt: june15, source: "exif" },
+        active: { capturedAt: june15, source: "exif", revision: 0 },
+      },
+    });
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf(
+      "user-1",
+    );
+
+    // Refines 2024-06-15 to another day still in 2024-06: same period on both sides
+    // nets to zero and should not appear in the transaction at all.
+    await album.replaceActiveChronology({
+      photoId: "photo-1",
+      capturedAt: { precision: "day", localDate: "2024-06-25" },
+      expectedRevision: 0,
+    });
+
+    const transact = commands.find((command) => command instanceof TransactWriteCommand) as TransactWriteCommand;
+    const items = transact.input.TransactItems ?? [];
+    expect(items.some((item) => item.Update?.Key?.sk === "DATE_INDEX#ACTIVE#2024")).toBe(false);
+  });
+});
+
+describe("DynamoDbPersonalAlbumStore: no TransactWriteItems list touches one (pk, sk) twice", () => {
+  /** DynamoDB's own constraint: a TransactWriteItems call is rejected outright if any two of its
+   * items address the same item. Every mutating store operation is exercised here against a
+   * structural assertion rather than a specific scenario, so this catches any future transaction
+   * that reintroduces the bug fixed in commit 2, including ones added by later slices. */
+  const assertNoDuplicateKeys = (commands: unknown[]): void => {
+    for (const command of commands) {
+      if (!(command instanceof TransactWriteCommand)) continue;
+      const seen = new Set<string>();
+      for (const item of command.input.TransactItems ?? []) {
+        // A Put's key lives inside its Item, not a separate Key field.
+        const key = (item.Update?.Key ?? item.Delete?.Key ?? item.ConditionCheck?.Key ?? item.Put?.Item) as
+          | { pk?: unknown; sk?: unknown }
+          | undefined;
+        if (!key) continue;
+        const identity = `${key.pk}#${key.sk}`;
+        expect(seen.has(identity)).toBe(false);
+        seen.add(identity);
+      }
+    }
+  };
+
+  const readyPhotoItem = (overrides: Record<string, unknown> = {}) => ({
+    processingState: "ready",
+    trashed: false,
+    favourite: false,
+    uploadRequestedAt: "2026-07-19T00:00:00.000Z",
+    fileName: "photo-1.jpg",
+    displayDimensions: { width: 100, height: 50 },
+    timelineThumbnails: thumbnails,
+    chronology: {
+      original: { capturedAt: june15, source: "exif" },
+      active: { capturedAt: june15, source: "exif", revision: 0 },
+    },
+    ...overrides,
+  });
+
+  it("holds for setTrashMembership", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem());
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf("user-1");
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
+    assertNoDuplicateKeys(commands);
+  });
+
+  it("holds for setTrashMembership on a Favourite Photo", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem({ favourite: true }));
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf("user-1");
+    await album.setTrashMembership({ photoId: "photo-1", trashed: true });
+    assertNoDuplicateKeys(commands);
+  });
+
+  it("holds for setFavourite", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem());
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf("user-1");
+    await album.setFavourite({ photoId: "photo-1", favourite: true });
+    assertNoDuplicateKeys(commands);
+  });
+
+  it("holds for a same-year replaceActiveChronology on a Favourite Photo", async () => {
+    const { documentClient, commands } = fakeClient(readyPhotoItem({ favourite: true }));
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf("user-1");
+    await album.replaceActiveChronology({ photoId: "photo-1", capturedAt: { precision: "day", localDate: "2024-06-20" }, expectedRevision: 0 });
+    assertNoDuplicateKeys(commands);
+  });
+
+  it("holds for a same-year revertActiveChronology on a Favourite Photo", async () => {
+    const { documentClient, commands } = fakeClient(
+      readyPhotoItem({
+        favourite: true,
+        chronology: {
+          original: { capturedAt: june15, source: "exif" },
+          active: { capturedAt: { precision: "day", localDate: "2024-06-20" }, source: "userAdjusted", revision: 1 },
+        },
+      }),
+    );
+    const album = createDynamoDbPersonalAlbumStore({ documentClient, tableName: "metadata-table" }).personalAlbumOf("user-1");
+    await album.revertActiveChronology({ photoId: "photo-1", expectedRevision: 1 });
+    assertNoDuplicateKeys(commands);
   });
 });
 
