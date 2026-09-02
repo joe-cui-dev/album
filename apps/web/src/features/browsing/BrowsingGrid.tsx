@@ -87,13 +87,28 @@ export function BrowsingGrid({
 
   const layoutItems = snapshot.layoutItems;
 
+  // A focused layout index only means anything within the Browsing Window it was read from, and
+  // this component instance outlives any single window: `BrowsingPage` re-keys the history entry on
+  // a membership change (Trash/Restore) and Back reactivates a retained window, both of which swap
+  // the `browsingWindow` prop underneath the same mounted grid -- while the closing Viewer is
+  // restoring DOM focus to the Photo Link it was opened from, with no blur to clear the index.
+  // Carrying it across would leave it pointing past the end of a shorter window's `layoutItems`.
+  const [focusedWindow, setFocusedWindow] = useState(browsingWindow);
+  if (focusedWindow !== browsingWindow) {
+    setFocusedWindow(browsingWindow);
+    setFocusedItemIndex(undefined);
+  }
+
   // Keeps the focused row's item mounted even once scrolled past the default overscan window
   // (ADR-0049: "that row remains mounted until focus moves"), so native Photo Link focus survives
   // continued keyboard navigation instead of the virtualizer unmounting it mid-tab.
   const rangeExtractor = useCallback(
     (range: Range) => {
       const indices = new Set(defaultRangeExtractor(range));
-      if (focusedItemIndex !== undefined) {
+      // Bounded deliberately: TanStack Virtual looks every extracted index straight up in its
+      // measurements with no clamp of its own, so a single index past the end puts an `undefined`
+      // into `getVirtualItems()` and crashes the render below.
+      if (focusedItemIndex !== undefined && focusedItemIndex < range.count) {
         indices.add(focusedItemIndex);
       }
       return [...indices].sort((a, b) => a - b);

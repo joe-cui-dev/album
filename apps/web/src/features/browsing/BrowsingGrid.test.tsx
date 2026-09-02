@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { act, screen } from "@testing-library/react";
+import { Component, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TimelinePhoto } from "@album/shared";
@@ -157,7 +157,72 @@ describe("BrowsingGrid", () => {
 
     expect(await screen.findByText("Couldn't load more photos.")).toBeInTheDocument();
   });
+
+  it("survives a Browsing Window swap into a shorter collection while a Photo Link still holds focus", async () => {
+    const first = createTestAlbumBrowsingPort();
+    const second = createTestAlbumBrowsingPort();
+    const firstWindow = createActiveWindow(first.port);
+    const secondWindow = createActiveWindow(second.port);
+    browsingWindow = firstWindow;
+
+    let swapWindow: (next: BrowsingWindow) => void = () => {};
+    let renderError: Error | undefined;
+
+    function Harness() {
+      const [window_, setWindow] = useState(firstWindow);
+      swapWindow = setWindow;
+      return (
+        <CrashRecorder onError={(error) => (renderError = error)}>
+          <BrowsingGrid browsingWindow={window_} emptyState={emptyState} photoHrefFor={(id) => `/album/photos/${id}`} sourceCollection="active" />
+        </CrashRecorder>
+      );
+    }
+
+    renderApp(<RouterProvider router={createMemoryRouter([{ path: "*", Component: Harness }])} />);
+
+    await act(async () => {
+      first.resolveNextLoad({ photos: Array.from({ length: 40 }, (_, index) => photo(`a${index}`)), expiresAt: "2030-01-01T00:00:00.000Z" });
+      await flush();
+    });
+
+    // The Viewer returns DOM focus to the Photo Link it was opened from, so a deep row index is
+    // remembered as the focused layout item.
+    const links = await screen.findAllByRole("link");
+    await act(async () => {
+      links[links.length - 1]!.focus();
+      await flush();
+    });
+
+    // A membership change (Restore/Trash) re-keys the history entry, so `BrowsingPage` hands this
+    // same mounted grid a brand-new Browsing Window holding far fewer layout items.
+    await act(async () => {
+      swapWindow(secondWindow);
+      await flush();
+    });
+    await act(async () => {
+      second.resolveNextLoad({ photos: [photo("b0"), photo("b1")], expiresAt: "2030-01-01T00:00:00.000Z" });
+      await flush();
+    });
+
+    expect(renderError).toBeUndefined();
+    expect(await screen.findByRole("link", { name: /^b0\.jpg/ })).toBeInTheDocument();
+
+    secondWindow.lifecycle.dispose();
+  });
 });
+
+/** Records a render-time crash instead of letting it tear the whole root down. */
+class CrashRecorder extends Component<{ children: ReactNode; onError: (error: Error) => void }> {
+  static getDerivedStateFromError() {
+    return {};
+  }
+  componentDidCatch(error: Error) {
+    this.props.onError(error);
+  }
+  render() {
+    return this.props.children;
+  }
+}
 
 const flush = async (): Promise<void> => {
   await Promise.resolve();
