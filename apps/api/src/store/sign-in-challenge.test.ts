@@ -298,7 +298,7 @@ describe("DynamoDbSignInChallengeStore", () => {
     ).resolves.toEqual({ dispatched: false });
   });
 
-  it("atomically consumes via a conditional Update (SET consumed = true) on a matching hash, gated on codeExpiresAt", async () => {
+  it("atomically consumes via a conditional Update (SET #consumed = true) on a matching hash, gated on codeExpiresAt", async () => {
     const { commands, documentClient } = documentClientStub({
       Update: () => ({}),
     });
@@ -314,9 +314,11 @@ describe("DynamoDbSignInChallengeStore", () => {
         input: {
           TableName: "metadata-table",
           Key: { pk: "SIGN_IN#user@example.com", sk: "CHALLENGE" },
-          UpdateExpression: "SET consumed = :true",
+          UpdateExpression: "SET #consumed = :true",
           ConditionExpression:
-            "codeHash = :candidateHash AND codeExpiresAt > :now AND wrongAttempts < :max AND (attribute_not_exists(consumed) OR consumed = :false)",
+            "codeHash = :candidateHash AND codeExpiresAt > :now AND wrongAttempts < :max AND (attribute_not_exists(#consumed) OR #consumed = :false)",
+          // `consumed` is a DynamoDB reserved word; naming it directly is a ValidationException.
+          ExpressionAttributeNames: { "#consumed": "consumed" },
           ExpressionAttributeValues: { ":candidateHash": "hash-1", ":now": 1_784_419_260, ":max": 5, ":true": true, ":false": false },
         },
       },
@@ -360,7 +362,8 @@ describe("DynamoDbSignInChallengeStore", () => {
       commandName: "Update",
       input: {
         UpdateExpression: "SET wrongAttempts = wrongAttempts + :one",
-        ConditionExpression: "attribute_exists(pk) AND codeExpiresAt > :now AND wrongAttempts < :max AND (attribute_not_exists(consumed) OR consumed = :false)",
+        ConditionExpression: "attribute_exists(pk) AND codeExpiresAt > :now AND wrongAttempts < :max AND (attribute_not_exists(#consumed) OR #consumed = :false)",
+        ExpressionAttributeNames: { "#consumed": "consumed" },
       },
     });
   });

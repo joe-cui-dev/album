@@ -5,11 +5,15 @@ import { MAX_WRONG_ATTEMPTS, RATE_LIMIT_COOLDOWN_SECONDS, RATE_LIMIT_MAX_PER_HOU
 
 const challengeKey = (email: string) => ({ pk: `SIGN_IN#${email}`, sk: "CHALLENGE" });
 
+/** `consumed` is a DynamoDB reserved word: every expression naming it directly is rejected
+ * with a ValidationException, so they all go through this alias instead. */
+const CONSUMED_NAMES = { "#consumed": "consumed" };
+
 /** `codeHash`/`codeExpiresAt`/`wrongAttempts` all still need to be readable on a consumed
  * record (redelivery recognition, rate-limit history), so consuming sets this flag rather
  * than deleting the item -- DynamoDB TTL on `expiresAt` reclaims it in the background once
  * the rolling rate-limit window has also elapsed. */
-const NOT_YET_CONSUMED_CONDITION = "(attribute_not_exists(consumed) OR consumed = :false)";
+const NOT_YET_CONSUMED_CONDITION = "(attribute_not_exists(#consumed) OR #consumed = :false)";
 
 const isConditionalCheckFailure = (error: unknown): boolean =>
   error instanceof Error && error.name === "ConditionalCheckFailedException";
@@ -107,8 +111,9 @@ export const createDynamoDbSignInChallengeStore = ({
         new UpdateCommand({
           TableName: tableName,
           Key: challengeKey(email),
-          UpdateExpression: "SET consumed = :true",
+          UpdateExpression: "SET #consumed = :true",
           ConditionExpression: `codeHash = :candidateHash AND codeExpiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
+          ExpressionAttributeNames: CONSUMED_NAMES,
           ExpressionAttributeValues: {
             ":candidateHash": candidateHash,
             ":now": nowSeconds,
@@ -135,6 +140,7 @@ export const createDynamoDbSignInChallengeStore = ({
           Key: challengeKey(email),
           UpdateExpression: "SET wrongAttempts = wrongAttempts + :one",
           ConditionExpression: `attribute_exists(pk) AND codeExpiresAt > :now AND wrongAttempts < :max AND ${NOT_YET_CONSUMED_CONDITION}`,
+          ExpressionAttributeNames: CONSUMED_NAMES,
           ExpressionAttributeValues: { ":one": 1, ":now": nowSeconds, ":max": MAX_WRONG_ATTEMPTS, ":false": false },
         }),
       );
